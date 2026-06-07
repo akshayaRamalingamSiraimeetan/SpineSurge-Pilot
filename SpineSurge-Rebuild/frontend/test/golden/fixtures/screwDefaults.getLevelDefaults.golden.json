@@ -1,0 +1,312 @@
+{
+  "cervical-C2": {
+    "region": "Cervical",
+    "measurements": [
+      {
+        "diameter": 3,
+        "lengths": [
+          18,
+          20,
+          22
+        ]
+      },
+      {
+        "diameter": 3.5,
+        "lengths": [
+          20,
+          22,
+          24,
+          26
+        ]
+      },
+      {
+        "diameter": 4,
+        "lengths": [
+          22,
+          24,
+          26,
+          28
+        ]
+      },
+      {
+        "diameter": 4.5,
+        "lengths": [
+          24,
+          26,
+          28,
+          30,
+          32,
+          34
+        ]
+      }
+    ],
+    "color": "#a855f7"
+  },
+  "upper-thoracic-T3": {
+    "region": "Upper Thoracic",
+    "measurements": [
+      {
+        "diameter": 3.5,
+        "lengths": [
+          25,
+          30
+        ]
+      },
+      {
+        "diameter": 4,
+        "lengths": [
+          25,
+          30,
+          35
+        ]
+      },
+      {
+        "diameter": 4.5,
+        "lengths": [
+          30,
+          35,
+          40
+        ]
+      },
+      {
+        "diameter": 5,
+        "lengths": [
+          30,
+          35,
+          40
+        ]
+      }
+    ],
+    "color": "#3b82f6"
+  },
+  "lower-thoracic-T9": {
+    "region": "Lower Thoracic",
+    "measurements": [
+      {
+        "diameter": 4.5,
+        "lengths": [
+          30,
+          35
+        ]
+      },
+      {
+        "diameter": 5,
+        "lengths": [
+          35,
+          40
+        ]
+      },
+      {
+        "diameter": 5.5,
+        "lengths": [
+          35,
+          40,
+          45
+        ]
+      },
+      {
+        "diameter": 6,
+        "lengths": [
+          40,
+          45
+        ]
+      },
+      {
+        "diameter": 6.5,
+        "lengths": [
+          40,
+          45
+        ]
+      }
+    ],
+    "color": "#14b8a6"
+  },
+  "lumbar-L4": {
+    "region": "Lumbar",
+    "measurements": [
+      {
+        "diameter": 5,
+        "lengths": [
+          35,
+          40
+        ]
+      },
+      {
+        "diameter": 5.5,
+        "lengths": [
+          40,
+          45
+        ]
+      },
+      {
+        "diameter": 6,
+        "lengths": [
+          40,
+          45,
+          50
+        ]
+      },
+      {
+        "diameter": 6.5,
+        "lengths": [
+          45,
+          50
+        ]
+      },
+      {
+        "diameter": 7,
+        "lengths": [
+          45,
+          50,
+          55
+        ]
+      },
+      {
+        "diameter": 7.5,
+        "lengths": [
+          45,
+          50,
+          55
+        ]
+      },
+      {
+        "diameter": 8,
+        "lengths": [
+          45,
+          50,
+          55
+        ]
+      },
+      {
+        "diameter": 8.5,
+        "lengths": [
+          50,
+          55
+        ]
+      }
+    ],
+    "color": "#f97316"
+  },
+  "sacral-S1": {
+    "region": "Sacral",
+    "measurements": [
+      {
+        "diameter": 6.5,
+        "lengths": [
+          35,
+          40
+        ]
+      },
+      {
+        "diameter": 7,
+        "lengths": [
+          40,
+          45
+        ]
+      },
+      {
+        "diameter": 7.5,
+        "lengths": [
+          40,
+          45,
+          50
+        ]
+      },
+      {
+        "diameter": 8,
+        "lengths": [
+          45,
+          50
+        ]
+      },
+      {
+        "diameter": 8.5,
+        "lengths": [
+          45,
+          50
+        ]
+      },
+      {
+        "diameter": 9,
+        "lengths": [
+          45,
+          50
+        ]
+      },
+      {
+        "diameter": 9.5,
+        "lengths": [
+          45,
+          50
+        ]
+      }
+    ],
+    "color": "#e11d48"
+  },
+  "unknown-fallback": {
+    "region": "Lumbar",
+    "measurements": [
+      {
+        "diameter": 5,
+        "lengths": [
+          35,
+          40
+        ]
+      },
+      {
+        "diameter": 5.5,
+        "lengths": [
+          40,
+          45
+        ]
+      },
+      {
+        "diameter": 6,
+        "lengths": [
+          40,
+          45,
+          50
+        ]
+      },
+      {
+        "diameter": 6.5,
+        "lengths": [
+          45,
+          50
+        ]
+      },
+      {
+        "diameter": 7,
+        "lengths": [
+          45,
+          50,
+          55
+        ]
+      },
+      {
+        "diameter": 7.5,
+        "lengths": [
+          45,
+          50,
+          55
+        ]
+      },
+      {
+        "diameter": 8,
+        "lengths": [
+          45,
+          50,
+          55
+        ]
+      },
+      {
+        "diameter": 8.5,
+        "lengths": [
+          50,
+          55
+        ]
+      }
+    ],
+    "color": "#94a3b8"
+  }
+}

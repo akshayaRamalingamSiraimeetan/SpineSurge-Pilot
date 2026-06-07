@@ -1,0 +1,83 @@
+# ── Dependencies ──────────────────────────────────────────────────────────────
+node_modules/
+
+# ── Build Output ──────────────────────────────────────────────────────────────
+dist/
+dist-ssr/
+out/
+dist_electron/
+frontend/dist/
+frontend/.vite/
+*.tsbuildinfo
+
+# ── Environment Variables ─────────────────────────────────────────────────────
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# ── Python ────────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+env/
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+.eggs/
+htmlcov/
+
+# ── Testing & Coverage ────────────────────────────────────────────────────────
+coverage/
+test_output.txt
+
+# ── Logs ──────────────────────────────────────────────────────────────────────
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# ── OS ────────────────────────────────────────────────────────────────────────
+.DS_Store
+.DS_Store?
+._*
+Thumbs.db
+ehthumbs.db
+
+# ── Editor & IDE ──────────────────────────────────────────────────────────────
+.idea/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/launch.json
+!.vscode/tasks.json
+*.sw?
+
+# ── Local DB & Secrets ────────────────────────────────────────────────────────
+*.db
+*.sqlite
+*.sqlite3
+spinesurge.db*
+
+# ── Large Design Assets ───────────────────────────────────────────────────────
+*.pdf
+*.dmg
+*.zip
+*.tar.gz
+
+# ── Agent & Temporary Artifacts ───────────────────────────────────────────────
+.gemini/
+.kiro/
+html2canvas_placeholder
+review.md
+tsc_errors.txt
+
+# ── Docker local data volumes ──────────────────────────────────────────────────
+infra/**/data/
+
+# ── ESLint cache ──────────────────────────────────────────────────────────────
+.eslintcache

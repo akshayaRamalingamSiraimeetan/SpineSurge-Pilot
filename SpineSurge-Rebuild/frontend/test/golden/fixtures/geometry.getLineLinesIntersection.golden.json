@@ -1,0 +1,11 @@
+{
+  "cross-at-5-5": {
+    "x": 5,
+    "y": 5
+  },
+  "parallel-null": null,
+  "oblique": {
+    "x": 2,
+    "y": 4
+  }
+}

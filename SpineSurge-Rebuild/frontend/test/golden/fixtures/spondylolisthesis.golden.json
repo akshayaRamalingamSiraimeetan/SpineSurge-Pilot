@@ -1,0 +1,36 @@
+{
+  "typical-px": {
+    "slipDistance": 105.21895831229595,
+    "slipAngle": 1.1457628381751443,
+    "slipPercentage": 105.21895831229595,
+    "grade": "Grade V (Spondyloptosis)",
+    "pointP": {
+      "x": 109.89604158336665,
+      "y": 199.80207916833265
+    },
+    "AB_length": 100
+  },
+  "typical-mm": {
+    "slipDistance": 105.21895831229595,
+    "slipAngle": 1.1457628381751443,
+    "slipPercentage": 105.21895831229595,
+    "grade": "Grade V (Spondyloptosis)",
+    "pointP": {
+      "x": 109.89604158336665,
+      "y": 199.80207916833265
+    },
+    "AB_length": 100
+  },
+  "high-grade": {
+    "slipDistance": 106.21875837227594,
+    "slipAngle": 1.1457628381751443,
+    "slipPercentage": 106.21875837227594,
+    "grade": "Grade V (Spondyloptosis)",
+    "pointP": {
+      "x": 159.87604958016794,
+      "y": 198.80247900839663
+    },
+    "AB_length": 100
+  },
+  "too-few-points": null
+}

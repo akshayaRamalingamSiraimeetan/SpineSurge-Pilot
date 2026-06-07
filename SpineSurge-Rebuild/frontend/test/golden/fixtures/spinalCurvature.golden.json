@@ -1,0 +1,17 @@
+{
+  "tilt-20deg": {
+    "angle": 20.000002143987903,
+    "intersection": {
+      "x": -283.56405995678483,
+      "y": 50
+    }
+  },
+  "parallel-zero": {
+    "angle": 0,
+    "intersection": null
+  },
+  "too-few-points": {
+    "angle": 0,
+    "intersection": null
+  }
+}

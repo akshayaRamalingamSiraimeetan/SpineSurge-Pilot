@@ -1,0 +1,166 @@
+# SpineSurge Pro — local dev stack (Step 1)
+# Brings up the full backing infrastructure. App services (api/web/yjs) are added in Steps 2/6/9.
+# Usage:  cp ../.env.example ../.env  &&  docker compose --env-file ../.env up -d
+#         docker compose ps   # all should be healthy
+
+name: spinesurge
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-spinesurge}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-spinesurge}
+      POSTGRES_DB: ${POSTGRES_DB:-spinesurge}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./postgres/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-spinesurge}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--save", "60", "1", "--appendonly", "no"]
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  minio:
+    image: minio/minio:latest
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin}
+    ports:
+      - "${MINIO_PORT:-9000}:9000"      # S3 API
+      - "${MINIO_CONSOLE_PORT:-9001}:9001" # Web console
+    volumes:
+      - miniodata:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # Creates the app bucket once MinIO is healthy, then exits.
+  minio-init:
+    image: minio/mc:latest
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+      mc alias set local http://minio:9000 ${MINIO_ROOT_USER:-minioadmin} ${MINIO_ROOT_PASSWORD:-minioadmin} &&
+      mc mb -p local/${S3_BUCKET:-spinesurge} &&
+      echo 'bucket ready';
+      "
+    restart: "no"
+
+  orthanc:
+    image: orthancteam/orthanc:latest
+    restart: unless-stopped
+    environment:
+      ORTHANC__NAME: "SpineSurge"
+      # Credentials for the proxied API (FastAPI talks to Orthanc with these).
+      ORTHANC__REGISTERED_USERS: |
+        {"${ORTHANC_USER:-spinesurge}": "${ORTHANC_PASSWORD:-spinesurge}"}
+      ORTHANC__AUTHENTICATION_ENABLED: "true"
+      # DICOMweb (QIDO/WADO/STOW) served under /dicom-web
+      ORTHANC__DICOM_WEB__ENABLE: "true"
+      ORTHANC__DICOM_WEB__ROOT: "/dicom-web/"
+    ports:
+      - "${ORTHANC_HTTP_PORT:-8042}:8042"   # REST + DICOMweb
+      - "${ORTHANC_DICOM_PORT:-4242}:4242"  # DICOM C-STORE
+    volumes:
+      - orthancdata:/var/lib/orthanc/db
+    # The orthancteam image ships no curl/wget, so probe via the bundled python3 (validates HTTP+auth).
+    healthcheck:
+      test: ["CMD-SHELL", "python3 -c \"import urllib.request,base64; r=urllib.request.Request('http://localhost:8042/system'); r.add_header('Authorization','Basic '+base64.b64encode(b'${ORTHANC_USER:-spinesurge}:${ORTHANC_PASSWORD:-spinesurge}').decode()); urllib.request.urlopen(r,timeout=3)\""]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+  # Runs Alembic migrations (schema + RLS), then exits. Gate for the api service.
+  migrate:
+    build:
+      context: ../backend
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-spinesurge}:${POSTGRES_PASSWORD:-spinesurge}@postgres:5432/${POSTGRES_DB:-spinesurge}
+    command: ["alembic", "upgrade", "head"]
+    restart: "no"
+
+  api:
+    build:
+      context: ../backend
+    restart: unless-stopped
+    environment:
+      APP_ENV: ${APP_ENV:-development}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-spinesurge}:${POSTGRES_PASSWORD:-spinesurge}@postgres:5432/${POSTGRES_DB:-spinesurge}
+      REDIS_URL: redis://redis:6379/0
+      S3_ENDPOINT: http://minio:9000
+      # Browser-reachable endpoint for presigned download URLs (host-published MinIO).
+      S3_PUBLIC_ENDPOINT: ${S3_PUBLIC_ENDPOINT:-http://localhost:9000}
+      S3_BUCKET: ${S3_BUCKET:-spinesurge}
+      S3_ACCESS_KEY: ${MINIO_ROOT_USER:-minioadmin}
+      S3_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-minioadmin}
+      S3_REGION: ${S3_REGION:-us-east-1}
+      ORTHANC_URL: http://orthanc:8042
+      ORTHANC_USER: ${ORTHANC_USER:-spinesurge}
+      ORTHANC_PASSWORD: ${ORTHANC_PASSWORD:-spinesurge}
+      ORTHANC_DICOMWEB_ROOT: ${ORTHANC_DICOMWEB_ROOT:-/dicom-web}
+      # JSON array — pydantic-settings JSON-decodes list-typed fields from env.
+      CORS_ORIGINS: ${CORS_ORIGINS:-["http://localhost:5173"]}
+      # Local dev auth (no external IdP). Never enable in production.
+      AUTH_DEV_MODE: ${AUTH_DEV_MODE:-true}
+      AUTH_DEV_SECRET: ${AUTH_DEV_SECRET:-dev-insecure-secret-change-me-0123456789ab}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+      orthanc:
+        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
+    ports:
+      - "${API_PORT:-8000}:8000"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8000/api/v1/healthz || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # Frontend SPA (Vite build → nginx). Browser calls the api on the host-published :8000.
+  web:
+    build:
+      context: ../frontend
+      args:
+        VITE_API_URL: ${VITE_API_URL:-http://localhost:8000/api/v1}
+    depends_on:
+      api:
+        condition: service_healthy
+    ports:
+      - "${WEB_PORT:-5173}:80"
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  miniodata:
+  orthancdata:

@@ -1,0 +1,19 @@
+{
+  "square-px": {
+    "area": 100,
+    "resultString": "100 px²"
+  },
+  "square-mm": {
+    "area": 100,
+    "resultString": "25.0 mm²"
+  },
+  "large-cm2": {
+    "area": 40000,
+    "resultString": "100.00 cm²"
+  },
+  "triangle-px": {
+    "area": 24,
+    "resultString": "24 px²"
+  },
+  "too-few-points": null
+}

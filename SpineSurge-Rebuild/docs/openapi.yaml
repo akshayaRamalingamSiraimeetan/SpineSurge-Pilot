@@ -1,0 +1,259 @@
+openapi: 3.1.0
+info:
+  title: SpineSurge Pro API
+  version: 0.1.0-draft
+  description: >
+    Multi-tenant clinical API contract (Step 0 draft). All routes except /healthz require a Bearer
+    JWT carrying sub, org_id, role. Responses are tenant-scoped via Postgres RLS. Mutations are
+    audit-logged. This contract is the fixed interface frontend and backend build against.
+servers:
+  - url: /api/v1
+
+security:
+  - bearerAuth: []
+
+paths:
+  /healthz:
+    get:
+      summary: Liveness probe
+      security: []
+      responses:
+        '200': { description: OK }
+
+  /auth/me:
+    get:
+      summary: Current user + memberships
+      responses:
+        '200':
+          description: User profile and org memberships
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Me' }
+
+  /patients:
+    get:
+      summary: List patients (paginated, filtered)
+      parameters:
+        - { name: page, in: query, schema: { type: integer, default: 1 } }
+        - { name: page_size, in: query, schema: { type: integer, default: 25, maximum: 100 } }
+        - { name: q, in: query, schema: { type: string }, description: name/contact search }
+        - { name: archived, in: query, schema: { type: boolean, default: false } }
+      responses:
+        '200':
+          description: Page of patients
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PatientPage' }
+    post:
+      summary: Create patient
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/PatientCreate' } } }
+      responses:
+        '201': { description: Created, content: { application/json: { schema: { $ref: '#/components/schemas/Patient' } } } }
+
+  /patients/{patientId}:
+    get:
+      summary: Get one patient (with visits/studies)
+      parameters: [ { $ref: '#/components/parameters/PatientId' } ]
+      responses:
+        '200': { description: Patient, content: { application/json: { schema: { $ref: '#/components/schemas/PatientDetail' } } } }
+        '404': { $ref: '#/components/responses/NotFound' }
+    patch:
+      summary: Update patient
+      parameters: [ { $ref: '#/components/parameters/PatientId' } ]
+      requestBody: { content: { application/json: { schema: { $ref: '#/components/schemas/PatientCreate' } } } }
+      responses: { '200': { description: Updated } }
+
+  /patients/{patientId}/archive:
+    post:
+      summary: Archive / unarchive
+      parameters: [ { $ref: '#/components/parameters/PatientId' } ]
+      requestBody: { content: { application/json: { schema: { type: object, properties: { archived: { type: boolean } } } } } }
+      responses: { '200': { description: OK } }
+
+  /patients/{patientId}/visits:
+    post:
+      summary: Create/update visit
+      parameters: [ { $ref: '#/components/parameters/PatientId' } ]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/VisitCreate' } } } }
+      responses: { '201': { description: Created } }
+
+  /visits/{visitId}:
+    delete:
+      summary: Delete visit
+      parameters: [ { name: visitId, in: path, required: true, schema: { type: string, format: uuid } } ]
+      responses: { '204': { description: Deleted } }
+
+  /studies:
+    post:
+      summary: Create study
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/StudyCreate' } } } }
+      responses: { '201': { description: Created } }
+
+  /contexts:
+    get:
+      summary: List contexts for a patient
+      parameters: [ { name: patientId, in: query, required: true, schema: { type: string, format: uuid } } ]
+      responses:
+        '200': { description: Contexts, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/Context' } } } } }
+    post:
+      summary: Create or upsert/diff a context (NOT delete-all-reinsert)
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/ContextSave' } } } }
+      responses: { '200': { description: Saved } }
+
+  /reports:
+    post:
+      summary: Upload a report (multipart)
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                visit_id: { type: string, format: uuid }
+                title: { type: string }
+                file: { type: string, format: binary }
+      responses: { '201': { description: Created } }
+  /reports/{visitId}:
+    get:
+      summary: Reports for a visit
+      parameters: [ { name: visitId, in: path, required: true, schema: { type: string, format: uuid } } ]
+      responses: { '200': { description: Reports } }
+
+  /dicom/studies:
+    post:
+      summary: STOW upload to Orthanc (multipart DICOM)
+      responses: { '202': { description: Accepted, ingest queued } }
+  /dicom/qido/studies:
+    get:
+      summary: QIDO-RS study search (proxied, tenant-scoped)
+      responses: { '200': { description: DICOM JSON } }
+  /dicom/wado:
+    get:
+      summary: WADO-RS retrieve (proxied, signed, tenant-scoped)
+      parameters:
+        - { name: studyUID, in: query, required: true, schema: { type: string } }
+        - { name: seriesUID, in: query, schema: { type: string } }
+      responses: { '200': { description: DICOM/octet-stream } }
+
+components:
+  securitySchemes:
+    bearerAuth: { type: http, scheme: bearer, bearerFormat: JWT }
+  parameters:
+    PatientId: { name: patientId, in: path, required: true, schema: { type: string, format: uuid } }
+  responses:
+    NotFound: { description: Not found }
+  schemas:
+    Me:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        email: { type: string }
+        display_name: { type: string }
+        memberships:
+          type: array
+          items:
+            type: object
+            properties:
+              org_id: { type: string, format: uuid }
+              org_name: { type: string }
+              role: { type: string, enum: [owner, admin, surgeon, viewer] }
+    Patient:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        age: { type: integer, nullable: true }
+        gender: { type: string, enum: [M, F, O] }
+        dob: { type: string, nullable: true }
+        contact: { type: string, nullable: true }
+        last_visit: { type: string, nullable: true }
+        has_alert: { type: boolean }
+        is_archived: { type: boolean }
+    PatientCreate:
+      type: object
+      required: [name]
+      properties:
+        name: { type: string }
+        age: { type: integer }
+        gender: { type: string, enum: [M, F, O] }
+        dob: { type: string }
+        contact: { type: string }
+    PatientDetail:
+      allOf:
+        - $ref: '#/components/schemas/Patient'
+        - type: object
+          properties:
+            visits: { type: array, items: { $ref: '#/components/schemas/Visit' } }
+            studies: { type: array, items: { $ref: '#/components/schemas/Study' } }
+    PatientPage:
+      type: object
+      properties:
+        items: { type: array, items: { $ref: '#/components/schemas/Patient' } }
+        page: { type: integer }
+        page_size: { type: integer }
+        total: { type: integer }
+    Visit:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        visit_number: { type: string }
+        date: { type: string }
+        time: { type: string }
+        diagnosis: { type: string }
+        comments: { type: string }
+        height: { type: string }
+        weight: { type: string }
+        consultants: { type: string }
+        surgery_date: { type: string, nullable: true }
+    VisitCreate:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        visit_number: { type: string }
+        date: { type: string }
+        diagnosis: { type: string }
+        comments: { type: string }
+    Study:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        patient_id: { type: string, format: uuid }
+        visit_id: { type: string, format: uuid, nullable: true }
+        modality: { type: string }
+        source: { type: string, enum: [import, pacs, upload] }
+        acquisition_date: { type: string }
+        orthanc_study_uid: { type: string, nullable: true }
+    StudyCreate:
+      type: object
+      required: [patient_id]
+      properties:
+        patient_id: { type: string, format: uuid }
+        visit_id: { type: string, format: uuid, nullable: true }
+        modality: { type: string }
+        source: { type: string, enum: [import, pacs, upload] }
+    Context:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        patient_id: { type: string, format: uuid }
+        visit_id: { type: string, format: uuid, nullable: true }
+        study_ids: { type: array, items: { type: string, format: uuid } }
+        mode: { type: string, enum: [view, plan, compare] }
+        name: { type: string }
+        last_modified: { type: string }
+    ContextSave:
+      allOf:
+        - $ref: '#/components/schemas/Context'
+        - type: object
+          properties:
+            state:
+              type: object
+              properties:
+                measurements: { type: array, items: { type: object } }
+                implants: { type: array, items: { type: object } }
+                three_d_implants: { type: array, items: { type: object } }
+                pedicle_simulations: { type: array, items: { type: object } }
+                annotations: { type: array, items: { type: object } }
+                tool_state: { type: object }

@@ -1,0 +1,40 @@
+{
+  "horizontal-len-10": {
+    "start": {
+      "x": -10,
+      "y": 0
+    },
+    "end": {
+      "x": 11,
+      "y": 0
+    }
+  },
+  "diagonal": {
+    "start": {
+      "x": -1,
+      "y": -2
+    },
+    "end": {
+      "x": 8,
+      "y": 10
+    }
+  },
+  "zero-length-line": {
+    "start": {
+      "x": {
+        "__num": "NaN"
+      },
+      "y": {
+        "__num": "NaN"
+      }
+    },
+    "end": {
+      "x": {
+        "__num": "NaN"
+      },
+      "y": {
+        "__num": "NaN"
+      }
+    }
+  }
+}

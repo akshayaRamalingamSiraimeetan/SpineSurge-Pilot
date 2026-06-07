@@ -1,0 +1,15 @@
+{
+  "offset-px": {
+    "dx": 80,
+    "resultString": "TS: 80.0 px"
+  },
+  "offset-mm": {
+    "dx": 80,
+    "resultString": "TS: 40.0 mm"
+  },
+  "aligned-zero": {
+    "dx": 0,
+    "resultString": "TS: 0.0 px"
+  },
+  "too-few-points": null
+}

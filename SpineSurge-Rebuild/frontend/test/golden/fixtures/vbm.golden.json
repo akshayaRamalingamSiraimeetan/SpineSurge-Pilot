@@ -1,0 +1,6 @@
+{
+  "lateral-px": "ANT: 33.1px\nPOST: 33.1px\nWEDGE: 0.0°\nSUP: 40.0px\nINF: 40.0px\nDEPTH: 40.0px",
+  "lateral-mm": "ANT: 16.5mm\nPOST: 16.5mm\nWEDGE: 0.0°\nSUP: 20.0mm\nINF: 20.0mm\nDEPTH: 20.0mm",
+  "ap-mm": "LEFT: 8.5mm\nRIGHT: 8.5mm\nSUP: 9.5mm\nINF: 9.5mm\nWIDTH: 9.5mm",
+  "too-few-points": null
+}

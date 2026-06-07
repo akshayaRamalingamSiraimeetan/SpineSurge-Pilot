@@ -1,0 +1,132 @@
+/* ============================================================
+   SpineSurge Pro — styles for screens SS left as stubs
+   (labeled sidebar, patients, library, login, generic stubs)
+   Built to design/DESIGN.md §3 / §4.4 / §4.5, reusing tokens.
+   ============================================================ */
+
+/* ---------------------------------------------------------- labeled sidebar */
+.side {
+  width: 260px; flex-shrink: 0; background: var(--sidebar);
+  border-right: 1px solid var(--border);
+  display: flex; flex-direction: column; padding: 18px 14px 14px;
+}
+.side-logo { display: flex; align-items: center; gap: 11px; padding: 6px 8px 18px; }
+.side-nav { display: flex; flex-direction: column; gap: 3px; flex: 1; }
+.side-link {
+  display: flex; align-items: center; gap: 12px; height: 42px; padding: 0 12px;
+  border-radius: var(--r-md); color: var(--text-2); font-weight: 600; font-size: 14px;
+  transition: background .14s, color .14s; width: 100%; text-align: left;
+}
+.side-link:hover { background: var(--surface-3); color: var(--text); }
+.side-link.active { background: var(--accent-soft); color: var(--accent); }
+.side-link svg { width: 20px; height: 20px; flex-shrink: 0; }
+.side-link.struck { color: var(--text-3); text-decoration: line-through; cursor: not-allowed; }
+.side-user {
+  display: flex; align-items: center; gap: 11px; padding: 10px 8px; border-top: 1px solid var(--border);
+  margin-top: 8px;
+}
+.side-user .su-name { font-weight: 700; font-size: 13.5px; }
+.side-user .su-org { color: var(--text-3); font-size: 12px; }
+
+/* ---------------------------------------------------------- two-column list shells */
+.list-col {
+  width: 340px; flex-shrink: 0; border-right: 1px solid var(--border);
+  background: var(--surface); display: flex; flex-direction: column; min-height: 0;
+}
+.list-col-head { padding: 20px 20px 14px; display: flex; flex-direction: column; gap: 14px; }
+.list-col-head .lch-top { display: flex; align-items: center; justify-content: space-between; }
+.list-col-head h2 { font-size: 19px; font-weight: 700; letter-spacing: -.01em; }
+.list-col-scroll { flex: 1; overflow-y: auto; padding: 0 12px 14px; }
+
+.plist-row {
+  display: flex; align-items: center; gap: 12px; padding: 11px 10px; border-radius: var(--r-md);
+  cursor: pointer; transition: background .12s; width: 100%; text-align: left;
+}
+.plist-row:hover { background: var(--surface-2); }
+.plist-row.active { background: var(--accent-soft); }
+.plist-row .pr-name { font-weight: 700; font-size: 14px; }
+.plist-row.active .pr-name { color: var(--accent); }
+.plist-row .pr-meta { color: var(--text-3); font-size: 12.5px; margin-top: 1px; }
+.plist-row .pr-alert { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); margin-left: auto; flex-shrink: 0; }
+
+/* detail pane (patient / library) */
+.detail { flex: 1; min-width: 0; display: flex; flex-direction: column; min-height: 0; }
+.detail-head { padding: 24px 30px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 18px; }
+.detail-head .dh-name { font-size: 22px; font-weight: 700; letter-spacing: -.01em; }
+.detail-head .dh-meta { color: var(--text-2); font-size: 13.5px; margin-top: 3px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.detail-body { flex: 1; overflow-y: auto; padding: 26px 30px; }
+
+/* visit timeline */
+.timeline { position: relative; padding-left: 26px; }
+.timeline::before { content: ''; position: absolute; left: 7px; top: 6px; bottom: 6px; width: 2px; background: var(--border); }
+.tl-node { position: relative; margin-bottom: 22px; }
+.tl-node::before {
+  content: ''; position: absolute; left: -23px; top: 4px; width: 14px; height: 14px; border-radius: 50%;
+  background: var(--surface); border: 2px solid var(--border-strong);
+}
+.tl-node.open::before { border-color: var(--accent); background: var(--accent-soft); }
+.tl-date { font-size: 12.5px; color: var(--text-3); font-weight: 600; }
+.tl-title { font-size: 15px; font-weight: 700; margin: 2px 0 4px; }
+.tl-count { font-size: 12.5px; color: var(--text-2); }
+.tl-studies { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; margin-top: 12px; }
+.tl-study { display: flex; gap: 12px; padding: 12px; }
+.tl-study .ts-info { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.tl-study .ts-name { font-weight: 700; font-size: 13.5px; }
+.tl-study .ts-meta { color: var(--text-3); font-size: 12px; }
+
+/* generic page header for routed list screens */
+.list-topbar { display: flex; align-items: center; gap: 16px; padding: 22px 30px 6px; }
+.list-topbar h1 { font-size: 24px; font-weight: 700; letter-spacing: -.02em; }
+.list-topbar .actions { margin-left: auto; display: flex; align-items: center; gap: 12px; }
+
+/* ---------------------------------------------------------- empty / loading / error */
+.state-block { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; flex: 1; padding: 60px 20px; text-align: center; color: var(--text-3); }
+.state-block .sb-ico { width: 58px; height: 58px; border-radius: 50%; background: var(--surface-3); display: grid; place-items: center; color: var(--text-3); }
+.state-block .sb-title { color: var(--text); font-weight: 700; font-size: 16px; }
+.state-block .sb-sub { font-size: 13.5px; max-width: 320px; }
+.spinner { width: 30px; height: 30px; border: 3px solid var(--border-2); border-top-color: var(--accent); border-radius: 50%; animation: spin .7s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ---------------------------------------------------------- settings tables */
+.set-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.set-table th {
+  text-align: left; font-size: 11px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase;
+  color: var(--text-3); padding: 8px 10px; border-bottom: 1px solid var(--border);
+}
+.set-table td { padding: 11px 10px; border-bottom: 1px solid var(--border); }
+.set-table tr:last-child td { border-bottom: none; }
+
+/* ---------------------------------------------------------- library grid */
+.lib-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 16px; }
+.lib-card { cursor: pointer; transition: border-color .14s, box-shadow .14s; overflow: hidden; }
+.lib-card:hover { border-color: var(--border-strong); box-shadow: var(--shadow-md); }
+.lib-card .lc-info { padding: 12px 14px; }
+.lib-card .lc-name { font-weight: 700; font-size: 14px; }
+.lib-card .lc-meta { color: var(--text-3); font-size: 12.5px; margin-top: 2px; }
+.coll-row {
+  display: flex; align-items: center; gap: 11px; padding: 10px 12px; border-radius: var(--r-md);
+  cursor: pointer; transition: background .12s; width: 100%; text-align: left;
+}
+.coll-row:hover { background: var(--surface-2); }
+.coll-row.active { background: var(--accent-soft); }
+.coll-row.active .cr-name { color: var(--accent); }
+.coll-row .cr-name { font-weight: 600; font-size: 13.5px; flex: 1; }
+.coll-row .cr-count { color: var(--text-3); font-size: 12.5px; }
+
+/* ---------------------------------------------------------- login / org switch */
+.login-wrap { min-height: 100vh; display: grid; place-items: center; background: var(--bg); padding: 24px; }
+.login-card { width: 420px; max-width: 100%; background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-2xl); box-shadow: var(--shadow-lg); padding: 36px 34px; }
+.login-brand { display: flex; align-items: center; gap: 12px; margin-bottom: 26px; }
+.login-card h1 { font-size: 22px; font-weight: 700; letter-spacing: -.02em; }
+.login-card .login-sub { color: var(--text-2); font-size: 14px; margin-top: 4px; margin-bottom: 24px; }
+.login-field { margin-bottom: 16px; }
+.login-error { color: var(--danger); font-size: 13px; margin-top: 4px; }
+.org-grid { display: flex; flex-direction: column; gap: 10px; margin-bottom: 8px; }
+.org-row {
+  display: flex; align-items: center; gap: 14px; padding: 14px 16px; border: 1px solid var(--border-2);
+  border-radius: var(--r-lg); cursor: pointer; transition: border-color .14s, background .14s; width: 100%; text-align: left;
+}
+.org-row:hover { border-color: var(--accent); background: var(--accent-soft); }
+.org-row.active { border-color: var(--accent); }
+.org-row .or-name { font-weight: 700; font-size: 14.5px; }
+.org-row .or-role { color: var(--text-3); font-size: 12.5px; text-transform: capitalize; }

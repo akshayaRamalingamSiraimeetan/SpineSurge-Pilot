@@ -1,0 +1,27 @@
+{
+  "anterior-10": {
+    "distance": 10,
+    "labelPos": {
+      "x": 105,
+      "y": 50
+    }
+  },
+  "posterior-neg": {
+    "distance": -10,
+    "labelPos": {
+      "x": 95,
+      "y": 50
+    }
+  },
+  "aligned-zero": {
+    "distance": 0,
+    "labelPos": {
+      "x": 100,
+      "y": 50
+    }
+  },
+  "too-few-points": {
+    "distance": 0,
+    "labelPos": null
+  }
+}

@@ -1,0 +1,34 @@
+{
+  "tilt-20deg": {
+    "angle": 20.000002143987903,
+    "intersection": {
+      "x": 60.37091054645,
+      "y": 49.99999999999999
+    },
+    "labelPos": {
+      "x": 60.37091054645,
+      "y": 49.99999999999999
+    }
+  },
+  "parallel-zero": {
+    "angle": 0,
+    "intersection": null,
+    "labelPos": null
+  },
+  "steep": {
+    "angle": 85.13548556223948,
+    "intersection": {
+      "x": 19.893617021276597,
+      "y": 43.191489361702125
+    },
+    "labelPos": {
+      "x": 19.893617021276597,
+      "y": 43.191489361702125
+    }
+  },
+  "too-few-points": {
+    "angle": 0,
+    "intersection": null,
+    "labelPos": null
+  }
+}

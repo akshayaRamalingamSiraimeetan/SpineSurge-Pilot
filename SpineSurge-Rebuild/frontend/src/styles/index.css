@@ -1,0 +1,29 @@
+/* Tailwind v4 + the ported SpineSurge design system.
+   tokens.css/screens.css are the Claude Design build's stylesheets, carried over verbatim so the
+   rebuilt UI matches the design exactly. app.css adds the screens SS left as stubs (labeled
+   sidebar, patients, library, login). The @theme block re-exports the design tokens as Tailwind
+   utilities so shadcn primitives compose against the same palette. */
+/* All @import rules must precede other statements (CSS spec), so the font + token sheets are
+   pulled in here at the top rather than from inside tokens.css. */
+@import url('https://fonts.googleapis.com/css2?family=Hanken+Grotesk:ital,wght@0,400;0,500;0,600;0,700;0,800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+@import 'tailwindcss';
+@import './tokens.css';
+@import './screens.css';
+@import './app.css';
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-border: var(--border);
+  --color-text: var(--text);
+  --color-text-2: var(--text-2);
+  --color-text-3: var(--text-3);
+  --color-accent: var(--accent);
+  --color-accent-soft: var(--accent-soft);
+  --font-sans: var(--font-sans);
+  --font-mono: var(--font-mono);
+  --radius-md: var(--r-md);
+  --radius-lg: var(--r-lg);
+  --radius-xl: var(--r-xl);
+}

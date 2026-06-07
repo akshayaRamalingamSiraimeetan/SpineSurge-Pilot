@@ -1,0 +1,60 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  # Validates infra + contract artifacts. Always runs (Step 1 has no app code yet).
+  contracts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate docker-compose
+        run: docker compose -f infra/docker-compose.yml config --quiet
+      - name: Validate OpenAPI contract
+        run: |
+          npx --yes @redocly/cli@latest lint docs/openapi.yaml
+
+  # Frontend job — activates automatically once frontend/package.json exists (Step 6).
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - id: check
+        run: echo "exists=$([ -f frontend/package.json ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+      - if: steps.check.outputs.exists == 'true'
+        uses: actions/setup-node@v4
+        with: { node-version: 20, cache: npm, cache-dependency-path: frontend/package-lock.json }
+      - if: steps.check.outputs.exists == 'true'
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run lint --if-present
+          npm run type-check --if-present
+          npm test --if-present
+          # Parity gate (LOGIC_PORT_PLAN §6): re-prove the golden fixtures against the oracle.
+          # Resolves ../../src/renderer, present in the monorepo checkout until cutover (Step 12).
+          npm run test:golden --if-present
+      - if: steps.check.outputs.exists != 'true'
+        run: echo "frontend/ not scaffolded yet (Step 6) — skipping."
+
+  # Backend job — activates automatically once backend/pyproject.toml exists (Step 2).
+  backend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - id: check
+        run: echo "exists=$([ -f backend/pyproject.toml ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+      - if: steps.check.outputs.exists == 'true'
+        uses: actions/setup-python@v5
+        with: { python-version: '3.12' }
+      - if: steps.check.outputs.exists == 'true'
+        working-directory: backend
+        run: |
+          pip install -e ".[dev]"
+          ruff check .
+          mypy app || true
+          pytest -q
+      - if: steps.check.outputs.exists != 'true'
+        run: echo "backend/ not scaffolded yet (Step 2) — skipping."

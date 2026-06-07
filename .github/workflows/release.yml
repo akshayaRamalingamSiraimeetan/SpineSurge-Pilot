@@ -1,0 +1,56 @@
+name: Build and Release SpineSurge Pro
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  release:
+    runs-on: ${{ matrix.os }}
+
+    strategy:
+      matrix:
+        os: [macos-latest, windows-latest]
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Build Application
+        run: npm run build
+
+      - name: Release and Sign Application
+        # This will use electron-builder to build, sign, and upload to GH Release
+        # It automatically looks for APPLE_ID, APPLE_APP_SPECIFIC_PASSWORD, etc.
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # macOS
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          # Windows
+          CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
+        run: |
+          if [ "$RUNNER_OS" == "macOS" ]; then
+            npx electron-builder --mac --publish always
+          else
+            npx electron-builder --win --publish always
+          fi
+        shell: bash
+
+      - name: Error Handling
+        if: failure()
+        run: |
+          echo "Build failed for SpineSurge Pro on ${{ matrix.os }}"
+          exit 1
