@@ -1,97 +1,127 @@
 @import "tailwindcss";
 
 /**
- * SPINE SURGE - NEUROSCAN DARK THEME ENGINE
- * Premium Dark Medical Blue + Neon Cyan
- * Deep navy backgrounds with glowing cyan accents
+ * SPINE SURGE - ENTERPRISE MEDICAL THEME
+ * Premium medical SaaS · Clean · Minimal · Professional
+ * Phase 1: Foundation layer redesign
  */
 
 @layer base {
 
-    /* 
-    * NeuroScan Dark Theme - Primary Mode
-    * Main BG: #0A1929 | Secondary BG: #0F2A44 | Card: #132F4C
-    * Accent: #29B6F6 (Cyan Blue) | Glow: #4FC3F7 | Hover: #81D4FA
-    * Text Primary: #E3F2FD | Text Secondary: #90CAF9 | Disabled: #607D8B
-    */
+    /*
+     * Dark Mode (primary)
+     * BG: #0A0A0B  |  Surface: #141416  |  Surface-2: #1B1B1E
+     * Border: #242427  |  Text: #F5F5F7  |  Muted: #9CA3AF
+     * Accent: #FF453A  |  Accent-soft: rgba(232,54,45,.15)
+     */
     :root,
     .dark {
         /* === BACKGROUND & LAYOUT === */
-        --background: 213 65% 10%;          /* #0A1929 - Deep navy blue */
-        --foreground: 214 100% 94%;         /* #E3F2FD - Soft white-blue */
+        --background: 240 5% 4%;            /* #0A0A0B */
+        --foreground: 240 6% 97%;           /* #F5F5F7 */
 
-        --card: 209 58% 19%;               /* #132F4C - Card/Box */
-        --card-foreground: 214 100% 94%;   /* #E3F2FD */
+        --card: 240 5% 8%;                  /* #141416 */
+        --card-foreground: 240 6% 97%;      /* #F5F5F7 */
 
-        --popover: 210 60% 16%;            /* #0F2A44 - Panel background */
-        --popover-foreground: 214 100% 94%;/* #E3F2FD */
+        --popover: 240 4% 11%;              /* #1B1B1E */
+        --popover-foreground: 240 6% 97%;   /* #F5F5F7 */
 
-        /* === ACCENT - Neon Cyan Blue === */
-        --primary: 199 91% 56%;            /* #29B6F6 - Cyan Blue */
-        --primary-foreground: 213 65% 10%; /* #0A1929 - Dark text on cyan */
+        /* === ACCENT - Enterprise Red === */
+        --primary: 3 95% 61%;               /* #FF453A */
+        --primary-foreground: 0 0% 100%;    /* white */
 
-        --secondary: 210 60% 16%;          /* #0F2A44 */
-        --secondary-foreground: 214 100% 94%;/* #E3F2FD */
+        --secondary: 240 4% 11%;            /* #1B1B1E */
+        --secondary-foreground: 240 6% 97%; /* #F5F5F7 */
 
-        --muted: 209 50% 16%;             /* Slightly lighter navy */
-        --muted-foreground: 210 56% 78%;   /* #90CAF9 */
+        --muted: 240 5% 8%;                 /* #141416 */
+        --muted-foreground: 220 9% 62%;     /* #9CA3AF */
 
-        --accent: 209 40% 22%;            /* #1E3A5F range */
-        --accent-foreground: 214 100% 94%;/* #E3F2FD */
+        --accent: 240 4% 11%;               /* #1B1B1E */
+        --accent-foreground: 240 6% 97%;    /* #F5F5F7 */
 
-        --destructive: 4 72% 51%;         /* #EF5350 */
-        --destructive-foreground: 214 100% 94%;
+        --destructive: 3 95% 61%;           /* #FF453A */
+        --destructive-foreground: 0 0% 100%;
 
         /* === BORDERS & INPUTS === */
-        --border: 211 50% 24%;            /* #1E3A5F */
-        --input: 211 50% 24%;             /* #1E3A5F */
-        --ring: 199 91% 56%;              /* #29B6F6 - Cyan glow ring */
+        --border: 240 4% 15%;               /* #242427 */
+        --input: 240 4% 15%;                /* #242427 */
+        --ring: 3 95% 61%;                  /* #FF453A - focus ring */
 
-        --radius: 1rem;
+        --radius: 0.5rem;
 
-        /* === NEUROSCAN CUSTOM TOKENS === */
-        --ns-glow: 199 91% 60%;           /* #4FC3F7 */
-        --ns-hover: 201 84% 74%;          /* #81D4FA */
-        --ns-warning: 14 100% 63%;        /* #FF7043 */
-        --ns-success: 152 100% 45%;       /* #00E676 */
-        --ns-disabled: 200 10% 44%;       /* #607D8B */
-        --ns-border-glow: #1E3A5F;
-        --ns-surface: #132F4C;
-        --ns-deep: #0A1929;
-        --ns-panel: #0F2A44;
+        /* === NEW DESIGN SYSTEM TOKENS === */
+        --ns-accent: #FF453A;
+        --ns-accent-soft: rgba(232, 54, 45, 0.15);
+        --ns-bg: #0A0A0B;
+        --ns-surface: #141416;
+        --ns-surface-2: #1B1B1E;
+        --ns-border: #242427;
+        --ns-text: #F5F5F7;
+        --ns-text-muted: #9CA3AF;
+
+        /* Legacy custom tokens — kept for backward compatibility */
+        --ns-glow: 3 95% 61%;               /* remapped to accent red */
+        --ns-hover: 3 95% 65%;
+        --ns-warning: 14 100% 63%;          /* #FF7043 */
+        --ns-success: 152 100% 45%;         /* #00E676 */
+        --ns-disabled: 220 9% 46%;
+        --ns-border-glow: #242427;
+        --ns-panel: #1B1B1E;
+        --ns-deep: #0A0A0B;
     }
 
-    /* 
-    * LIGHT MODE (kept minimal, app is primarily dark)
-    */
+    /*
+     * Light Mode
+     * BG: #F5F6F8  |  Surface: #FFFFFF  |  Surface-2: #FAFAFB
+     * Border: #ECECEF  |  Text: #0E0E10  |  Muted: #6B7280
+     * Accent: #E8362D  |  Accent-soft: #FDECEC
+     */
     .light {
-        --background: 210 40% 98%;
-        --foreground: 213 65% 10%;
+        --background: 220 14% 96%;          /* #F5F6F8 */
+        --foreground: 240 6% 6%;            /* #0E0E10 */
 
-        --card: 0 0% 100%;
-        --card-foreground: 213 65% 10%;
+        --card: 0 0% 100%;                  /* #FFFFFF */
+        --card-foreground: 240 6% 6%;
 
         --popover: 0 0% 100%;
-        --popover-foreground: 213 65% 10%;
+        --popover-foreground: 240 6% 6%;
 
-        --primary: 199 91% 48%;
-        --primary-foreground: 210 40% 98%;
+        --primary: 2 79% 55%;               /* #E8362D */
+        --primary-foreground: 0 0% 100%;
 
-        --secondary: 210 40% 96.1%;
-        --secondary-foreground: 213 65% 10%;
+        --secondary: 220 14% 98%;           /* #FAFAFB */
+        --secondary-foreground: 240 6% 6%;
 
-        --muted: 210 40% 96.1%;
-        --muted-foreground: 200 10% 44%;
+        --muted: 220 14% 96%;
+        --muted-foreground: 220 9% 46%;     /* #6B7280 */
 
-        --accent: 210 40% 96.1%;
-        --accent-foreground: 213 65% 10%;
+        --accent: 220 14% 96%;
+        --accent-foreground: 240 6% 6%;
 
-        --destructive: 4 72% 51%;
-        --destructive-foreground: 210 40% 98%;
+        --destructive: 2 79% 55%;
+        --destructive-foreground: 0 0% 100%;
 
-        --border: 214.3 31.8% 91.4%;
-        --input: 214.3 31.8% 91.4%;
-        --ring: 199 91% 48%;
+        --border: 240 4% 93%;               /* #ECECEF */
+        --input: 240 4% 93%;
+        --ring: 2 79% 55%;
+
+        /* Light mode design tokens */
+        --ns-accent: #E8362D;
+        --ns-accent-soft: #FDECEC;
+        --ns-bg: #F5F6F8;
+        --ns-surface: #FFFFFF;
+        --ns-surface-2: #FAFAFB;
+        --ns-border: #ECECEF;
+        --ns-text: #0E0E10;
+        --ns-text-muted: #6B7280;
+
+        /* Legacy tokens */
+        --ns-glow: 2 79% 55%;
+        --ns-hover: 2 79% 48%;
+        --ns-border-glow: #ECECEF;
+        --ns-surface: #FFFFFF;
+        --ns-panel: #FAFAFB;
+        --ns-deep: #F5F6F8;
     }
 }
 
@@ -103,14 +133,14 @@
     body {
         background-color: hsl(var(--background));
         color: hsl(var(--foreground));
-        font-family: 'Outfit', sans-serif;
+        font-family: Inter, system-ui, sans-serif;
         transition: background-color 0.3s cubic-bezier(0.4, 0, 0.2, 1), color 0.3s cubic-bezier(0.4, 0, 0.2, 1);
     }
 }
 
-/* 
+/*
  * ═══════════════════════════════════════
- * NEUROSCAN GLOBAL EFFECTS
+ * GLOBAL TRANSITIONS
  * ═══════════════════════════════════════
  */
 
@@ -118,93 +148,101 @@ html {
     transition: background-color 0.3s ease-in-out;
 }
 
-/* Smooth transitions for all themeable elements */
 .transition-theme {
     transition-property: background-color, border-color, color, fill, stroke;
     transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
     transition-duration: 300ms;
 }
 
-/* NeuroScan Backdrop Glass */
+/* Backdrop blur — neutralized to surface color (no more neon tint) */
 .backdrop-blur-xl {
     backdrop-filter: blur(20px);
 }
 
 .light .backdrop-blur-xl {
-    background-color: rgba(255, 255, 255, 0.7);
+    background-color: rgba(255, 255, 255, 0.8);
 }
 
 .dark .backdrop-blur-xl {
-    background-color: rgba(10, 25, 41, 0.75);
+    background-color: rgba(10, 10, 11, 0.80);
 }
 
-/* 
+/*
  * ═══════════════════════════════════════
- * NEUROSCAN GLOW UTILITIES
+ * NEUTRALIZED LEGACY GLOW UTILITIES
+ * Classes are preserved so existing JSX doesn't break,
+ * but all cyan glow is replaced with subtle enterprise shadows.
  * ═══════════════════════════════════════
  */
 
-/* Cyan glow shadow utility */
 .ns-glow {
-    box-shadow: 0 0 10px rgba(41, 182, 246, 0.6);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04), 0 8px 24px rgba(0, 0, 0, 0.08);
 }
 
 .ns-glow-sm {
-    box-shadow: 0 0 6px rgba(41, 182, 246, 0.35);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
 }
 
 .ns-glow-lg {
-    box-shadow: 0 0 20px rgba(41, 182, 246, 0.5), 0 0 60px rgba(41, 182, 246, 0.15);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04), 0 8px 24px rgba(0, 0, 0, 0.08);
 }
 
-/* Glass effect */
+/* Glass effect — neutralized, no cyan tint */
 .ns-glass {
-    background: rgba(19, 47, 76, 0.6);
+    background: rgba(20, 20, 22, 0.75);
     backdrop-filter: blur(10px);
-    border: 1px solid rgba(30, 58, 95, 0.6);
+    border: 1px solid rgba(36, 36, 39, 0.8);
 }
 
-/* Gradient button */
+/* Gradient button — replaced with flat accent red */
 .ns-gradient-btn {
-    background: linear-gradient(135deg, #29B6F6, #4FC3F7);
-    color: #0A1929;
+    background: #FF453A;
+    color: #ffffff;
     font-weight: 600;
     border: none;
-    transition: all 0.3s ease;
+    transition: background 0.2s ease;
 }
 
 .ns-gradient-btn:hover {
-    background: linear-gradient(135deg, #4FC3F7, #81D4FA);
-    box-shadow: 0 0 20px rgba(41, 182, 246, 0.5);
+    background: #e03d33;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04), 0 8px 24px rgba(0, 0, 0, 0.08);
     transform: translateY(-1px);
 }
 
-/* 
+/* Pulse — neutralized, no cyan glow animation */
+.ns-pulse {
+    /* animation removed; class kept for API compatibility */
+}
+
+/* Border pulse — neutralized */
+.ns-border-pulse {
+    /* animation removed; class kept for API compatibility */
+}
+
+/*
  * ═══════════════════════════════════════
- * SCROLLBAR - NeuroScan Theme
+ * SCROLLBAR
  * ═══════════════════════════════════════
  */
 
-/* Custom scrollbar */
 ::-webkit-scrollbar {
     width: 6px;
     height: 6px;
 }
 
 ::-webkit-scrollbar-track {
-    background: #0A1929;
+    background: #0A0A0B;
     border-radius: 6px;
 }
 
 ::-webkit-scrollbar-thumb {
-    background: #1E3A5F;
+    background: #242427;
     border-radius: 6px;
     transition: background 0.2s;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-    background: #29B6F6;
-    box-shadow: 0 0 6px rgba(41, 182, 246, 0.4);
+    background: #FF453A;
 }
 
 .custom-scrollbar::-webkit-scrollbar {
@@ -216,21 +254,20 @@ html {
 }
 
 .custom-scrollbar::-webkit-scrollbar-thumb {
-    background: #1E3A5F;
+    background: #242427;
     border-radius: 4px;
 }
 
 .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-    background: #29B6F6;
+    background: #FF453A;
 }
 
-/* 
+/*
  * ═══════════════════════════════════════
- * NEUROSCAN INPUT & FORM STYLING 
+ * INPUT & FORM STYLING
  * ═══════════════════════════════════════
  */
 
-/* Ensure all inputs are clearly visible */
 input, textarea, select {
     color: hsl(var(--foreground));
     caret-color: hsl(var(--primary));
@@ -241,7 +278,6 @@ input::placeholder, textarea::placeholder {
     opacity: 0.9;
 }
 
-/* Date/time input styling */
 input[type="date"], input[type="time"], input[type="datetime-local"] {
     color: hsl(var(--foreground));
 }
@@ -258,43 +294,18 @@ input[type="date"], input[type="time"], input[type="datetime-local"] {
     color-scheme: light;
 }
 
-/* Select option styling */
 option {
     background-color: hsl(var(--popover));
     color: hsl(var(--popover-foreground));
 }
 
-/* 
+/*
  * ═══════════════════════════════════════
- * NEUROSCAN SELECTION
+ * TEXT SELECTION
  * ═══════════════════════════════════════
  */
 
 ::selection {
-    background: rgba(41, 182, 246, 0.3);
-    color: #E3F2FD;
-}
-
-/* 
- * ═══════════════════════════════════════
- * ANIMATIONS
- * ═══════════════════════════════════════
- */
-
-@keyframes ns-pulse-glow {
-    0%, 100% { box-shadow: 0 0 10px rgba(41, 182, 246, 0.3); }
-    50% { box-shadow: 0 0 20px rgba(41, 182, 246, 0.6); }
-}
-
-.ns-pulse {
-    animation: ns-pulse-glow 2s ease-in-out infinite;
-}
-
-@keyframes ns-border-glow {
-    0%, 100% { border-color: rgba(41, 182, 246, 0.3); }
-    50% { border-color: rgba(41, 182, 246, 0.7); }
-}
-
-.ns-border-pulse {
-    animation: ns-border-glow 2.5s ease-in-out infinite;
+    background: rgba(255, 69, 58, 0.25);
+    color: hsl(var(--foreground));
 }

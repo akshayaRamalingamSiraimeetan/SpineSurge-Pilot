@@ -137,7 +137,7 @@ const TopMenuBar = () => {
                             onClick={() => setDicomLayoutMode('axial-sagittal')}
                             className={cn(
                                 "h-8 w-12 rounded transition-colors flex items-center justify-center gap-1",
-                                dicom3D.layoutMode === 'axial-sagittal' ? "bg-blue-600 text-white hover:bg-blue-700" : "text-slate-400 hover:text-white"
+                                dicom3D.layoutMode === 'axial-sagittal' ? "bg-[#FF453A] text-white hover:bg-[#e03d33]" : "text-[#9CA3AF] hover:text-[#F5F5F7]"
                             )}
                             title="2D Layout (Axial/Coronal Left, Sagittal Right)"
                         >
@@ -150,7 +150,7 @@ const TopMenuBar = () => {
                             onClick={() => setDicomLayoutMode('grid')}
                             className={cn(
                                 "h-8 w-8 rounded transition-colors",
-                                dicom3D.layoutMode === 'grid' ? "bg-blue-600 text-white hover:bg-blue-700" : "text-slate-400 hover:text-white"
+                                dicom3D.layoutMode === 'grid' ? "bg-[#FF453A] text-white hover:bg-[#e03d33]" : "text-[#9CA3AF] hover:text-[#F5F5F7]"
                             )}
                             title="Standard 2x2 Grid"
                         >
@@ -162,7 +162,7 @@ const TopMenuBar = () => {
                             onClick={() => setDicomLayoutMode('focus-3d')}
                             className={cn(
                                 "h-8 w-8 rounded transition-colors",
-                                dicom3D.layoutMode === 'focus-3d' ? "bg-blue-600 text-white hover:bg-blue-700" : "text-slate-400 hover:text-white"
+                                dicom3D.layoutMode === 'focus-3d' ? "bg-[#FF453A] text-white hover:bg-[#e03d33]" : "text-[#9CA3AF] hover:text-[#F5F5F7]"
                             )}
                             title="3D Focus (3 Slices Top, 3D Bottom Wide)"
                         >
@@ -318,13 +318,9 @@ const TopMenuBar = () => {
                                             lastModified: new Date().toISOString()
                                         });
 
-                                        // Save 3D State
-                                        // We use the current state from the store directly or pass `threeDImplants` etc which are available in scope.
                                         await updateContextState(newId, {
                                             threeDImplants,
                                             pedicleSimulations,
-                                            // Add other DICOM state if needed
-                                            // dicom3D settings?
                                         });
 
                                         generateShareLink({ contextId: newId });
@@ -345,7 +341,7 @@ const TopMenuBar = () => {
                                     await updateContextState(newId, {
                                         measurements,
                                         implants,
-                                        threeDImplants, // Should be empty in canvas mode usually but safe to include
+                                        threeDImplants,
                                         pedicleSimulations,
                                         currentImage
                                     });
@@ -373,21 +369,21 @@ const TopMenuBar = () => {
                         <Moon className="absolute h-[1.2rem] w-[1.2rem] rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100" />
                     </Button>
 
-                    {/* Profile Menu - Minimal, only the circle for initial */}
+                    {/* Profile Menu */}
                     <DropdownMenu>
                         <DropdownMenuTrigger asChild>
                             <Button variant="ghost" size="icon" className="w-8 h-8 p-0 hover:bg-transparent">
-                                <div className="w-7 h-7 rounded-full bg-[#29B6F6]/15 flex items-center justify-center border border-[#29B6F6]/30 hover:border-[#29B6F6]/60 hover:shadow-[0_0_10px_rgba(41,182,246,0.3)] transition-all">
-                                    <span className="text-xs font-bold text-[#29B6F6]">{userInitial}</span>
+                                <div className="w-7 h-7 rounded-full bg-[rgba(255,69,58,0.12)] flex items-center justify-center border border-[#FF453A]/20 hover:border-[#FF453A]/40 transition-all">
+                                    <span className="text-xs font-bold text-[#FF453A]">{userInitial}</span>
                                 </div>
                             </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent
                             align="end"
                             className={cn(
-                                "w-60 rounded-2xl p-2 font-['Outfit'] z-[100] shadow-md border",
+                                "w-60 rounded-2xl p-2 z-[100] shadow-md border",
                                 resolvedTheme === 'dark'
-                                    ? 'border-[#1E3A5F] bg-[#0F2A44] text-[#E3F2FD]'
+                                    ? 'border-[#242427] bg-[#141416] text-[#F5F5F7]'
                                     : '!border-gray-200 !bg-white !text-gray-900'
                             )}
                         >
@@ -397,24 +393,24 @@ const TopMenuBar = () => {
                                     <p className="text-xs leading-none font-medium opacity-70">{user?.email || "demo@spine.com"}</p>
                                 </div>
                             </DropdownMenuLabel>
-                            <DropdownMenuSeparator className={resolvedTheme === 'dark' ? 'bg-[#1E3A5F]' : 'bg-gray-200'} />
+                            <DropdownMenuSeparator className={resolvedTheme === 'dark' ? 'bg-[#242427]' : 'bg-gray-200'} />
                             <DropdownMenuItem
-                                className={cn("cursor-pointer rounded-sm px-2 py-1.5 font-bold transition-colors !bg-transparent", resolvedTheme === 'dark' ? '!text-[#E3F2FD] hover:!bg-[#1E3A5F]' : '!text-gray-900 hover:!bg-gray-100')}
+                                className={cn("cursor-pointer rounded-sm px-2 py-1.5 font-bold transition-colors !bg-transparent", resolvedTheme === 'dark' ? '!text-[#F5F5F7] hover:!bg-[#1B1B1E]' : '!text-gray-900 hover:!bg-gray-100')}
                                 onClick={() => { setProfileOpen(true); setActiveDialog('profile'); }}
                             >
                                 <User className="mr-2 h-4 w-4 text-primary" />
                                 <span>Profile</span>
                             </DropdownMenuItem>
                             <DropdownMenuItem
-                                className={cn("cursor-pointer rounded-sm px-2 py-1.5 font-bold transition-colors !bg-transparent", resolvedTheme === 'dark' ? '!text-[#E3F2FD] hover:!bg-[#1E3A5F]' : '!text-gray-900 hover:!bg-gray-100')}
+                                className={cn("cursor-pointer rounded-sm px-2 py-1.5 font-bold transition-colors !bg-transparent", resolvedTheme === 'dark' ? '!text-[#F5F5F7] hover:!bg-[#1B1B1E]' : '!text-gray-900 hover:!bg-gray-100')}
                                 onClick={() => { setSettingsOpen(true); setActiveDialog('settings'); }}
                             >
                                 <Settings className="mr-2 h-4 w-4 text-primary" />
                                 <span>Settings</span>
                             </DropdownMenuItem>
-                            <DropdownMenuSeparator className={resolvedTheme === 'dark' ? 'bg-[#1E3A5F]' : 'bg-gray-200'} />
+                            <DropdownMenuSeparator className={resolvedTheme === 'dark' ? 'bg-[#242427]' : 'bg-gray-200'} />
                             <DropdownMenuItem
-                                className={cn("cursor-pointer rounded-sm px-2 py-1.5 font-bold transition-colors !bg-transparent", resolvedTheme === 'dark' ? 'hover:!bg-[#1E3A5F]' : 'hover:!bg-red-50')}
+                                className={cn("cursor-pointer rounded-sm px-2 py-1.5 font-bold transition-colors !bg-transparent", resolvedTheme === 'dark' ? 'hover:!bg-[#1B1B1E]' : 'hover:!bg-red-50')}
                                 onClick={() => {
                                     logout();
                                     navigate('/login');

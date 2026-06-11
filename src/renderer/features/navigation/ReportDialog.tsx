@@ -482,18 +482,18 @@ export function ReportDialog({ open, onOpenChange, checkedCount }: { open: boole
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
             <DialogContent className={cn(
-                "sm:max-w-[425px] shadow-[0_0_30px_rgba(41,182,246,0.15),0_25px_50px_-12px_rgba(0,0,0,0.5)] border",
+                "sm:max-w-[425px] shadow-[0_25px_50px_-12px_rgba(0,0,0,0.5)] border",
                 isDark
-                    ? '!bg-[#0F2A44] !text-[#E3F2FD] !border-[#1E3A5F]'
+                    ? '!bg-[#141416] !text-[#F5F5F7] !border-[#242427]'
                     : '!bg-gray-100 !text-slate-900 !border-gray-300'
             )}>
                 <DialogHeader>
-                    <DialogTitle className={cn("text-2xl font-bold flex items-center gap-2", isDark ? 'text-[#E3F2FD]' : 'text-slate-900')}>
-                        <FileText className="h-6 w-6 text-[#29B6F6]" />
+                    <DialogTitle className={cn("text-2xl font-bold flex items-center gap-2", isDark ? 'text-[#F5F5F7]' : 'text-slate-900')}>
+                        <FileText className="h-6 w-6 text-[#FF453A]" />
                         Generate PDF Report
                     </DialogTitle>
-                    <DialogDescription className={isDark ? 'text-[#90CAF9]/80' : 'text-slate-600'}>
-                        You have <strong className="text-[#29B6F6]">{checkedCount}</strong> measurements ready for clinical documentation.
+                    <DialogDescription className={isDark ? 'text-[#9CA3AF]/80' : 'text-slate-600'}>
+                        You have <strong className="text-[#FF453A]">{checkedCount}</strong> measurements ready for clinical documentation.
                     </DialogDescription>
                 </DialogHeader>
 
@@ -501,14 +501,14 @@ export function ReportDialog({ open, onOpenChange, checkedCount }: { open: boole
                     <div className={cn(
                         "p-4 rounded-lg border",
                         isDark
-                            ? 'bg-[#0A1929]/60 border-[#1E3A5F]'
+                            ? 'bg-[#0A0A0B]/60 border-[#242427]'
                             : 'bg-gray-200 border-gray-300'
                     )}>
-                        <div className={cn("text-sm font-semibold mb-2 flex items-center gap-2", isDark ? 'text-[#E3F2FD]' : 'text-slate-900')}>
+                        <div className={cn("text-sm font-semibold mb-2 flex items-center gap-2", isDark ? 'text-[#F5F5F7]' : 'text-slate-900')}>
                             <Check className="h-4 w-4 text-[#00E676]" />
                             Report Ready
                         </div>
-                        <ul className={cn("text-[11px] space-y-1.5", isDark ? 'text-[#90CAF9]/70' : 'text-slate-600')}>
+                        <ul className={cn("text-[11px] space-y-1.5", isDark ? 'text-[#9CA3AF]/70' : 'text-slate-600')}>
                             <li>• Professional Radiology Template (A4)</li>
                             <li>• Patient: {activePatient?.name || "Quick Analysis"}</li>
                             <li>• Surgeon: {user?.name}</li>
@@ -521,17 +521,17 @@ export function ReportDialog({ open, onOpenChange, checkedCount }: { open: boole
                             type="checkbox"
                             id="saveToRecord"
                             className={cn(
-                                "h-4 w-4 rounded focus:ring-[#29B6F6]",
+                                "h-4 w-4 rounded focus:ring-[#FF453A]",
                                 isDark
-                                    ? 'border-[#29B6F6]/30 text-[#29B6F6] bg-[#0A1929]'
-                                    : 'border-gray-400 text-[#29B6F6] bg-white'
+                                    ? 'border-[#242427] text-[#FF453A] bg-[#0A0A0B]'
+                                    : 'border-gray-400 text-[#FF453A] bg-white'
                             )}
                             checked={saveToRecord}
                             onChange={(e) => setSaveToRecord(e.target.checked)}
                         />
                         <label
                             htmlFor="saveToRecord"
-                            className={cn("text-sm font-medium leading-none", isDark ? 'text-[#E3F2FD]' : 'text-slate-900')}
+                            className={cn("text-sm font-medium leading-none", isDark ? 'text-[#F5F5F7]' : 'text-slate-900')}
                         >
                             Save to Patient Record
                         </label>
@@ -542,13 +542,13 @@ export function ReportDialog({ open, onOpenChange, checkedCount }: { open: boole
                     <Button variant="ghost" onClick={() => onOpenChange(false)} className={cn(
                         "transition-all",
                         isDark
-                            ? 'text-[#90CAF9] hover:text-[#E3F2FD] hover:bg-[#29B6F6]/10'
+                            ? 'text-[#9CA3AF] hover:text-[#F5F5F7] hover:bg-[#1B1B1E]'
                             : 'text-slate-700 hover:text-slate-900 hover:bg-gray-200'
                     )}>Cancel</Button>
                     <Button
                         onClick={handleExportPDF}
                         disabled={isGenerating || checkedCount === 0}
-                        className="bg-gradient-to-r from-[#29B6F6] to-[#4FC3F7] hover:from-[#4FC3F7] hover:to-[#81D4FA] text-[#0A1929] gap-2 shadow-[0_0_15px_rgba(41,182,246,0.3)] font-bold"
+                        className="bg-[#FF453A] hover:bg-[#e03d33] text-white gap-2 shadow-[0_1px_2px_rgba(0,0,0,.04),0_8px_24px_rgba(0,0,0,.08)] font-bold"
                     >
                         {isGenerating ? (
                             <>

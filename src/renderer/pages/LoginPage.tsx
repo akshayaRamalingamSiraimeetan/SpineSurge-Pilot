@@ -32,38 +32,38 @@ const LoginPage = () => {
 
     return (
         <AuthLayout>
-            <Card className="w-full rounded-2xl border border-[#1E3A5F]/90 bg-[#102C48] shadow-[0_28px_70px_rgba(10,25,41,0.9),0_0_0_1px_rgba(79,195,247,0.08),0_0_36px_rgba(41,182,246,0.14)] backdrop-blur-md">
+            <Card className="w-full rounded-2xl border border-[#242427] bg-[#141416] shadow-[0_1px_2px_rgba(0,0,0,.04),0_28px_70px_rgba(0,0,0,0.5)] backdrop-blur-md">
                 <CardHeader className="space-y-1 pb-3 pt-7">
-                    <CardTitle className="text-3xl font-semibold text-center tracking-tight text-[#E3F2FD]">Welcome back</CardTitle>
-                    <CardDescription className="text-center text-[#90CAF9] text-sm">
+                    <CardTitle className="text-3xl font-semibold text-center tracking-tight text-[#F5F5F7]">Welcome back</CardTitle>
+                    <CardDescription className="text-center text-[#9CA3AF] text-sm">
                         Enter your credentials to access your workspace
                     </CardDescription>
                 </CardHeader>
                 <form onSubmit={handleLogin}>
                     <CardContent className="grid gap-4 pb-4">
                         <div className="grid gap-2">
-                            <Label htmlFor="email" className="text-[#90CAF9] text-xs tracking-wide uppercase">Email</Label>
+                            <Label htmlFor="email" className="text-[#9CA3AF] text-xs tracking-wide uppercase">Email</Label>
                             <Input
                                 id="email"
                                 type="email"
                                 placeholder="doctor@spine.com"
                                 defaultValue="demo@spine.com"
-                                className="h-11 rounded-md border-[#3A5A7A] bg-[#1B3F61] text-[#E3F2FD] placeholder:text-[#7EA4C7] focus-visible:ring-[#4FC3F7] focus-visible:ring-offset-0"
+                                className="h-11 rounded-md border-[#242427] bg-[#1B1B1E] text-[#F5F5F7] placeholder:text-[#9CA3AF]/60 focus-visible:ring-[#FF453A] focus-visible:ring-offset-0"
                             />
                         </div>
                         <div className="grid gap-2">
-                            <Label htmlFor="password" className="text-[#90CAF9] text-xs tracking-wide uppercase">Password</Label>
+                            <Label htmlFor="password" className="text-[#9CA3AF] text-xs tracking-wide uppercase">Password</Label>
                             <Input
                                 id="password"
                                 type="password"
                                 defaultValue="password"
-                                className="h-11 rounded-md border-[#3A5A7A] bg-[#1B3F61] text-[#E3F2FD] placeholder:text-[#7EA4C7] focus-visible:ring-[#4FC3F7] focus-visible:ring-offset-0"
+                                className="h-11 rounded-md border-[#242427] bg-[#1B1B1E] text-[#F5F5F7] placeholder:text-[#9CA3AF]/60 focus-visible:ring-[#FF453A] focus-visible:ring-offset-0"
                             />
                         </div>
                     </CardContent>
                     <CardFooter className="flex flex-col gap-4 pt-0">
                         <Button
-                            className="w-full h-11 rounded-md bg-gradient-to-r from-[#29B6F6] to-[#4FC3F7] text-[#0A1929] font-semibold hover:from-[#4FC3F7] hover:to-[#81D4FA] shadow-[0_8px_24px_rgba(41,182,246,0.35)]"
+                            className="w-full h-11 rounded-md bg-[#FF453A] text-white font-semibold hover:bg-[#e03d33] shadow-[0_1px_2px_rgba(0,0,0,.04),0_8px_24px_rgba(0,0,0,.08)]"
                             type="submit"
                             disabled={loading}
                         >
@@ -72,10 +72,10 @@ const LoginPage = () => {
 
                         <div className="relative w-full">
                             <div className="absolute inset-0 flex items-center">
-                                <span className="w-full border-t border-[#1E3A5F]/90" />
+                                <span className="w-full border-t border-[#242427]" />
                             </div>
                             <div className="relative flex justify-center text-xs uppercase">
-                                <span className="bg-[#102C48] px-3 text-[#607D8B] tracking-wide">
+                                <span className="bg-[#141416] px-3 text-[#9CA3AF] tracking-wide">
                                     Or continue with
                                 </span>
                             </div>
@@ -83,7 +83,7 @@ const LoginPage = () => {
 
                         <Button
                             variant="outline"
-                            className="w-full h-11 rounded-md border-[#2B4C6D] bg-[#102B46]/80 text-[#C2E3FF] hover:bg-[#17395B] hover:text-[#E3F2FD]"
+                            className="w-full h-11 rounded-md border-[#242427] bg-[#1B1B1E] text-[#F5F5F7] hover:bg-[#242427] hover:text-[#F5F5F7]"
                             type="button"
                         >
                             Hospital SSO
@@ -91,8 +91,8 @@ const LoginPage = () => {
                     </CardFooter>
                 </form>
             </Card>
-            <div className="text-center text-sm text-[#607D8B]">
-                <a href="#" className="underline hover:text-[#29B6F6] transition-colors">
+            <div className="text-center text-sm text-[#9CA3AF]">
+                <a href="#" className="underline hover:text-[#FF453A] transition-colors">
                     Forgot your password?
                 </a>
             </div>

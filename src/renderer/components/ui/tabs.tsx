@@ -21,7 +21,7 @@ const TabsList = React.forwardRef<
     <div
         ref={ref}
         className={cn(
-            "inline-flex h-10 items-center justify-center rounded-md bg-[#0A1929] p-1 text-[#90CAF9] border border-[#1E3A5F]",
+            "inline-flex h-10 items-center justify-center rounded-md bg-[#0A0A0B] p-1 text-[#9CA3AF] border border-[#242427]",
             className
         )}
         {...props}
@@ -33,12 +33,6 @@ const TabsTrigger = React.forwardRef<
     HTMLButtonElement,
     React.ButtonHTMLAttributes<HTMLButtonElement> & { value: string }
 >(({ className, value, onClick, ...props }, ref) => {
-    // Basic context consumption via DOM traversal or Context is ideal, but for simple needs:
-    // We rely on parent to pass onClick or we clone children in TabsList.
-    // However, to keep it resilient without Context boilerplate in this quick file:
-    // We will assume the parent Tabs handles passing state down if we used context.
-    // BUT since we are doing a quick implementation, let's use a Context.
-
     const context = React.useContext(TabsContext);
     const isActive = context.value === value;
 
@@ -47,8 +41,10 @@ const TabsTrigger = React.forwardRef<
             ref={ref}
             type="button"
             className={cn(
-                "inline-flex items-center justify-center whitespace-nowrap rounded-sm px-3 py-1.5 text-sm font-medium ring-offset-[#0A1929] transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#29B6F6]/50 focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50",
-                isActive ? "bg-[#132F4C] text-[#E3F2FD] shadow-sm border border-[#29B6F6]/30" : "hover:bg-[#132F4C]/50 hover:text-[#E3F2FD]",
+                "inline-flex items-center justify-center whitespace-nowrap rounded-sm px-3 py-1.5 text-sm font-medium ring-offset-[#0A0A0B] transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FF453A]/50 focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50",
+                isActive
+                    ? "bg-[rgba(232,54,45,0.15)] text-[#FF453A] border border-[#FF453A]/20 shadow-sm"
+                    : "text-[#9CA3AF] hover:bg-[#1B1B1E] hover:text-[#F5F5F7]",
                 className
             )}
             onClick={() => context.onValueChange(value)}
