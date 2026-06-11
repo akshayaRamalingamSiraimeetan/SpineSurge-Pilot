@@ -8,6 +8,7 @@
  *   npx ts-node -r tsconfig-paths/register server/migrate-sqlite-to-postgres.ts
  */
 
+import 'dotenv/config';
 import BetterSqlite3 from 'better-sqlite3';
 import { drizzle as drizzlePg } from 'drizzle-orm/node-postgres';
 import { Pool } from 'pg';
@@ -15,7 +16,7 @@ import * as schema from './schema';
 import path from 'path';
 
 const SQLITE_PATH = path.resolve(__dirname, 'data', 'spinesurge.db');
-const PG_URL = process.env.DATABASE_URL || 'postgresql://postgres:postgres@localhost:5432/spinesurge';
+const PG_URL = process.env.DATABASE_URL || 'postgresql://postgres:nyx@localhost:5432/spinesurge';
 
 // Migration order respects foreign key dependencies
 const TABLE_ORDER = [

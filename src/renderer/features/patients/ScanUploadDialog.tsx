@@ -23,6 +23,7 @@ interface ScanUploadDialogProps {
 }
 
 export function ScanUploadDialog({ patientId, visitId }: ScanUploadDialogProps) {
+    const addStudy = useAppStore(state => state.addStudy);
     const addScan = useAppStore(state => state.addScan);
     const [open, setOpen] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
@@ -48,11 +49,29 @@ export function ScanUploadDialog({ patientId, visitId }: ScanUploadDialogProps) 
 
     const handleSaveFile = async () => {
         if (!selectedFile) return;
-        await addScan(patientId, visitId, {
-            id: Date.now().toString(),
-            type: scanType,
-            date: scanDate
-        }, selectedFile);
+
+        const studyId = `std-${Date.now()}`;
+
+        await addStudy({
+            id: studyId,
+            patientId,
+            visitId,
+            modality: 'X-Ray',
+            source: 'Upload',
+            acquisitionDate: scanDate
+        });
+
+        await addScan(
+            patientId,
+            studyId,
+            {
+                id: `scan-${Date.now()}`,
+                type: scanType,
+                date: scanDate
+            },
+            selectedFile
+        );
+
         setOpen(false);
         setSelectedFile(null);
     };

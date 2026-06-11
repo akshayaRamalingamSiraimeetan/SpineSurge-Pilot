@@ -81,3 +81,10 @@ infra/**/data/
 
 # ── ESLint cache ──────────────────────────────────────────────────────────────
 .eslintcache
+
+
+# Runtime uploaded scan files
+server/uploads/*.jpg
+server/uploads/*.jpeg
+server/uploads/*.png
+server/uploads/*.dcm

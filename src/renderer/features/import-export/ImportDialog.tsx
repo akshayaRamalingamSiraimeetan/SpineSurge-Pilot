@@ -60,6 +60,7 @@ export function ImportDialog({ children, targetSide }: ImportDialogProps) {
         patients,
         addPatient,
         addVisit,
+        addStudy,
         addScan,
         loadImage,
         isComparisonMode,
@@ -251,8 +252,21 @@ export function ImportDialog({ children, targetSide }: ImportDialogProps) {
     const handleFinalImport = async () => {
         if (!selectedPatient || !selectedVisit || !selectedFile) return
 
-        const scanId = Date.now().toString()
-        await addScan(selectedPatient.id, selectedVisit.id, {
+        const studyId = `std-${Date.now()}`;
+        const scanId = `scan-${Date.now()}`;
+
+        // Create parent study first — satisfies FK constraint on scans.study_id
+        await addStudy({
+            id: studyId,
+            patientId: selectedPatient.id,
+            visitId: selectedVisit.id,
+            modality: 'X-Ray',
+            source: 'Import',
+            acquisitionDate: scanData.date
+        });
+
+        // Upload scan against that study
+        await addScan(selectedPatient.id, studyId, {
             id: scanId,
             type: scanData.type,
             date: scanData.date
