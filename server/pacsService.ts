@@ -2,7 +2,7 @@ import axios from 'axios';
 import path from 'path';
 import fs from 'fs-extra';
 import { randomUUID } from 'crypto';
-import { db, sqlite } from './db';
+import { db } from './db';
 import * as schema from './schema';
 
 const UPLOADS_DIR = path.resolve(__dirname, 'uploads');
@@ -111,7 +111,6 @@ export async function importPACSStudy(config: PACSServerConfig, studyInstanceUID
             acquisitionDate: new Date().toISOString().split('T')[0]
         });
 
-        // Register a fake scan pointing to a generic image
         await db.insert(schema.scans).values({
             id: `scan-mock-${Date.now()}`,
             studyId: studyId,
@@ -157,8 +156,7 @@ export async function importPACSStudy(config: PACSServerConfig, studyInstanceUID
         await db.insert(schema.studies).values(studyData);
 
         let importedCount = 0;
-        const maxSlicesToImport = 15; // Increased limit
-        // Select slices across the whole series
+        const maxSlicesToImport = 15;
         const step = Math.max(1, Math.floor(instances.length / maxSlicesToImport));
 
         for (let i = 0; i < instances.length && importedCount < maxSlicesToImport; i += step) {

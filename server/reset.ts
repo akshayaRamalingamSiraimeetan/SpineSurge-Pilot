@@ -1,8 +1,8 @@
-
-import { db, sqlite } from './db';
+import { db } from './db';
 import * as schema from './schema';
 import fs from 'fs-extra';
 import path from 'path';
+import { sql } from 'drizzle-orm';
 
 const reset = async () => {
     console.log('Starting full data reset...');
@@ -21,28 +21,20 @@ const reset = async () => {
         fs.ensureDirSync(uploadsDir);
     }
 
-    // 2. Truncate Tables (Order matters for foreign keys if checks are on, but we can disable or just delete all)
-    // Drizzle/SQLite doesn't support TRUNCATE, so using DELETE
+    // 2. Truncate tables in dependency order with CASCADE
     console.log('Clearing database tables...');
 
-    // Disable FK checks temporarily to easier delete
-    sqlite.pragma('foreign_keys = OFF');
-
-    db.delete(schema.scans).run();
-    db.delete(schema.measurements).run();
-    db.delete(schema.implants).run();
-    db.delete(schema.contextStudies).run();
-    db.delete(schema.contexts).run();
-    db.delete(schema.reports).run();
-    db.delete(schema.studies).run();
-    db.delete(schema.visits).run();
-    db.delete(schema.patients).run();
-
-    sqlite.pragma('foreign_keys = ON');
-
-    console.log('Database cleared.');
-    console.log('Vacuuming database...');
-    sqlite.pragma('vacuum');
+    await db.execute(sql`TRUNCATE TABLE
+        scans,
+        measurements,
+        implants,
+        context_studies,
+        contexts,
+        reports,
+        studies,
+        visits,
+        patients
+    RESTART IDENTITY CASCADE`);
 
     console.log('Reset complete!');
 };

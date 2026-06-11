@@ -1,19 +1,19 @@
-import { sqliteTable, text, integer, real, primaryKey } from 'drizzle-orm/sqlite-core';
+import { pgTable, text, integer, real, boolean, primaryKey } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
 
-export const patients = sqliteTable('patients', {
+export const patients = pgTable('patients', {
     id: text('id').primaryKey(),
     name: text('name').notNull(),
     age: integer('age'),
-    gender: text('gender'), // This will replace both 'gender' and 'sex'
+    gender: text('gender'),
     dob: text('dob'),
     contact: text('contact'),
     lastVisit: text('last_visit'),
-    hasAlert: integer('has_alert', { mode: 'boolean' }).default(false),
-    isArchived: integer('is_archived', { mode: 'boolean' }).default(false),
+    hasAlert: boolean('has_alert').default(false),
+    isArchived: boolean('is_archived').default(false),
 });
 
-export const visits = sqliteTable('visits', {
+export const visits = pgTable('visits', {
     id: text('id').primaryKey(),
     patientId: text('patient_id').notNull().references(() => patients.id, { onDelete: 'cascade' }),
     visitNumber: text('visit_number'),
@@ -27,7 +27,7 @@ export const visits = sqliteTable('visits', {
     surgeryDate: text('surgery_date'),
 });
 
-export const studies = sqliteTable('studies', {
+export const studies = pgTable('studies', {
     id: text('id').primaryKey(),
     patientId: text('patient_id').notNull().references(() => patients.id, { onDelete: 'cascade' }),
     visitId: text('visit_id').references(() => visits.id, { onDelete: 'cascade' }),
@@ -36,55 +36,55 @@ export const studies = sqliteTable('studies', {
     acquisitionDate: text('acquisition_date'),
 });
 
-export const scans = sqliteTable('scans', {
+export const scans = pgTable('scans', {
     id: text('id').primaryKey(),
     studyId: text('study_id').notNull().references(() => studies.id, { onDelete: 'cascade' }),
-    filePath: text('file_path').notNull(), // Should be relative to uploads dir
+    filePath: text('file_path').notNull(),
     type: text('type').default('Imported'),
     date: text('date'),
 });
 
-export const contexts = sqliteTable('contexts', {
+export const contexts = pgTable('contexts', {
     id: text('id').primaryKey(),
     patientId: text('patient_id').notNull().references(() => patients.id, { onDelete: 'cascade' }),
     visitId: text('visit_id').references(() => visits.id, { onDelete: 'set null' }),
-    mode: text('mode').notNull(), // 'view', 'plan', 'compare'
+    mode: text('mode').notNull(),
     name: text('name'),
     lastModified: text('last_modified'),
-    annotations: text('annotations').default('[]'), // JSON
-    toolState: text('tool_state').default('{}'), // JSON
+    annotations: text('annotations').default('[]'),
+    toolState: text('tool_state').default('{}'),
 });
 
-export const contextStudies = sqliteTable('context_studies', (t) => ({
-    contextId: t.text('context_id').notNull().references(() => contexts.id, { onDelete: 'cascade' }),
-    studyId: t.text('study_id').notNull().references(() => studies.id, { onDelete: 'cascade' }),
-}), (t) => ({
+export const contextStudies = pgTable('context_studies', {
+    contextId: text('context_id').notNull().references(() => contexts.id, { onDelete: 'cascade' }),
+    studyId: text('study_id').notNull().references(() => studies.id, { onDelete: 'cascade' }),
+}, (t) => ({
     pk: primaryKey({ columns: [t.contextId, t.studyId] }),
 }));
 
-export const measurements = sqliteTable('measurements', {
+export const measurements = pgTable('measurements', {
     id: text('id').primaryKey(),
     contextId: text('context_id').notNull().references(() => contexts.id, { onDelete: 'cascade' }),
     toolKey: text('tool_key').notNull(),
     fragmentId: text('fragment_id'),
-    points: text('points'), // JSON array of Point
-    result: text('result'), // JSON any
-    metadata: text('metadata'), // JSON any (for 'measurement' property in UI)
+    points: text('points'),
+    result: text('result'),
+    metadata: text('metadata'),
     timestamp: integer('timestamp'),
 });
 
-export const implants = sqliteTable('implants', {
+export const implants = pgTable('implants', {
     id: text('id').primaryKey(),
     contextId: text('context_id').notNull().references(() => contexts.id, { onDelete: 'cascade' }),
     type: text('type').notNull(),
     fragmentId: text('fragment_id'),
-    position: text('position'), // JSON Point
+    position: text('position'),
     angle: real('angle'),
-    properties: text('properties'), // JSON any
+    properties: text('properties'),
     timestamp: integer('timestamp'),
 });
 
-export const reports = sqliteTable('reports', {
+export const reports = pgTable('reports', {
     id: text('id').primaryKey(),
     visitId: text('visit_id').notNull().references(() => visits.id, { onDelete: 'cascade' }),
     filePath: text('file_path').notNull(),

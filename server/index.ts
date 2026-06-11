@@ -3,7 +3,7 @@ import cors from 'cors';
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs-extra';
-import { db, sqlite } from './db';
+import { db } from './db';
 import * as schema from './schema';
 import { eq, and, sql } from 'drizzle-orm';
 import * as pacsService from './pacsService';
@@ -22,7 +22,6 @@ wss.on('connection', (ws, req) => {
 });
 
 server.on('upgrade', (request, socket, head) => {
-    // You might want to check the path here, e.g. if (request.url.startsWith('/yjs'))
     wss.handleUpgrade(request, socket, head, (ws) => {
         wss.emit('connection', ws, request);
     });
@@ -37,12 +36,10 @@ app.use(express.json());
 app.use((req, res, next) => {
     console.log(`${req.method} ${req.url}`);
 
-    // allow cross-origin resource sharing
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS, PUT, PATCH, DELETE');
     res.setHeader('Access-Control-Allow-Headers', 'X-Requested-With,content-type');
 
-    // Explicitly allow cross-origin embedding (Fixes NotSameOriginAfterDefaultedToSameOriginByCoep)
     res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
     res.setHeader('Cross-Origin-Embedder-Policy', 'credentialless');
 
@@ -82,21 +79,19 @@ const toRelativePath = (absolutePath: string) => {
     if (absolutePath.startsWith(UPLOADS_DIR)) {
         return path.relative(UPLOADS_DIR, absolutePath);
     }
-    return path.basename(absolutePath); // Fallback to filename if not in uploads
+    return path.basename(absolutePath);
 };
 
 const toAbsoluteUrl = (relativePath: string, baseUrl: string) => {
     if (!relativePath) return '';
     if (relativePath.startsWith('http')) return relativePath;
-
-    // Extract filename regardless of path separator (Windows or POSIX)
     const filename = relativePath.split(/[\\/]/).pop() || '';
     return `${baseUrl}/uploads/${filename}`;
 };
 
 // --- API Routes ---
 
-// Get all patients - Optimized to solve N+1 Problem
+// Get all patients
 app.get('/api/patients', async (req, res) => {
     try {
         console.log("Fetching all patients (optimized)...");
@@ -141,8 +136,7 @@ app.get('/api/patients', async (req, res) => {
             }));
 
             const visits = p.visits.map((v, idx) => {
-                // Assign studies to this visit if IDs match, OR if it's the latest visit, also include orphaned studies
-                const isLatestVisit = idx === 0; // Assuming visits are sorted by date desc
+                const isLatestVisit = idx === 0;
                 const visitStudies = studies.filter(s => s.visitId === v.id || (isLatestVisit && !s.visitId));
 
                 return {
@@ -161,7 +155,6 @@ app.get('/api/patients', async (req, res) => {
                 };
             });
 
-            // Debug first patient's first study's first scan if exists
             if (p.studies?.[0]?.scans?.[0]) {
                 const testScan = p.studies[0].scans[0];
                 console.log(`[DEBUG] Patient: ${p.name}, Study: ${p.studies[0].id}, Scan: ${testScan.id}, File: ${testScan.filePath}, URL: ${toAbsoluteUrl(testScan.filePath, baseUrl)}`);
@@ -193,7 +186,7 @@ app.post('/api/patients', async (req, res) => {
             id,
             name,
             age: age ? parseInt(age) : null,
-            gender: gender || sex, // Resolve redundant patient data
+            gender: gender || sex,
             dob,
             contact,
             lastVisit,
@@ -225,9 +218,10 @@ app.post('/api/patients/:id/archive', async (req, res) => {
     try {
         const result = await db.update(schema.patients)
             .set({ isArchived: !!archived })
-            .where(eq(schema.patients.id, patientId));
+            .where(eq(schema.patients.id, patientId))
+            .returning({ id: schema.patients.id });
 
-        if (result.changes === 0) {
+        if (result.length === 0) {
             return res.status(404).json({ error: 'Patient not found' });
         }
         res.json({ success: true });
@@ -257,8 +251,11 @@ app.post('/api/visits', async (req, res) => {
 // Delete Visit
 app.delete('/api/visits/:id', async (req, res) => {
     try {
-        const result = await db.delete(schema.visits).where(eq(schema.visits.id, req.params.id));
-        if (result.changes > 0) {
+        const result = await db.delete(schema.visits)
+            .where(eq(schema.visits.id, req.params.id))
+            .returning({ id: schema.visits.id });
+
+        if (result.length > 0) {
             res.json({ success: true });
         } else {
             res.status(404).json({ error: 'Visit not found' });
@@ -336,7 +333,7 @@ app.post('/api/scans', upload.single('file'), async (req, res) => {
     }
 });
 
-// --- Contexts - Refactored for Normalized Implants/Measurements ---
+// --- Contexts ---
 app.get('/api/contexts/:patientId', async (req, res) => {
     try {
         const dbContexts = await db.query.contexts.findMany({
@@ -381,15 +378,13 @@ app.post('/api/contexts', async (req, res) => {
     try {
         console.log(`[POST /api/contexts] Saving context: ${id}, patient: ${patientId}, studies: ${studyIds?.length || 0}`);
 
-        // Use synchronous transaction (better-sqlite3 requirement)
-        const runTransaction = db.transaction((tx) => {
-            // 0. Normalize IDs
+        await db.transaction(async (tx) => {
             const vId = visitId === "" ? null : visitId;
             const validStudyIds = (studyIds || []).filter((sid: string) => sid && sid !== "");
 
             // 1. Upsert Context
             console.log("  Step 1: Upserting context...");
-            tx.insert(schema.contexts).values({
+            await tx.insert(schema.contexts).values({
                 id,
                 patientId,
                 visitId: vId,
@@ -408,24 +403,23 @@ app.post('/api/contexts', async (req, res) => {
                     annotations: JSON.stringify(state?.annotations || []),
                     toolState: JSON.stringify(state?.toolState || {})
                 }
-            }).run();
+            });
 
             // 2. Sync Study Links
             console.log("  Step 2: Syncing study links...");
-            tx.delete(schema.contextStudies).where(eq(schema.contextStudies.contextId, id)).run();
+            await tx.delete(schema.contextStudies).where(eq(schema.contextStudies.contextId, id));
             if (validStudyIds.length > 0) {
-                tx.insert(schema.contextStudies).values(
+                await tx.insert(schema.contextStudies).values(
                     validStudyIds.map((sid: string) => ({ contextId: id, studyId: sid }))
-                ).run();
+                );
             }
             console.log("  Step 2: Study links sync complete.");
 
             // 3. Sync Normalized State (Measurements & Implants)
             if (state) {
-                // Easy way: Clear and Re-insert
-                tx.delete(schema.measurements).where(eq(schema.measurements.contextId, id)).run();
+                await tx.delete(schema.measurements).where(eq(schema.measurements.contextId, id));
                 if (state.measurements && state.measurements.length > 0) {
-                    tx.insert(schema.measurements).values(
+                    await tx.insert(schema.measurements).values(
                         state.measurements.map((m: any) => ({
                             id: m.id || `${id}-m-${Date.now()}-${Math.random()}`,
                             contextId: id,
@@ -436,12 +430,12 @@ app.post('/api/contexts', async (req, res) => {
                             metadata: JSON.stringify(m.measurement || {}),
                             timestamp: m.timestamp || Date.now()
                         }))
-                    ).run();
+                    );
                 }
 
-                tx.delete(schema.implants).where(eq(schema.implants.contextId, id)).run();
+                await tx.delete(schema.implants).where(eq(schema.implants.contextId, id));
                 if (state.implants && state.implants.length > 0) {
-                    tx.insert(schema.implants).values(
+                    await tx.insert(schema.implants).values(
                         state.implants.map((i: any) => ({
                             id: i.id || `${id}-i-${Date.now()}-${Math.random()}`,
                             contextId: id,
@@ -452,7 +446,7 @@ app.post('/api/contexts', async (req, res) => {
                             properties: JSON.stringify(i.properties || {}),
                             timestamp: i.timestamp || Date.now()
                         }))
-                    ).run();
+                    );
                 }
             }
         });
@@ -502,16 +496,13 @@ app.get('/api/reports/:visitId', async (req, res) => {
     }
 });
 
-// MODIFIED: Secured Local File Proxy (Now only serves from uploads and checks path)
+// Local File Proxy
 app.get('/api/local-file', (req, res) => {
     const filePath = req.query.path as string;
     if (!filePath) return res.status(400).send('No path provided');
 
-    // If it's an absolute path, we check if it's within UPLOADS_DIR or if it's explicitly allowed
-    // For safety, we prefer only serving from uploads
     const resolvedPath = path.isAbsolute(filePath) ? filePath : path.resolve(UPLOADS_DIR, filePath);
 
-    // Security check: must be in uploads or a known safe dir
     if (!resolvedPath.startsWith(UPLOADS_DIR)) {
         console.warn(`Blocked access to potentially unsafe path: ${resolvedPath}`);
         return res.status(403).send('Access denied');
@@ -523,7 +514,7 @@ app.get('/api/local-file', (req, res) => {
     res.sendFile(resolvedPath);
 });
 
-// Import Folder - Enhanced with Transactions and Relative Paths
+// Import Folder
 app.post('/api/import', async (req, res) => {
     const { folderPath, patientId: targetPatientId, visitId } = req.body;
     if (!folderPath || !fs.existsSync(folderPath)) {
@@ -533,16 +524,15 @@ app.post('/api/import', async (req, res) => {
     try {
         let importedCount = 0;
 
-        // Use transaction for the entire import process
         await db.transaction(async (tx) => {
-            const walk = (dir: string) => {
+            const walk = async (dir: string) => {
                 const files = fs.readdirSync(dir);
                 for (const file of files) {
                     const fullPath = path.join(dir, file);
                     const stat = fs.statSync(fullPath);
 
                     if (stat.isDirectory()) {
-                        walk(fullPath);
+                        await walk(fullPath);
                     } else {
                         const buffer = Buffer.alloc(1024);
                         const fd = fs.openSync(fullPath, 'r');
@@ -563,7 +553,11 @@ app.post('/api/import', async (req, res) => {
                             if (!patientId && parts.length >= 2) {
                                 patientName = parts[0];
                                 patientId = patientName.replace(/\s+/g, '-').toLowerCase();
-                                sqlite.prepare(`INSERT OR IGNORE INTO patients (id, name, last_visit) VALUES (?, ?, ?)`).run(patientId, patientName, new Date().toISOString().split('T')[0]);
+                                await tx.insert(schema.patients).values({
+                                    id: patientId,
+                                    name: patientName,
+                                    lastVisit: new Date().toISOString().split('T')[0]
+                                }).onConflictDoNothing();
                             }
 
                             if (!patientId) continue;
@@ -571,10 +565,8 @@ app.post('/api/import', async (req, res) => {
                             // Detect Modality if DICOM
                             let modality = isDicom ? 'CT' : 'X-Ray';
                             if (isDicom) {
-                                // Simple search for Modality tag (0008, 0060)
                                 const modalityIndex = buffer.indexOf(Buffer.from([0x08, 0x00, 0x60, 0x00]));
                                 if (modalityIndex !== -1 && modalityIndex + 10 < buffer.length) {
-                                    // Tag found, try to read the VR (usually CS) and value
                                     const valueLength = buffer.readUInt16LE(modalityIndex + 6);
                                     if (valueLength > 0 && valueLength < 16) {
                                         const mod = buffer.toString('utf8', modalityIndex + 8, modalityIndex + 8 + valueLength).trim();
@@ -584,11 +576,15 @@ app.post('/api/import', async (req, res) => {
                             }
 
                             const studyId = `${patientId}-study-${visitDate.replace(/[^a-zA-Z0-9]/g, '-')}`;
-                            sqlite.prepare(`INSERT OR IGNORE INTO studies (id, patient_id, visit_id, modality, source, acquisition_date) VALUES (?, ?, ?, ?, ?, ?)`).run(
-                                studyId, patientId, visitId, modality, 'Import', visitDate
-                            );
+                            await tx.insert(schema.studies).values({
+                                id: studyId,
+                                patientId,
+                                visitId: visitId || null,
+                                modality,
+                                source: 'Import',
+                                acquisitionDate: visitDate
+                            }).onConflictDoNothing();
 
-                            // Ensure .dcm extension for DICOM files in uploads
                             let ext = path.extname(file);
                             if (isDicom && !ext) ext = '.dcm';
                             const uniqueName = `${Date.now()}-${Math.round(Math.random() * 1E9)}${ext}`;
@@ -596,16 +592,20 @@ app.post('/api/import', async (req, res) => {
                             fs.copySync(fullPath, destPath);
 
                             const scanId = `${Date.now()}-${Math.round(Math.random() * 1E9)}`;
-                            sqlite.prepare(`INSERT INTO scans (id, study_id, file_path, type, date) VALUES (?, ?, ?, ?, ?)`).run(
-                                scanId, studyId, uniqueName, 'Imported', new Date().toISOString().split('T')[0]
-                            );
+                            await tx.insert(schema.scans).values({
+                                id: scanId,
+                                studyId,
+                                filePath: uniqueName,
+                                type: 'Imported',
+                                date: new Date().toISOString().split('T')[0]
+                            });
 
                             importedCount++;
                         }
                     }
                 }
             };
-            walk(folderPath);
+            await walk(folderPath);
         });
 
         res.json({ success: true, count: importedCount });
@@ -641,4 +641,3 @@ server.listen(port, () => {
     console.log(`Server running at http://localhost:${port}`);
     console.log(`WebSocket server ready at ws://localhost:${port}`);
 });
-

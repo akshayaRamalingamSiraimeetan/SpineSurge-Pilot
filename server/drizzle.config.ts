@@ -3,8 +3,8 @@ import type { Config } from 'drizzle-kit';
 export default {
     schema: './schema.ts',
     out: './drizzle',
-    dialect: 'sqlite',
+    dialect: 'postgresql',
     dbCredentials: {
-        url: './data/spinesurge.db',
+        url: process.env.DATABASE_URL || 'postgresql://postgres:postgres@localhost:5432/spinesurge',
     },
 } satisfies Config;
