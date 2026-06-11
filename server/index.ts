@@ -5,7 +5,7 @@ import path from 'path';
 import fs from 'fs-extra';
 import { db } from './db';
 import * as schema from './schema';
-import { eq, and, sql } from 'drizzle-orm';
+import { eq, and } from 'drizzle-orm';
 import * as pacsService from './pacsService';
 import http from 'http';
 import { WebSocketServer } from 'ws';
@@ -306,14 +306,6 @@ app.post('/api/scans', upload.single('file'), async (req, res) => {
     try {
         const relativePath = path.basename(file.path);
         console.log(`Saving scan: ${id} for study: ${studyId}, file: ${relativePath}`);
-
-        // --- Temporary FK debug ---
-        console.log('SCAN INSERT DEBUG', { id, studyId });
-        const existingStudy = await db.query.studies.findFirst({
-            where: eq(schema.studies.id, studyId)
-        });
-        console.log('FOUND STUDY', existingStudy);
-        // --- End FK debug ---
 
         const baseUrl = `${req.protocol}://${req.get('host')}`;
 
@@ -622,36 +614,6 @@ app.post('/api/import', async (req, res) => {
         console.error("Import error:", err);
         res.status(500).json({ error: err.message });
     }
-});
-
-// --- Temporary debug endpoints ---
-app.get('/debug/scans', async (_, res) => {
-    try {
-        const result = await db.execute(sql`
-            SELECT column_name
-            FROM information_schema.columns
-            WHERE table_name = 'scans'
-            ORDER BY ordinal_position
-        `);
-        res.json(result);
-    } catch (err) {
-        console.error('DEBUG SCANS ERROR:', err);
-        res.status(500).json({
-            error: String(err),
-            details: err
-        });
-    }
-});
-
-app.get('/debug/env', (_, res) => {
-    const url = process.env.DATABASE_URL ?? null;
-    res.json({
-        DATABASE_URL: url
-            ? url.replace(/:(.*?)@/, ':****@')
-            : null,
-        cwd: process.cwd(),
-        nodeEnv: process.env.NODE_ENV ?? null,
-    });
 });
 
 // --- PACS Integration ---
