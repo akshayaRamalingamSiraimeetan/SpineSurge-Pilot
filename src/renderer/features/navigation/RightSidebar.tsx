@@ -580,7 +580,7 @@ const MeasurementCard = ({ label, value, range, toolKey, checked, onCheckedChang
                         onChange={(e) => setLevel(e.target.value)}
                         onBlur={updateLevel}
                         onKeyDown={(e) => e.key === 'Enter' && updateLevel()}
-                        className="w-full bg-background border border-border rounded-lg px-2 py-1 text-[10px] text-foreground font-bold placeholder:text-muted-foreground/40 focus:outline-none focus:ring-1 focus:ring-primary/40 transition-all font-['Outfit']"
+                        className="w-full bg-background border border-border rounded-lg px-2 py-1 text-[10px] text-foreground font-bold placeholder:text-muted-foreground/40 focus:outline-none focus:ring-1 focus:ring-primary/40 transition-all"
                     />
                 </div>
             )}
@@ -820,7 +820,7 @@ const RightSidebar = () => {
                             <div className="w-8 h-8 rounded-lg bg-primary/10 border border-primary/20 flex items-center justify-center">
                                 <Activity className="h-4 w-4 text-primary" />
                             </div>
-                            <h2 className="text-[11px] font-bold text-foreground tracking-wide uppercase font-['Outfit']">
+                            <h2 className="text-[11px] font-bold text-foreground tracking-wide uppercase">
                                 {isComparisonMode ? `Measurement Panel - View ${activeCanvasSide === 'left' ? 'A' : 'B'}` : "Measurement Panel"}
                             </h2>
                         </div>
@@ -845,8 +845,8 @@ const RightSidebar = () => {
                                 <DropdownMenuContent
                                     style={{ width: `${panelWidth - 24}px` }}
                                     className={cn(
-                                        "shadow-2xl z-[100] rounded-xl overflow-hidden !opacity-100",
-                                        isDark ? "!bg-[#0F2A44] !text-[#E3F2FD]" : "!bg-white !text-slate-900"
+                                        "shadow-[0_1px_2px_rgba(0,0,0,.04),0_8px_24px_rgba(0,0,0,.08)] z-[100] rounded-xl overflow-hidden !opacity-100",
+                                        isDark ? "!bg-[#141416] !text-[#F5F5F7] border border-[#242427]" : "!bg-white !text-slate-900"
                                     )}
                                 >
                                     {["All", "Quick Measure", "Deformity", "Pathology", "Planning Suite", "Utilities"].map((cat) => (
@@ -1001,3 +1001,4 @@ const RightSidebar = () => {
 };
 
 export default RightSidebar;
+

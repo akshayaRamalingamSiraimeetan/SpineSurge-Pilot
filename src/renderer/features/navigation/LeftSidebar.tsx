@@ -81,9 +81,9 @@ const ListToolItem = ({ label, fullName, active, icon: Icon, symbol, onClick, sh
         >
             <div className={`w-9 h-9 flex items-center justify-center rounded-lg border transition-all flex-shrink-0
                 ${active ? 'bg-primary border-primary text-primary-foreground' : 'bg-background border-border/40 text-muted-foreground shadow-inner'}`}>
-                {symbol ? <span className="text-[13px] font-bold font-['Outfit']">{symbol}</span> : Icon ? <Icon className="h-4.5 w-4.5" /> : <span className="text-[11px] font-medium font-['Outfit']">{label.toUpperCase()}</span>}
+                {symbol ? <span className="text-[13px] font-bold">{symbol}</span> : Icon ? <Icon className="h-4.5 w-4.5" /> : <span className="text-[11px] font-medium">{label.toUpperCase()}</span>}
             </div>
-            <span className="text-[13px] font-semibold leading-tight font-['Outfit'] text-foreground">{fullName || label}</span>
+            <span className="text-[13px] font-semibold leading-tight text-foreground">{fullName || label}</span>
         </div>
         {showDivider && <div className="h-[1px] bg-border/20 mx-2" />}
     </>
@@ -99,12 +99,12 @@ const NavIcon = ({ icon: Icon, label, active, onClick, isDark }: { icon: any, la
     >
         <Icon className="h-5 w-5 transition-transform group-hover:scale-110" />
         <div className={cn(
-            "absolute left-[calc(100%+16px)] text-[12px] px-4 py-2 rounded-xl opacity-0 group-hover:opacity-100 pointer-events-none transition-all duration-300 transform translate-x-1 group-hover:translate-x-0 whitespace-nowrap z-[100] border shadow-2xl font-bold flex items-center font-['Outfit']",
-            isDark ? "bg-[#132F4C] text-[#E3F2FD] border-[#1E3A5F]" : "bg-gray-100 text-slate-900 border-gray-300"
+            "absolute left-[calc(100%+16px)] text-[12px] px-4 py-2 rounded-xl opacity-0 group-hover:opacity-100 pointer-events-none transition-all duration-300 transform translate-x-1 group-hover:translate-x-0 whitespace-nowrap z-[100] border shadow-[0_1px_2px_rgba(0,0,0,.04),0_8px_24px_rgba(0,0,0,.08)] font-bold flex items-center",
+            isDark ? "bg-[#1B1B1E] text-[#F5F5F7] border-[#242427]" : "bg-white text-slate-900 border-gray-200"
         )}>
             <div className={cn(
                 "absolute -left-1.5 w-3 h-3 rotate-45 border-l border-b",
-                isDark ? "bg-[#132F4C] border-[#1E3A5F]" : "bg-gray-100 border-gray-300"
+                isDark ? "bg-[#1B1B1E] border-[#242427]" : "bg-white border-gray-200"
             )} />
             {label}
         </div>
@@ -349,7 +349,7 @@ const LeftSidebar = () => {
                                 className="flex items-center justify-between px-1 cursor-pointer group"
                                 onClick={() => setCollapsedSections(prev => ({ ...prev, [sectionKey]: !prev[sectionKey] }))}
                             >
-                                <div className="text-[10px] font-bold text-muted-foreground/80 uppercase tracking-widest font-['Outfit']">
+                                <div className="text-[10px] font-bold text-muted-foreground/80 uppercase tracking-widest">
                                     {section.label}
                                 </div>
                                 <ChevronDown className={cn("h-3.5 w-3.5 text-muted-foreground/60 transition-transform", isCollapsed ? '-rotate-90' : '')} />
@@ -590,17 +590,17 @@ const LeftSidebar = () => {
                             <Select value={selectedLandmarkId || ""} onValueChange={setSelectedLandmarkId}>
                                 <SelectTrigger className={cn(
                                     "w-full h-8 font-bold text-[10px] rounded-lg",
-                                    isDark ? "bg-[#0A1929] border-[#1E3A5F] text-[#E3F2FD]" : "bg-white border-gray-300 text-slate-900"
+                                    isDark ? "bg-[#0A0A0B] border-[#242427] text-[#F5F5F7]" : "bg-white border-gray-300 text-slate-900"
                                 )}>
                                     <SelectValue placeholder="Choose a point..." />
                                 </SelectTrigger>
                                 <SelectContent className={cn(
-                                    isDark ? "bg-[#0F2A44] border-[#1E3A5F]" : "bg-white border-gray-300"
+                                    isDark ? "bg-[#141416] border-[#242427]" : "bg-white border-gray-300"
                                 )}>
                                     {(pedicleSimulations.find(s => s.label === 'sim')?.landmarks as any)?.fiducials?.map((f: any) => (
                                         <SelectItem key={f.id} value={f.id} className={cn(
                                             "text-[10px]",
-                                            isDark ? "text-[#E3F2FD] focus:bg-[#132F4C] focus:text-[#E3F2FD]" : "text-slate-900 focus:bg-slate-100 focus:text-slate-900"
+                                            isDark ? "text-[#F5F5F7] focus:bg-[#1B1B1E] focus:text-[#F5F5F7]" : "text-slate-900 focus:bg-slate-100 focus:text-slate-900"
                                         )}>
                                             {f.label}
                                         </SelectItem>
@@ -628,18 +628,18 @@ const LeftSidebar = () => {
                             >
                                 <SelectTrigger className={cn(
                                     "w-full h-8 font-bold text-[10px] rounded-lg",
-                                    isDark ? "bg-[#0A1929] border-[#1E3A5F] text-[#E3F2FD]" : "bg-white border-gray-300 text-slate-900"
+                                    isDark ? "bg-[#0A0A0B] border-[#242427] text-[#F5F5F7]" : "bg-white border-gray-300 text-slate-900"
                                 )}>
                                     <SelectValue />
                                 </SelectTrigger>
                                 <SelectContent className={cn(
                                     "max-h-[200px]",
-                                    isDark ? "bg-[#0F2A44] border-[#1E3A5F]" : "bg-white border-gray-300"
+                                    isDark ? "bg-[#141416] border-[#242427]" : "bg-white border-gray-300"
                                 )}>
                                     {SPINAL_LEVELS.map(l => (
                                         <SelectItem key={l} value={l} className={cn(
                                             "text-[10px]",
-                                            isDark ? "text-[#E3F2FD] focus:bg-[#132F4C] focus:text-[#E3F2FD]" : "text-slate-900 focus:bg-slate-100 focus:text-slate-900"
+                                            isDark ? "text-[#F5F5F7] focus:bg-[#1B1B1E] focus:text-[#F5F5F7]" : "text-slate-900 focus:bg-slate-100 focus:text-slate-900"
                                         )}>{l}</SelectItem>
                                     ))}
                                 </SelectContent>
@@ -684,17 +684,17 @@ const LeftSidebar = () => {
                             >
                                 <SelectTrigger className={cn(
                                     "w-full h-8 font-bold text-[10px] rounded-lg",
-                                    isDark ? "bg-[#0A1929] border-[#1E3A5F] text-[#E3F2FD]" : "bg-white border-gray-300 text-slate-900"
+                                    isDark ? "bg-[#0A0A0B] border-[#242427] text-[#F5F5F7]" : "bg-white border-gray-300 text-slate-900"
                                 )}>
                                     <SelectValue />
                                 </SelectTrigger>
                                 <SelectContent className={cn(
-                                    isDark ? "bg-[#0F2A44] border-[#1E3A5F]" : "bg-white border-gray-300"
+                                    isDark ? "bg-[#141416] border-[#242427]" : "bg-white border-gray-300"
                                 )}>
                                     {getLevelDefaults(screwLevel).measurements.map(m => (
                                         <SelectItem key={m.diameter} value={m.diameter.toString()} className={cn(
                                             "text-[10px]",
-                                            isDark ? "text-[#E3F2FD] focus:bg-[#132F4C] focus:text-[#E3F2FD]" : "text-slate-900 focus:bg-slate-100 focus:text-slate-900"
+                                            isDark ? "text-[#F5F5F7] focus:bg-[#1B1B1E] focus:text-[#F5F5F7]" : "text-slate-900 focus:bg-slate-100 focus:text-slate-900"
                                         )}>
                                             {m.diameter.toFixed(1)}
                                         </SelectItem>
@@ -707,17 +707,17 @@ const LeftSidebar = () => {
                             <Select value={screwLength.toString()} onValueChange={(v) => setScrewConfig({ screwLength: parseInt(v) })}>
                                 <SelectTrigger className={cn(
                                     "w-full h-8 font-bold text-[10px] rounded-lg",
-                                    isDark ? "bg-[#0A1929] border-[#1E3A5F] text-[#E3F2FD]" : "bg-white border-gray-300 text-slate-900"
+                                    isDark ? "bg-[#0A0A0B] border-[#242427] text-[#F5F5F7]" : "bg-white border-gray-300 text-slate-900"
                                 )}>
                                     <SelectValue />
                                 </SelectTrigger>
                                 <SelectContent className={cn(
-                                    isDark ? "bg-[#0F2A44] border-[#1E3A5F]" : "bg-white border-gray-300"
+                                    isDark ? "bg-[#141416] border-[#242427]" : "bg-white border-gray-300"
                                 )}>
                                     {(getLevelDefaults(screwLevel).measurements.find(m => m.diameter === screwDiameter)?.lengths || []).map(v => (
                                         <SelectItem key={v} value={v.toString()} className={cn(
                                             "text-[10px]",
-                                            isDark ? "text-[#E3F2FD] focus:bg-[#132F4C] focus:text-[#E3F2FD]" : "text-slate-900 focus:bg-slate-100 focus:text-slate-900"
+                                            isDark ? "text-[#F5F5F7] focus:bg-[#1B1B1E] focus:text-[#F5F5F7]" : "text-slate-900 focus:bg-slate-100 focus:text-slate-900"
                                         )}>{v}</SelectItem>
                                     ))}
                                 </SelectContent>
@@ -932,7 +932,7 @@ const LeftSidebar = () => {
                                     <item.icon className="h-6 w-6" />
                                 </div>
                                 <span className={cn(
-                                    "text-xs font-bold uppercase tracking-widest font-['Outfit']",
+                                    "text-xs font-bold uppercase tracking-widest",
                                     activeTool === item.id ? "text-primary" : "text-foreground"
                                 )}>{item.label}</span>
                             </div>
@@ -963,7 +963,7 @@ const LeftSidebar = () => {
                                 className="flex items-center justify-between px-1 cursor-pointer group"
                                 onClick={() => setCollapsedSections(prev => ({ ...prev, [sectionKey]: !prev[sectionKey] }))}
                             >
-                                <div className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest font-['Outfit']">{item.label}</div>
+                                <div className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">{item.label}</div>
                                 <ChevronDown className={cn("h-3.5 w-3.5 text-muted-foreground/60 transition-transform", isCollapsed ? '-rotate-90' : '')} />
                             </div>
                             <div className="h-[1px] w-full bg-border/60 mx-1" />
@@ -1026,7 +1026,7 @@ const LeftSidebar = () => {
                 isLeftSidebarOpen ? "w-64 border-r border-border shadow-sm" : "w-0 border-none"
             )}>
                 <div className="p-4 border-b border-border bg-card/60 backdrop-blur-md sticky top-0 z-10 hidden sm:block">
-                    <h2 className="font-bold text-foreground tracking-widest uppercase text-[10px] opacity-70 font-['Outfit']">
+                    <h2 className="font-bold text-foreground tracking-widest uppercase text-[10px] opacity-70">
                         {MODULES.find(m => m.id === sidebarActiveModule)?.label}
                     </h2>
                 </div>
@@ -1042,21 +1042,21 @@ const LeftSidebar = () => {
                     </div>
                 </ScrollArea>
                 <div className="mt-auto bg-muted/40 p-3 border-t border-border w-64 min-h-[100px] flex flex-col justify-start">
-                    <div className="text-[9px] font-bold text-primary uppercase tracking-widest mb-2 flex items-center gap-2 font-['Outfit']">
+                    <div className="text-[9px] font-bold text-primary uppercase tracking-widest mb-2 flex items-center gap-2">
                         <AlertCircle className="h-3 w-3" />
                         Smart Assistant
                     </div>
                     {activeTool && TOOL_DESCRIPTIONS[activeTool] ? (
                         <div className="space-y-1 animate-in fade-in slide-in-from-bottom-2 duration-300">
-                            <div className="text-[10px] font-bold text-foreground tracking-tight font-['Outfit'] uppercase font-bold">
+                            <div className="text-[10px] font-bold text-foreground tracking-tight uppercase font-bold">
                                 {TOOL_DESCRIPTIONS[activeTool].title}
                             </div>
-                            <p className="text-[10px] text-muted-foreground/90 leading-relaxed font-medium font-['Outfit']">
+                            <p className="text-[10px] text-muted-foreground/90 leading-relaxed font-medium">
                                 {TOOL_DESCRIPTIONS[activeTool].desc}
                             </p>
                         </div>
                     ) : (
-                        <p className="text-[10px] text-muted-foreground/60 leading-relaxed font-medium font-['Outfit'] italic">
+                        <p className="text-[10px] text-muted-foreground/60 leading-relaxed font-medium italic">
                             Select a tool to begin.
                         </p>
                     )}
@@ -1068,3 +1068,4 @@ const LeftSidebar = () => {
 };
 
 export default LeftSidebar;
+
