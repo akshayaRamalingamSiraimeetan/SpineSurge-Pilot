@@ -2378,16 +2378,16 @@ const CanvasWorkspace = ({ side }: CanvasWorkspaceProps) => {
                             className={cn(
                                 "group gap-2 py-8 px-8 rounded-2xl flex-col transition-all",
                                 isDark
-                                    ? "bg-[#0F2A44] border-[#1E3A5F] hover:bg-[#132F4C] hover:border-[#29B6F6]/40 text-[#90CAF9]"
-                                    : "bg-gray-100 border-gray-300 hover:bg-white hover:border-blue-400/50 text-slate-900"
+                                    ? "bg-[#141416] border-[#242427] hover:bg-[#1B1B1E] hover:border-[#3a3a3d] text-[#9CA3AF]"
+                                    : "bg-gray-100 border-gray-300 hover:bg-white hover:border-gray-400 text-slate-900"
                             )}
                             onClick={(e) => { e.stopPropagation(); handleCanvasClick(); }}
                         >
                             <div className={cn(
                                 "h-10 w-10 rounded-full flex items-center justify-center transition-all",
                                 isDark
-                                    ? "bg-[#1E3A5F] group-hover:scale-110 group-hover:bg-[#29B6F6]/20"
-                                    : "bg-blue-100 text-blue-600 group-hover:scale-110 group-hover:bg-blue-200"
+                                    ? "bg-[#242427] group-hover:scale-110 group-hover:bg-[rgba(255,69,58,0.12)]"
+                                    : "bg-gray-200 text-slate-600 group-hover:scale-110 group-hover:bg-gray-300"
                             )}>
                                 <Plus className="h-6 w-6" />
                             </div>
@@ -2465,9 +2465,9 @@ const CanvasWorkspace = ({ side }: CanvasWorkspaceProps) => {
                             <div
                                 className="relative rounded-xl overflow-hidden"
                                 style={{
-                                    backgroundColor: isDark ? '#132F4C' : '#F3F4F6',
-                                    border: isDark ? '1px solid #1E3A5F' : '1px solid #D1D5DB',
-                                    boxShadow: isDark ? '0 4px 24px rgba(0, 0, 0, 0.4), 0 0 1px rgba(41, 182, 246, 0.15)' : '0 4px 24px rgba(0, 0, 0, 0.14), 0 0 1px rgba(59, 130, 246, 0.18)',
+                                    backgroundColor: isDark ? '#141416' : '#F9FAFB',
+                                    border: isDark ? '1px solid #242427' : '1px solid #E5E7EB',
+                                    boxShadow: '0 1px 2px rgba(0,0,0,.04), 0 8px 24px rgba(0,0,0,.08)',
                                 }}
                             >
                                 {/* Close Button */}
@@ -2478,9 +2478,9 @@ const CanvasWorkspace = ({ side }: CanvasWorkspaceProps) => {
                                         setWizardVisible(false);
                                     }}
                                     className="absolute top-2.5 right-3 z-10 w-5 h-5 flex items-center justify-center rounded transition-all duration-150 pointer-events-auto"
-                                    style={{ color: isDark ? '#607D8B' : '#64748B' }}
-                                    onMouseEnter={(e) => { (e.target as HTMLElement).style.color = isDark ? '#E3F2FD' : '#0F172A'; }}
-                                    onMouseLeave={(e) => { (e.target as HTMLElement).style.color = isDark ? '#607D8B' : '#64748B'; }}
+                                    style={{ color: isDark ? '#6B7280' : '#64748B' }}
+                                    onMouseEnter={(e) => { (e.target as HTMLElement).style.color = isDark ? '#F5F5F7' : '#0F172A'; }}
+                                    onMouseLeave={(e) => { (e.target as HTMLElement).style.color = isDark ? '#6B7280' : '#64748B'; }}
                                     title="Close"
                                 >
                                     <X className="h-3.5 w-3.5 pointer-events-none" />
@@ -2490,16 +2490,16 @@ const CanvasWorkspace = ({ side }: CanvasWorkspaceProps) => {
                                 <div className="flex items-center gap-3 px-4 py-3 pr-10 pointer-events-auto">
 
                                     {/* Text */}
-                                    <div className="flex-1 min-w-0 font-['Outfit']">
+                                    <div className="flex-1 min-w-0">
                                         <div
                                             className="text-[10px] font-bold uppercase tracking-[0.08em] mb-0.5"
-                                            style={{ color: activeTool ? '#29B6F6' : isDark ? '#90CAF9' : '#2563EB' }}
+                                            style={{ color: activeTool ? '#FF453A' : isDark ? '#9CA3AF' : '#2563EB' }}
                                         >
                                             {activeTool ? 'STEP-BY-STEP GUIDE' : 'READY'}
                                         </div>
                                         <div
                                             className="text-[13px] font-semibold leading-snug"
-                                            style={{ color: isDark ? '#E3F2FD' : '#0F172A' }}
+                                            style={{ color: isDark ? '#F5F5F7' : '#0F172A' }}
                                         >
                                             {wizardContent}
                                         </div>
@@ -2513,8 +2513,8 @@ const CanvasWorkspace = ({ side }: CanvasWorkspaceProps) => {
                                                         className="h-1.5 rounded-full transition-all duration-300"
                                                         style={{
                                                             width: tempPoints.length > i ? '28px' : '8px',
-                                                            backgroundColor: tempPoints.length > i ? '#29B6F6' : isDark ? '#1E3A5F' : '#CBD5E1',
-                                                            boxShadow: tempPoints.length > i ? '0 0 6px rgba(41,182,246,0.35)' : 'none',
+                                                            backgroundColor: tempPoints.length > i ? '#FF453A' : isDark ? '#242427' : '#CBD5E1',
+                                                            boxShadow: 'none',
                                                         }}
                                                     />
                                                 ))}
@@ -2532,20 +2532,20 @@ const CanvasWorkspace = ({ side }: CanvasWorkspaceProps) => {
                                 setWizardVisible(true);
                             }}
                             className={cn(
-                                "absolute z-20 px-4 py-2 rounded-lg flex items-center gap-2 transition-all duration-200 hover:scale-105 pointer-events-auto font-['Outfit']",
+                                "absolute z-20 px-4 py-2 rounded-lg flex items-center gap-2 transition-all duration-200 hover:scale-105 pointer-events-auto",
                                 isComparisonMode
                                     ? "bottom-32 left-1/2 -translate-x-1/2"
                                     : "bottom-32 left-6"
                             )}
                             style={{
-                                backgroundColor: isDark ? '#132F4C' : '#F3F4F6',
-                                border: isDark ? '1px solid #1E3A5F' : '1px solid #D1D5DB',
-                                color: isDark ? '#E3F2FD' : '#0F172A',
-                                boxShadow: isDark ? '0 4px 16px rgba(0, 0, 0, 0.3)' : '0 4px 16px rgba(0, 0, 0, 0.14)',
+                                backgroundColor: isDark ? '#141416' : '#F9FAFB',
+                                border: isDark ? '1px solid #242427' : '1px solid #E5E7EB',
+                                color: isDark ? '#F5F5F7' : '#0F172A',
+                                boxShadow: '0 1px 2px rgba(0,0,0,.04), 0 8px 24px rgba(0,0,0,.08)',
                             }}
                             title="Show Guide"
                         >
-                            <AlertCircle className="h-4 w-4 pointer-events-none" style={{ color: '#29B6F6' }} />
+                            <AlertCircle className="h-4 w-4 pointer-events-none" style={{ color: '#FF453A' }} />
                             <span className="text-xs font-bold pointer-events-none">Show Guide</span>
                         </button>
                     )}
@@ -2559,31 +2559,31 @@ const CanvasWorkspace = ({ side }: CanvasWorkspaceProps) => {
                 setActiveDialog(o ? 'calibration' : null);
             }}>
                 <DialogContent className={cn(
-                    "sm:max-w-md border-2 shadow-2xl",
+                    "sm:max-w-md border shadow-[0_1px_2px_rgba(0,0,0,.04),0_8px_24px_rgba(0,0,0,.12)]",
                     isDark
-                        ? "!bg-[#12314E] !text-[#F5FAFF] !border-[#4FC3F7]/60 shadow-black/60"
-                        : "!bg-[#FFFFFF] !text-slate-900 !border-slate-300 shadow-slate-400/40"
+                        ? "!bg-[#141416] !text-[#F5F5F7] !border-[#242427]"
+                        : "!bg-[#FFFFFF] !text-slate-900 !border-slate-300"
                 )}>
                     <DialogHeader>
-                        <DialogTitle className={cn("flex items-center gap-2", isDark ? "text-[#E3F2FD]" : "text-slate-900")}>
+                        <DialogTitle className={cn("flex items-center gap-2", isDark ? "text-[#F5F5F7]" : "text-slate-900")}>
                             <Ruler className="h-5 w-5 text-amber-500" />
                             System Calibration
                         </DialogTitle>
                     </DialogHeader>
                     <div className="space-y-4 py-4">
                         <div className="space-y-2">
-                            <Label htmlFor="mm" className={isDark ? 'text-[#90CAF9]/80' : 'text-slate-700'}>Known Length (mm)</Label>
+                            <Label htmlFor="mm" className={isDark ? 'text-[#9CA3AF]/80' : 'text-slate-700'}>Known Length (mm)</Label>
                             <Input
                                 id="mm"
                                 type="number"
                                 placeholder="Enter length in mm..."
                                 value={calibrationMm}
                                 onChange={(e) => setCalibrationMm(e.target.value)}
-                                className={cn(isDark ? "!bg-[#0A1929] !border-[#1E3A5F] !text-[#E3F2FD]" : "!bg-white !border-gray-300 !text-slate-900")}
+                                className={cn(isDark ? "!bg-[#0A0A0B] !border-[#242427] !text-[#F5F5F7]" : "!bg-white !border-gray-300 !text-slate-900")}
                                 autoFocus
                             />
                         </div>
-                        <p className={cn("text-[11px] p-2 rounded-lg italic", isDark ? "text-[#90CAF9]/80 bg-[#0A1929]/60" : "text-slate-600 bg-gray-200")}>
+                        <p className={cn("text-[11px] p-2 rounded-lg italic", isDark ? "text-[#9CA3AF]/80 bg-[#0A0A0B]/60" : "text-slate-600 bg-gray-200")}>
                             This will calibrate all future measurements. The line you just drew will be used as the reference segment.
                         </p>
                     </div>
@@ -2597,7 +2597,7 @@ const CanvasWorkspace = ({ side }: CanvasWorkspaceProps) => {
                                 setCalibrationMm("");
                                 setTempPoints([]);
                             }}
-                            className={isDark ? 'text-[#90CAF9] hover:text-[#E3F2FD] hover:bg-[#29B6F6]/10' : 'text-slate-700 hover:text-slate-900 hover:bg-gray-200'}
+                            className={isDark ? 'text-[#9CA3AF] hover:text-[#F5F5F7] hover:bg-[#1B1B1E]' : 'text-slate-700 hover:text-slate-900 hover:bg-gray-200'}
                         >
                             Cancel
                         </Button>
@@ -2620,7 +2620,7 @@ const CanvasWorkspace = ({ side }: CanvasWorkspaceProps) => {
                                 setActiveTool(null);
                                 setTempPoints([]);
                             }}
-                            className="bg-blue-600 hover:bg-blue-700 text-white"
+                            className="bg-[#FF453A] hover:bg-[#e03d33] text-white"
                         >
                             Set Calibration
                         </Button>
@@ -2632,14 +2632,14 @@ const CanvasWorkspace = ({ side }: CanvasWorkspaceProps) => {
                 setIsVBMDialogOpen(o);
                 setActiveDialog(o ? 'vbm' : null);
             }}>
-                <DialogContent className={cn("sm:max-w-md", isDark ? "!bg-[#0F2A44] !text-[#E3F2FD] !border-[#1E3A5F]" : "!bg-gray-100 !text-slate-900 !border-gray-300")}>
+                <DialogContent className={cn("sm:max-w-md", isDark ? "!bg-[#141416] !text-[#F5F5F7] !border-[#242427]" : "!bg-gray-100 !text-slate-900 !border-gray-300")}>
                     <DialogHeader>
-                        <DialogTitle className={cn("flex items-center gap-2 font-bold", isDark ? "text-[#EAF6FF]" : "text-slate-900")}>
+                        <DialogTitle className={cn("flex items-center gap-2 font-bold", isDark ? "text-[#F5F5F7]" : "text-slate-900")}>
                             VBM Mode Selection
                         </DialogTitle>
                     </DialogHeader>
                     <div className="py-4 space-y-4">
-                        <p className={cn("text-sm font-semibold", isDark ? "text-[#D7EEFF]" : "text-slate-800")}>Select the scan plane for Vertebral Body Measurement:</p>
+                        <p className={cn("text-sm font-semibold", isDark ? "text-[#9CA3AF]" : "text-slate-800")}>Select the scan plane for Vertebral Body Measurement:</p>
                         <div className="grid grid-cols-2 gap-4">
                             <Button
                                 variant={vbmMode === 'lateral' ? 'default' : 'outline'}
@@ -2649,7 +2649,7 @@ const CanvasWorkspace = ({ side }: CanvasWorkspaceProps) => {
                                     vbmMode === 'lateral'
                                         ? 'bg-primary hover:bg-primary/90 text-primary-foreground ring-2 ring-primary/40'
                                         : isDark
-                                            ? 'border-[#75CFFF]/60 bg-[#0F273D] text-[#EAF6FF] hover:bg-[#173B5A]'
+                                            ? 'border-[#242427] bg-[#1B1B1E] text-[#F5F5F7] hover:bg-[#242427]'
                                             : 'border-slate-300 bg-slate-50 text-slate-900 hover:bg-slate-100'
                                 )}
                             >
@@ -2663,21 +2663,21 @@ const CanvasWorkspace = ({ side }: CanvasWorkspaceProps) => {
                                     vbmMode === 'ap'
                                         ? 'bg-primary hover:bg-primary/90 text-primary-foreground ring-2 ring-primary/40'
                                         : isDark
-                                            ? 'border-[#75CFFF]/60 bg-[#0F273D] text-[#EAF6FF] hover:bg-[#173B5A]'
+                                            ? 'border-[#242427] bg-[#1B1B1E] text-[#F5F5F7] hover:bg-[#242427]'
                                             : 'border-slate-300 bg-slate-50 text-slate-900 hover:bg-slate-100'
                                 )}
                             >
                                 Coronal (AP)
                             </Button>
                         </div>
-                        <div className={cn("text-[11px] italic p-2 rounded-lg border", isDark ? 'text-[#CDEAFF] bg-[#0C2438] border-[#4FC3F7]/30' : 'text-slate-700 bg-slate-100 border-slate-200')}>
+                        <div className={cn("text-[11px] italic p-2 rounded-lg border", isDark ? 'text-[#9CA3AF] bg-[#0A0A0B] border-[#242427]' : 'text-slate-700 bg-slate-100 border-slate-200')}>
                             {vbmMode === 'lateral'
                                 ? "Measures: Anterior/Posterior heights, Wedge angle, Endplate lengths, Body depth."
                                 : "Measures: Left/Right heights, Endplate widths, Body width."}
                         </div>
                     </div>
                     <DialogFooter>
-                        <Button className="w-full bg-primary hover:bg-primary/90 text-primary-foreground font-bold h-11 rounded-xl shadow-lg shadow-primary/20" onClick={() => setIsVBMDialogOpen(false)}>Start Placement</Button>
+                        <Button className="w-full bg-primary hover:bg-primary/90 text-primary-foreground font-bold h-11 rounded-xl shadow-[0_1px_2px_rgba(0,0,0,.04),0_8px_24px_rgba(0,0,0,.08)]" onClick={() => setIsVBMDialogOpen(false)}>Start Placement</Button>
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
@@ -2686,7 +2686,7 @@ const CanvasWorkspace = ({ side }: CanvasWorkspaceProps) => {
                 setIsTiltDialogOpen(open);
                 setActiveDialog(open ? 'tilt' : null);
             }}>
-                <DialogContent className={cn("sm:max-w-md", isDark ? "!bg-[#0F2A44] !text-[#E3F2FD] !border-[#1E3A5F]" : "!bg-gray-100 !text-slate-900 !border-gray-300")} onKeyDown={(e) => {
+                <DialogContent className={cn("sm:max-w-md", isDark ? "!bg-[#141416] !text-[#F5F5F7] !border-[#242427]" : "!bg-gray-100 !text-slate-900 !border-gray-300")} onKeyDown={(e) => {
                     if (e.key === 'Enter') {
                         // Confirm selection
                         setTiltMode(pendingTiltMode || 'UIV');
@@ -2736,9 +2736,9 @@ const CanvasWorkspace = ({ side }: CanvasWorkspaceProps) => {
                 setIsTextDialogOpen(open);
                 setActiveDialog(open ? 'text' : null);
             }}>
-                <DialogContent className={cn(isDark ? "!bg-[#0F2A44] !text-[#E3F2FD] !border-[#1E3A5F]" : "!bg-gray-100 !text-slate-900 !border-gray-300")}>
+                <DialogContent className={cn(isDark ? "!bg-[#141416] !text-[#F5F5F7] !border-[#242427]" : "!bg-gray-100 !text-slate-900 !border-gray-300")}>
                     <DialogHeader>
-                        <DialogTitle className={isDark ? 'text-[#E3F2FD]' : 'text-slate-900'}>Enter Text Label</DialogTitle>
+                        <DialogTitle className={isDark ? 'text-[#F5F5F7]' : 'text-slate-900'}>Enter Text Label</DialogTitle>
                     </DialogHeader>
                     <div className="py-4">
                         <Input
