@@ -62,7 +62,7 @@ Header: "Good morning, Dr. {name}" + subtitle; bell (badge) + **New Study** + ke
 - **Unfinished Studies**: table-like rows (thumb, name+modality+date, diagnosis, last edited, status dot, Open Workspace, kebab) + "View all in-progress studies".
 - **Notifications** popover: grouped Connections / Collaboration / System; "Mark all as read"; rows with icon, title, subtitle, time, unread dot.
 - **Tasks** popover (from kebab): Pending Review, Missing Information, Unsaved Workspaces, Failed Processing, Session Recovery; count badge; "View all tasks".
-
+   
 ### 4.2 Create New Study (modal)
 Title + subtitle; "Choose Import Source": three large option rows — **Local Files**, **Local Folder**, **PACS** (icon, title, desc, format chips DICOM/jpg/png/tiff/bmp/All Modalities, chevron). Footer: supported-formats hint + Cancel.
 

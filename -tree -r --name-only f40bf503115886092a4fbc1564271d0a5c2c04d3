@@ -1,0 +1,12 @@
+[33mcommit 78c7ed4d759ccb12590501f07283636147272f8e[m[33m ([m[1;35mrefs/stash[m[33m)[m
+Merge: 39d330a 89e52a7 f40bf50
+Author: akshayaRamalingamSiraimeetan <akshayaramalingamsiraimeetan@gmail.com>
+Date:   Thu Jun 11 13:28:46 2026 +0530
+
+    On postgres-migration: changes on rebuild folder
+
+[33mcommit f40bf503115886092a4fbc1564271d0a5c2c04d3[m
+Author: akshayaRamalingamSiraimeetan <akshayaramalingamsiraimeetan@gmail.com>
+Date:   Thu Jun 11 13:28:46 2026 +0530
+
+    untracked files on postgres-migration: 39d330a removed debug code from index.ts
