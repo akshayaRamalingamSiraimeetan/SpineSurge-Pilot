@@ -10,6 +10,8 @@ import * as pacsService from './pacsService';
 import http from 'http';
 import { WebSocketServer } from 'ws';
 import { setupWSConnection } from './y-websocket';
+import { authRouter } from './routes/auth';
+import { orgsRouter } from './routes/orgs';
 
 
 
@@ -637,6 +639,9 @@ app.post('/api/pacs/import', async (req, res) => {
         res.status(500).json({ error: err.message });
     }
 });
+
+app.use('/auth', authRouter);
+app.use('/orgs', orgsRouter);
 
 server.listen(port, () => {
     console.log(`Server running at http://localhost:${port}`);

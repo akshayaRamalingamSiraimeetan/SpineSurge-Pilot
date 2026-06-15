@@ -1,4 +1,4 @@
-import { pgTable, text, integer, real, boolean, primaryKey } from 'drizzle-orm/pg-core';
+import { pgTable, text, integer, real, boolean, primaryKey, timestamp, jsonb } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
 
 export const patients = pgTable('patients', {
@@ -138,4 +138,54 @@ export const implantsRelations = relations(implants, ({ one }) => ({
 
 export const reportsRelations = relations(reports, ({ one }) => ({
     visit: one(visits, { fields: [reports.visitId], references: [visits.id] }),
+}));
+
+// ─── Pilot Tables ────────────────────────────────────────────────────────────
+
+export const orgs = pgTable('orgs', {
+  id:        text('id').primaryKey(),
+  name:      text('name').notNull(),
+  slug:      text('slug').notNull().unique(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const users = pgTable('users', {
+  id:           text('id').primaryKey(),
+  orgId:        text('org_id').notNull().references(() => orgs.id),
+  email:        text('email').notNull().unique(),
+  passwordHash: text('password_hash').notNull(),
+  fullName:     text('full_name').notNull(),
+  role:         text('role').notNull(),
+  isActive:     boolean('is_active').notNull().default(true),
+  createdAt:    timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt:    timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const auditLog = pgTable('audit_log', {
+  id:         text('id').primaryKey(),
+  orgId:      text('org_id').references(() => orgs.id),
+  userId:     text('user_id').references(() => users.id),
+  action:     text('action').notNull(),
+  entityType: text('entity_type'),
+  entityId:   text('entity_id'),
+  metadata:   jsonb('metadata'),
+  createdAt:  timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+// ─── Pilot Relations ──────────────────────────────────────────────────────────
+
+export const orgsRelations = relations(orgs, ({ many }) => ({
+  users:     many(users),
+  auditLogs: many(auditLog),
+}));
+
+export const usersRelations = relations(users, ({ one, many }) => ({
+  org:       one(orgs, { fields: [users.orgId], references: [orgs.id] }),
+  auditLogs: many(auditLog),
+}));
+
+export const auditLogRelations = relations(auditLog, ({ one }) => ({
+  org:  one(orgs,  { fields: [auditLog.orgId],  references: [orgs.id] }),
+  user: one(users, { fields: [auditLog.userId], references: [users.id] }),
 }));
