@@ -1,8 +1,19 @@
+/// <reference types="vitest" />
 import { resolve } from 'path';
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 
 export default defineConfig({
+  test: {
+    environment: 'jsdom',
+    globals: true,
+    include: [
+      'server/**/*.test.ts',
+      'src/**/*.test.tsx',
+      'src/**/*.test.ts',
+    ],
+    setupFiles: [],
+  },
   root: resolve(__dirname, 'src/renderer'),
   publicDir: resolve(__dirname, 'public'),
   plugins: [react()],

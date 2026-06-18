@@ -1,4 +1,4 @@
-import { pgTable, text, integer, real, boolean, primaryKey, timestamp, jsonb } from 'drizzle-orm/pg-core';
+import { pgTable, text, integer, real, boolean, primaryKey, timestamp, jsonb, uuid } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
 
 export const patients = pgTable('patients', {
@@ -143,23 +143,32 @@ export const reportsRelations = relations(reports, ({ one }) => ({
 // ─── Pilot Tables ────────────────────────────────────────────────────────────
 
 export const orgs = pgTable('orgs', {
-  id:        text('id').primaryKey(),
-  name:      text('name').notNull(),
-  slug:      text('slug').notNull().unique(),
-  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  id:                text('id').primaryKey(),
+  name:              text('name').notNull(),
+  slug:              text('slug').notNull().unique(),
+  organizationEmail: text('organization_email').notNull().unique(),
+  createdBy:         text('created_by'),                             // FK set after users table is defined
+  createdAt:         timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt:         timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
 export const users = pgTable('users', {
-  id:           text('id').primaryKey(),
-  orgId:        text('org_id').notNull().references(() => orgs.id),
-  email:        text('email').notNull().unique(),
-  passwordHash: text('password_hash').notNull(),
-  fullName:     text('full_name').notNull(),
-  role:         text('role').notNull(),
-  isActive:     boolean('is_active').notNull().default(true),
-  createdAt:    timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-  updatedAt:    timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  id:               text('id').primaryKey(),
+  orgId:            text('org_id').references(() => orgs.id),  // nullable: kept for backward compatibility
+  email:            text('email').notNull().unique(),
+  passwordHash:     text('password_hash').notNull(),
+  fullName:         text('full_name'),                          // nullable: set during profile completion
+  role:             text('role').notNull(),
+  isActive:         boolean('is_active').notNull().default(true),
+  createdAt:        timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt:        timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  // OTP onboarding columns
+  isEmailVerified:  boolean('is_email_verified').notNull().default(false),
+  emailVerifiedAt:  timestamp('email_verified_at', { withTimezone: true }),
+  profileCompleted: boolean('profile_completed').notNull().default(false),
+  designation:      text('designation'),
+  country:          text('country'),
+  avatarUrl:        text('avatar_url'),
 });
 
 export const auditLog = pgTable('audit_log', {
@@ -175,17 +184,80 @@ export const auditLog = pgTable('audit_log', {
 
 // ─── Pilot Relations ──────────────────────────────────────────────────────────
 
-export const orgsRelations = relations(orgs, ({ many }) => ({
-  users:     many(users),
-  auditLogs: many(auditLog),
+export const orgsRelations = relations(orgs, ({ one, many }) => ({
+  creator:      one(users, { fields: [orgs.createdBy], references: [users.id] }),
+  users:        many(users),
+  memberships:  many(organizationMemberships),
+  auditLogs:    many(auditLog),
 }));
 
 export const usersRelations = relations(users, ({ one, many }) => ({
-  org:       one(orgs, { fields: [users.orgId], references: [orgs.id] }),
-  auditLogs: many(auditLog),
+  org:          one(orgs, { fields: [users.orgId], references: [orgs.id] }),
+  memberships:  many(organizationMemberships),
+  auditLogs:    many(auditLog),
 }));
 
 export const auditLogRelations = relations(auditLog, ({ one }) => ({
   org:  one(orgs,  { fields: [auditLog.orgId],  references: [orgs.id] }),
   user: one(users, { fields: [auditLog.userId], references: [users.id] }),
+}));
+
+// ─── Multi-org Membership Table ──────────────────────────────────────────────
+
+export const organizationMemberships = pgTable('organization_memberships', {
+  id:        uuid('id').primaryKey().defaultRandom(),
+  userId:    text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  orgId:     text('org_id').notNull().references(() => orgs.id,   { onDelete: 'cascade' }),
+  role:      text('role').notNull().default('viewer'),
+  joinedAt:  timestamp('joined_at',  { withTimezone: true }).notNull().defaultNow(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+// ─── OTP Onboarding Tables ────────────────────────────────────────────────────
+
+export const emailVerificationOtps = pgTable('email_verification_otps', {
+  id:        uuid('id').primaryKey().defaultRandom(),
+  userId:    text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  otpHash:   text('otp_hash').notNull(),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  usedAt:    timestamp('used_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const orgInvitations = pgTable('org_invitations', {
+  id:           uuid('id').primaryKey().defaultRandom(),
+  orgId:        text('org_id').notNull().references(() => orgs.id, { onDelete: 'cascade' }),
+  invitedEmail: text('invited_email').notNull(),
+  role:         text('role').notNull().default('viewer'),
+  status:       text('status').notNull().default('pending'),
+  createdAt:    timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  acceptedAt:   timestamp('accepted_at', { withTimezone: true }),
+});
+
+export const otpAttemptLog = pgTable('otp_attempt_log', {
+  id:          uuid('id').primaryKey().defaultRandom(),
+  userId:      text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  attemptedAt: timestamp('attempted_at', { withTimezone: true }).notNull().defaultNow(),
+  succeeded:   boolean('succeeded').notNull().default(false),
+});
+
+// ─── OTP Onboarding Relations ─────────────────────────────────────────────────
+
+export const emailVerificationOtpsRelations = relations(emailVerificationOtps, ({ one }) => ({
+  user: one(users, { fields: [emailVerificationOtps.userId], references: [users.id] }),
+}));
+
+export const orgInvitationsRelations = relations(orgInvitations, ({ one }) => ({
+  org: one(orgs, { fields: [orgInvitations.orgId], references: [orgs.id] }),
+}));
+
+export const otpAttemptLogRelations = relations(otpAttemptLog, ({ one }) => ({
+  user: one(users, { fields: [otpAttemptLog.userId], references: [users.id] }),
+}));
+
+// ─── Multi-org Membership Relations ──────────────────────────────────────────
+
+export const organizationMembershipsRelations = relations(organizationMemberships, ({ one }) => ({
+  user: one(users, { fields: [organizationMemberships.userId], references: [users.id] }),
+  org:  one(orgs,  { fields: [organizationMemberships.orgId],  references: [orgs.id]  }),
 }));

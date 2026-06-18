@@ -9,11 +9,13 @@ declare module 'express-serve-static-core' {
   interface Request {
     user?: {
       id: string;
-      orgId: string;
+      orgId: string | null;
       email: string;
-      fullName: string;
+      fullName: string | null;
       role: 'admin' | 'surgeon' | 'viewer';
       isActive: boolean;
+      isEmailVerified: boolean;
+      profileCompleted: boolean;
     };
     org?: {
       id: string;
@@ -38,7 +40,7 @@ export async function authenticate(
   const token = authHeader.slice(7); // remove "Bearer "
 
   // 2. Verify JWT
-  let payload: { id: string; orgId: string; email: string; role: string };
+  let payload: { id: string; orgId: string | null; email: string; role: string };
   try {
     payload = jwt.verify(token, process.env.JWT_SECRET!) as typeof payload;
   } catch {
@@ -58,25 +60,29 @@ export async function authenticate(
     return;
   }
 
-  // 4. Load org from DB
-  const [org] = await db
-    .select()
-    .from(orgs)
-    .where(eq(orgs.id, user.orgId))
-    .limit(1);
+  // 4. Load org from DB (may be null — no org = Personal Workspace)
+  let org: { id: string; name: string; slug: string } | undefined;
+  if (user.orgId) {
+    const [dbOrg] = await db
+      .select()
+      .from(orgs)
+      .where(eq(orgs.id, user.orgId))
+      .limit(1);
+    org = dbOrg ? { id: dbOrg.id, name: dbOrg.name, slug: dbOrg.slug } : undefined;
+  }
 
   // 5. Attach to request and proceed
   req.user = {
-    id: user.id,
-    orgId: user.orgId,
-    email: user.email,
-    fullName: user.fullName,
-    role: user.role as 'admin' | 'surgeon' | 'viewer',
-    isActive: user.isActive,
+    id:               user.id,
+    orgId:            user.orgId ?? null,
+    email:            user.email,
+    fullName:         user.fullName ?? null,
+    role:             user.role as 'admin' | 'surgeon' | 'viewer',
+    isActive:         user.isActive,
+    isEmailVerified:  user.isEmailVerified ?? false,
+    profileCompleted: user.profileCompleted ?? false,
   };
-  req.org = org
-    ? { id: org.id, name: org.name, slug: org.slug }
-    : undefined;
+  req.org = org;
 
   next();
 }

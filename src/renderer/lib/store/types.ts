@@ -84,6 +84,12 @@ export interface UserProfile {
     specialty: string;
     joined: string;
     subsection: string;
+    isEmailVerified?: boolean;
+    profileCompleted?: boolean;
+    orgId?: string | null;
+    designation?: string;
+    country?: string;
+    avatarUrl?: string;
 }
 
 export interface ThreeDImplant {

@@ -45,7 +45,11 @@ export const createPatientSlice: StateCreator<AppState, [], [], PatientSlice> = 
                 const idToActivate = currentActiveId && patients.find(p => p.id === currentActiveId)
                     ? currentActiveId
                     : patients[0].id;
-                await get().setActivePatient(idToActivate);
+
+                // Guard: only activate a patient if we have a valid non-empty id
+                if (idToActivate) {
+                    await get().setActivePatient(idToActivate);
+                }
             }
         } catch (e) {
             console.error("Initialization failed", e);
@@ -53,42 +57,46 @@ export const createPatientSlice: StateCreator<AppState, [], [], PatientSlice> = 
     },
 
     setActivePatient: async (id, initialContextId = null) => {
+        // Guard: never attempt to fetch contexts with an empty/falsy patient id
+        if (!id) {
+            console.warn('[setActivePatient] called with falsy id — skipping context fetch');
+            return;
+        }
+
         set({ activePatientId: id, activeContextId: initialContextId });
-        if (id) {
-            try {
-                // If patient is not in the list, try to fetch it specifically or refresh the list
-                const currentPatients = get().patients;
-                if (!currentPatients.find(p => p.id === id)) {
-                    const allPatients = await api.getPatients();
-                    set({ patients: allPatients });
-                }
-
-                const fetchedContexts = await api.getContexts(id);
-                const contexts: Context[] = fetchedContexts.map((c: any) => ({
-                    id: c.id,
-                    patientId: c.patientId,
-                    visitId: c.visitId,
-                    studyIds: c.studyIds,
-                    mode: c.mode,
-                    name: c.name,
-                    lastModified: c.lastModified
-                }));
-
-                const contextStates: ContextState[] = fetchedContexts.map((c: any) => ({
-                    contextId: c.id,
-                    measurements: c.measurements || [],
-                    implants: c.implants || [],
-                    threeDImplants: c.threeDImplants || [],
-                    pedicleSimulations: c.pedicleSimulations || [],
-                    annotations: c.annotations || [],
-                    toolState: c.toolState || {},
-                    currentImage: c.currentImage
-                }));
-
-                set({ contexts, contextStates });
-            } catch (e) {
-                console.error("Failed to fetch contexts", e);
+        try {
+            // If patient is not in the list, try to fetch it specifically or refresh the list
+            const currentPatients = get().patients;
+            if (!currentPatients.find(p => p.id === id)) {
+                const allPatients = await api.getPatients();
+                set({ patients: allPatients });
             }
+
+            const fetchedContexts = await api.getContexts(id);
+            const contexts: Context[] = fetchedContexts.map((c: any) => ({
+                id: c.id,
+                patientId: c.patientId,
+                visitId: c.visitId,
+                studyIds: c.studyIds,
+                mode: c.mode,
+                name: c.name,
+                lastModified: c.lastModified
+            }));
+
+            const contextStates: ContextState[] = fetchedContexts.map((c: any) => ({
+                contextId: c.id,
+                measurements: c.measurements || [],
+                implants: c.implants || [],
+                threeDImplants: c.threeDImplants || [],
+                pedicleSimulations: c.pedicleSimulations || [],
+                annotations: c.annotations || [],
+                toolState: c.toolState || {},
+                currentImage: c.currentImage
+            }));
+
+            set({ contexts, contextStates });
+        } catch (e) {
+            console.error("Failed to fetch contexts", e);
         }
     },
 

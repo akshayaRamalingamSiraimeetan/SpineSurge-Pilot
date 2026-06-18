@@ -132,9 +132,8 @@ const MainPage = () => {
                     return;
                 }
 
-                // Priority 3: Navigate Back if not on Dashboard
-                if (location.pathname !== '/dashboard' && location.pathname !== '/') {
-                    // navigate(-1); // Or specific routing if history is messy
+                // Priority 3: Navigate Back if not on Workspace
+                if (location.pathname !== '/workspace' && location.pathname !== '/') {
                     navigate('/dashboard');
                 }
             }

@@ -1,30 +1,25 @@
 import { ThemeProvider } from "@/components/theme-provider"
 import { HashRouter as Router, Routes, Route, Navigate } from "react-router-dom"
-import { JSX, useEffect } from "react"
+import { useEffect } from "react"
 import { useAppStore } from "@/lib/store/index"
 
 import MainLayout from "@/components/layout/MainLayout"
+import DashboardLayout from "@/components/dashboard/DashboardLayout"
 import MainPage from "@/pages/MainPage"
+import DashboardPage from "@/pages/DashboardPage"
 import PatientCasesPage from "@/pages/PatientCasesPage"
 import ComparePage from "@/pages/ComparePage"
 import LoginPage from "@/pages/LoginPage"
+import RegisterPage from "@/pages/RegisterPage"
+import VerifyEmailPage from "@/pages/VerifyEmailPage"
+import CompleteProfilePage from "@/pages/CompleteProfilePage"
+import CreateOrgPage from "@/pages/CreateOrgPage"
+import PendingInvitationsPage from "@/pages/PendingInvitationsPage"
 import { RouteErrorBoundary } from "@/components/RouteErrorBoundary"
-
-
-// Basic Protected Route Wrapper
-const RequireAuth = ({ children }: { children: JSX.Element }) => {
-  const isAuthenticated = useAppStore(state => state.isAuthenticated);
-
-  if (!isAuthenticated) {
-    return <Navigate to="/login" replace />;
-  }
-
-  return children;
-};
+import { RequireAuth, RequireVerified, RequireProfile, RedirectIfComplete } from "@/components/guards"
 
 const App = () => {
   const initializeStore = useAppStore(state => state.initializeStore);
-  const isAuthenticated = useAppStore(state => state.isAuthenticated);
 
   useEffect(() => {
     initializeStore();
@@ -34,36 +29,124 @@ const App = () => {
     <ThemeProvider defaultTheme="dark" storageKey="vite-ui-theme">
       <Router>
         <Routes>
-          {/* Public Route */}
+          {/* ── Public routes — redirect fully-onboarded users away ── */}
           <Route path="/login" element={
-            isAuthenticated ? <Navigate to="/dashboard" replace /> : (
+            <RedirectIfComplete>
               <RouteErrorBoundary routeName="/login">
                 <LoginPage />
               </RouteErrorBoundary>
-            )
+            </RedirectIfComplete>
           } />
 
-          {/* Root Redirect */}
-          <Route path="/" element={
-            isAuthenticated ? <Navigate to="/dashboard" replace /> : <Navigate to="/login" replace />
+          <Route path="/register" element={
+            <RedirectIfComplete>
+              <RouteErrorBoundary routeName="/register">
+                <RegisterPage />
+              </RouteErrorBoundary>
+            </RedirectIfComplete>
           } />
 
-          {/* Protected Routes */}
+          {/* ── OTP verification — no auth required ─────────────── */}
+          <Route path="/verify-email" element={
+            <RouteErrorBoundary routeName="/verify-email">
+              <VerifyEmailPage />
+            </RouteErrorBoundary>
+          } />
+
+          {/* ── Profile completion — requires auth + email verified ─ */}
+          <Route path="/complete-profile" element={
+            <RequireAuth>
+              <RequireVerified>
+                <RouteErrorBoundary routeName="/complete-profile">
+                  <CompleteProfilePage />
+                </RouteErrorBoundary>
+              </RequireVerified>
+            </RequireAuth>
+          } />
+
+          {/* ── Root redirect ────────────────────────────────────── */}
+          <Route path="/" element={<Navigate to="/login" replace />} />
+
+          {/* ── Dashboard — auth + verified + profile complete ──────
+              NOTE: RequireOrg has been removed.
+              Organisation creation is now OPTIONAL.
+              activeOrgId = null means Personal Workspace. ─────── */}
           <Route element={
             <RequireAuth>
-              <MainLayout />
+              <RequireVerified>
+                <RequireProfile>
+                  <DashboardLayout />
+                </RequireProfile>
+              </RequireVerified>
             </RequireAuth>
           }>
-            <Route path="/dashboard" element={<RouteErrorBoundary routeName="/dashboard"><MainPage /></RouteErrorBoundary>} />
-            <Route path="/compare" element={<RouteErrorBoundary routeName="/compare"><ComparePage /></RouteErrorBoundary>} />
+            <Route path="/dashboard" element={
+              <RouteErrorBoundary routeName="/dashboard">
+                <DashboardPage />
+              </RouteErrorBoundary>
+            } />
           </Route>
 
-          {/* Standalone Protected Route */}
+          {/* ── Organization creation (optional, accessible from workspace switcher) ─ */}
+          <Route path="/create-org" element={
+            <RequireAuth>
+              <RequireVerified>
+                <RequireProfile>
+                  <RouteErrorBoundary routeName="/create-org">
+                    <CreateOrgPage />
+                  </RouteErrorBoundary>
+                </RequireProfile>
+              </RequireVerified>
+            </RequireAuth>
+          } />
+
+          {/* ── Pending invitations (accessible from workspace switcher) ─ */}
+          <Route path="/pending-invitations" element={
+            <RequireAuth>
+              <RequireVerified>
+                <RouteErrorBoundary routeName="/pending-invitations">
+                  <PendingInvitationsPage />
+                </RouteErrorBoundary>
+              </RequireVerified>
+            </RequireAuth>
+          } />
+
+          {/* ── Legacy onboarding hub — keep for deep-link backward compat ─
+              Redirects to /dashboard since org is now optional.          ─ */}
+          <Route path="/onboarding/*" element={
+            <RequireAuth>
+              <RequireVerified>
+                <RequireProfile>
+                  <Navigate to="/dashboard" replace />
+                </RequireProfile>
+              </RequireVerified>
+            </RequireAuth>
+          } />
+
+          {/* ── Canvas Workspace (clinical routes) ─────────────────── */}
+          <Route element={
+            <RequireAuth>
+              <RequireVerified>
+                <RequireProfile>
+                  <MainLayout />
+                </RequireProfile>
+              </RequireVerified>
+            </RequireAuth>
+          }>
+            <Route path="/workspace" element={<RouteErrorBoundary routeName="/workspace"><MainPage /></RouteErrorBoundary>} />
+            <Route path="/compare"   element={<RouteErrorBoundary routeName="/compare"><ComparePage /></RouteErrorBoundary>} />
+          </Route>
+
+          {/* ── Standalone protected route ───────────────────────── */}
           <Route path="/cases" element={
             <RequireAuth>
-              <RouteErrorBoundary routeName="/cases">
-                <PatientCasesPage />
-              </RouteErrorBoundary>
+              <RequireVerified>
+                <RequireProfile>
+                  <RouteErrorBoundary routeName="/cases">
+                    <PatientCasesPage />
+                  </RouteErrorBoundary>
+                </RequireProfile>
+              </RequireVerified>
             </RequireAuth>
           } />
         </Routes>

@@ -12,6 +12,7 @@ import { WebSocketServer } from 'ws';
 import { setupWSConnection } from './y-websocket';
 import { authRouter } from './routes/auth';
 import { orgsRouter } from './routes/orgs';
+import { invitationsRouter } from './routes/invitations';
 
 
 
@@ -642,6 +643,7 @@ app.post('/api/pacs/import', async (req, res) => {
 
 app.use('/auth', authRouter);
 app.use('/orgs', orgsRouter);
+app.use('/invitations', invitationsRouter);
 
 server.listen(port, () => {
     console.log(`Server running at http://localhost:${port}`);
