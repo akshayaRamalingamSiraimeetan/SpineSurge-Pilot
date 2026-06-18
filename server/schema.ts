@@ -34,6 +34,18 @@ export const studies = pgTable('studies', {
     modality: text('modality').default('X-Ray'),
     source: text('source').default('Import'),
     acquisitionDate: text('acquisition_date'),
+    // Workspace ownership (migration 006):
+    // NULL  = personal workspace study
+    // set   = organization workspace study
+    organizationId: text('organization_id').references(() => orgs.id, { onDelete: 'set null' }),
+    // Study creator (migration 007):
+    // NULL  = legacy study (pre-ownership, visible to all for backward compat)
+    // set   = user who created this study
+    ownerUserId: text('owner_user_id').references(() => users.id, { onDelete: 'set null' }),
+    // Admin review copy (migration 008):
+    // NULL  = original study
+    // set   = this is a review copy; points to the original study id
+    parentStudyId: text('parent_study_id').references((): any => studies.id, { onDelete: 'set null' }),
 });
 
 export const scans = pgTable('scans', {
@@ -108,6 +120,8 @@ export const visitsRelations = relations(visits, ({ one, many }) => ({
 export const studiesRelations = relations(studies, ({ one, many }) => ({
     patient: one(patients, { fields: [studies.patientId], references: [patients.id] }),
     visit: one(visits, { fields: [studies.visitId], references: [visits.id] }),
+    org: one(orgs, { fields: [studies.organizationId], references: [orgs.id] }),
+    owner: one(users, { fields: [studies.ownerUserId], references: [users.id] }),
     scans: many(scans),
 }));
 
@@ -188,12 +202,14 @@ export const orgsRelations = relations(orgs, ({ one, many }) => ({
   creator:      one(users, { fields: [orgs.createdBy], references: [users.id] }),
   users:        many(users),
   memberships:  many(organizationMemberships),
+  studies:      many(studies),
   auditLogs:    many(auditLog),
 }));
 
 export const usersRelations = relations(users, ({ one, many }) => ({
   org:          one(orgs, { fields: [users.orgId], references: [orgs.id] }),
   memberships:  many(organizationMemberships),
+  ownedStudies: many(studies),
   auditLogs:    many(auditLog),
 }));
 
@@ -209,6 +225,9 @@ export const organizationMemberships = pgTable('organization_memberships', {
   userId:    text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
   orgId:     text('org_id').notNull().references(() => orgs.id,   { onDelete: 'cascade' }),
   role:      text('role').notNull().default('viewer'),
+  // status (migration 005): 'active' | 'removed' | 'blacklisted'
+  // Membership row is NEVER deleted — retained for audit/history.
+  status:    text('status').notNull().default('active'),
   joinedAt:  timestamp('joined_at',  { withTimezone: true }).notNull().defaultNow(),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });

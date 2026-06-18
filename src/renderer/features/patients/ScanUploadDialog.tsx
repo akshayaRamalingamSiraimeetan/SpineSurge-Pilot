@@ -79,7 +79,8 @@ export function ScanUploadDialog({ patientId, visitId }: ScanUploadDialogProps) 
     const handleImportFolder = async () => {
         setImportStatus('scanning');
         try {
-            const result = await api.importFolder(folderPath);
+            const token = useAppStore.getState().token;
+            const result = await api.importFolder(folderPath, undefined, undefined, token);
             setImportStatus('complete');
             setImportCount((result as any).count || 0);
         } catch (error) {

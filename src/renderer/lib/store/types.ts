@@ -23,6 +23,8 @@ export interface Study {
     source: string;
     acquisitionDate: string;
     scans: Scan[];
+    /** Workspace ownership: null = personal, set = org id */
+    organizationId?: string | null;
 }
 
 export interface Context {
@@ -78,6 +80,7 @@ export interface Patient {
 }
 
 export interface UserProfile {
+    id?: string;
     name: string;
     email: string;
     title: string;

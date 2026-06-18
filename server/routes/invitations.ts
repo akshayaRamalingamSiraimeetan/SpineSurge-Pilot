@@ -95,11 +95,12 @@ invitationsRouter.post(
       const now = new Date();
 
       await db.transaction(async (tx) => {
-        // Insert membership row (multi-org support)
+        // Insert membership row (multi-org support) with status='active'
         await tx.insert(organizationMemberships).values({
           userId:   req.user!.id,
           orgId:    invitation.orgId,
           role:     invitation.role,
+          status:   'active',
           joinedAt: now,
         });
 
@@ -188,37 +189,131 @@ invitationsRouter.post('/:id/decline', authenticate, async (req, res) => {
 });
 
 // ── POST /invitations ─────────────────────────────────────────────────────────
-// Admin-only: creates a new invitation record.
+// Org admin: creates invitation record(s) for an org.
+// Request body: { org_id, emails: string[], role }
+// Caller must be an active admin member of org_id.
 
 invitationsRouter.post('/', authenticate, async (req, res) => {
-  // Admin check
-  if (req.user!.role !== 'admin') {
-    res.status(403).json({ error: 'Forbidden' });
-    return;
-  }
+  const { org_id, emails, invited_email, role = 'viewer' } = req.body ?? {};
 
-  const { org_id, invited_email, role } = req.body ?? {};
+  // Support both single email (invited_email) and batch (emails array)
+  const emailList: string[] = emails
+    ? (Array.isArray(emails) ? emails : [emails])
+    : invited_email
+    ? [invited_email]
+    : [];
 
-  if (!org_id || !invited_email || !role) {
-    res.status(400).json({ error: 'Missing required fields: org_id, invited_email, role' });
+  if (!org_id || emailList.length === 0) {
+    res.status(400).json({ error: 'Missing required fields: org_id, emails (or invited_email)' });
     return;
   }
 
   try {
-    const [invitation] = await db
-      .insert(orgInvitations)
-      .values({
-        id:           uuidv4(),
-        orgId:        org_id,
-        invitedEmail: invited_email,
-        role,
-        status:       'pending',
-      })
-      .returning();
+    // Verify org exists + check caller is active admin
+    const [orgRow] = await db
+      .select({ createdBy: orgs.createdBy })
+      .from(orgs)
+      .where(eq(orgs.id, org_id))
+      .limit(1);
 
-    res.status(201).json(invitation);
+    if (!orgRow) {
+      res.status(404).json({ error: 'Organization not found' });
+      return;
+    }
+
+    // Verify caller is active admin of this org, or its creator
+    const [callerMembership] = await db
+      .select()
+      .from(organizationMemberships)
+      .where(
+        and(
+          eq(organizationMemberships.userId, req.user!.id),
+          eq(organizationMemberships.orgId, org_id),
+          eq(organizationMemberships.status, 'active'),
+          eq(organizationMemberships.role, 'admin'),
+        )
+      )
+      .limit(1);
+
+    if (!callerMembership && orgRow?.createdBy !== req.user!.id) {
+      res.status(403).json({ error: 'Only admins can send invitations' });
+      return;
+    }
+
+    const created = [];
+    for (const email of emailList) {
+      const normalizedEmail = email.trim().toLowerCase();
+      if (!normalizedEmail) continue;
+
+      const [invitation] = await db
+        .insert(orgInvitations)
+        .values({
+          id:           uuidv4(),
+          orgId:        org_id,
+          invitedEmail: normalizedEmail,
+          role,
+          status:       'pending',
+        })
+        .returning();
+      created.push(invitation);
+    }
+
+    res.status(201).json({ invitations: created });
   } catch (err) {
     console.error('POST /invitations error:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ── GET /invitations/org/:orgId ───────────────────────────────────────────────
+// Returns all invitations for a given org (for admin view).
+// Caller must be an active member of the org.
+
+invitationsRouter.get('/org/:orgId', authenticate, async (req, res) => {
+  const orgId = req.params.orgId;
+
+  try {
+    // Verify caller has access to this org
+    const [callerMembership] = await db
+      .select()
+      .from(organizationMemberships)
+      .where(
+        and(
+          eq(organizationMemberships.userId, req.user!.id),
+          eq(organizationMemberships.orgId, orgId),
+          eq(organizationMemberships.status, 'active'),
+        )
+      )
+      .limit(1);
+
+    const [orgRow] = await db
+      .select({ createdBy: orgs.createdBy })
+      .from(orgs)
+      .where(eq(orgs.id, orgId))
+      .limit(1);
+
+    if (!callerMembership && orgRow?.createdBy !== req.user!.id) {
+      res.status(403).json({ error: 'Access denied' });
+      return;
+    }
+
+    // Fetch all invitations for this org, join inviter info
+    const invitations = await db
+      .select({
+        id:           orgInvitations.id,
+        invitedEmail: orgInvitations.invitedEmail,
+        role:         orgInvitations.role,
+        status:       orgInvitations.status,
+        createdAt:    orgInvitations.createdAt,
+        acceptedAt:   orgInvitations.acceptedAt,
+      })
+      .from(orgInvitations)
+      .where(eq(orgInvitations.orgId, orgId))
+      .orderBy(orgInvitations.createdAt);
+
+    res.status(200).json(invitations);
+  } catch (err) {
+    console.error('GET /invitations/org/:orgId error:', err);
     res.status(500).json({ error: 'Internal server error' });
   }
 });

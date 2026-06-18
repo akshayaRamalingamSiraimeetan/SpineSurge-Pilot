@@ -149,6 +149,9 @@ const CanvasWorkspace = ({ side }: CanvasWorkspaceProps) => {
     }, [isComparisonMode, side, store.comparison, store.implants, activeContextState]);
 
     const syncStoreWithCanvas = useCallback((measurements: Measurement[], implants: any[]) => {
+        // In inspection mode, the admin is viewing a member's study — never write back
+        if (store.inspectionMode?.active) return;
+
         if (isComparisonMode && side) {
             setComparisonMeasurements(side, measurements);
             setComparisonImplants(side, implants);
@@ -158,7 +161,7 @@ const CanvasWorkspace = ({ side }: CanvasWorkspaceProps) => {
             storeSetMeasurements(measurements);
             storeSetImplants(implants);
         }
-    }, [isComparisonMode, side, storeSetMeasurements, storeSetImplants, store.activeContextId, store.updateContextState, setComparisonMeasurements, setComparisonImplants]);
+    }, [isComparisonMode, side, storeSetMeasurements, storeSetImplants, store.activeContextId, store.updateContextState, setComparisonMeasurements, setComparisonImplants, store.inspectionMode]);
 
     const setMeasurements = (measurements: Measurement[]) => {
         const currentImplants = managerRef.current?.current?.data.implants || storeImplants;

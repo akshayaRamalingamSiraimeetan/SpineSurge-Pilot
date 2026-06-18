@@ -466,7 +466,8 @@ export function ReportDialog({ open, onOpenChange, checkedCount }: { open: boole
                 }
                 if (targetVisit) {
                     const blob = doc.output('blob');
-                    await api.uploadReport(targetVisit.id, blob, `Report - ${new Date().toLocaleDateString()}`);
+                    const token = useAppStore.getState().token;
+                    await api.uploadReport(targetVisit.id, blob, `Report - ${new Date().toLocaleDateString()}`, token);
                 }
             }
 

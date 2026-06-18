@@ -5,7 +5,7 @@ import path from 'path';
 import fs from 'fs-extra';
 import { db } from './db';
 import * as schema from './schema';
-import { eq, and } from 'drizzle-orm';
+import { eq, and, isNull, or } from 'drizzle-orm';
 import * as pacsService from './pacsService';
 import http from 'http';
 import { WebSocketServer } from 'ws';
@@ -13,6 +13,7 @@ import { setupWSConnection } from './y-websocket';
 import { authRouter } from './routes/auth';
 import { orgsRouter } from './routes/orgs';
 import { invitationsRouter } from './routes/invitations';
+import { authenticate } from './middleware/authenticate';
 
 
 
@@ -94,11 +95,59 @@ const toAbsoluteUrl = (relativePath: string, baseUrl: string) => {
 
 // --- API Routes ---
 
-// Get all patients
-app.get('/api/patients', async (req, res) => {
+// Get all patients (authenticated — workspace-scoped study filtering)
+//
+// Workspace rules:
+//   ?workspace=personal
+//     → studies WHERE organization_id IS NULL
+//               AND (owner_user_id = caller OR owner_user_id IS NULL)
+//
+//   ?workspace=organization&orgId=xxx
+//     → studies WHERE organization_id = orgId
+//               AND (
+//                     owner_user_id = caller   (member: only own studies)
+//                     OR owner_user_id IS NULL  (legacy)
+//                     OR caller is admin of orgId  (admin sees all)
+//                   )
+//
+// No workspace param → backward compat: return all studies unfiltered
+//   (used by canvas/workspace routes that don't yet pass workspace context)
+//
+app.get('/api/patients', authenticate, async (req, res) => {
     try {
-        console.log("Fetching all patients (optimized)...");
-        const baseUrl = `${req.protocol}://${req.get('host')}`;
+        const baseUrl      = `${req.protocol}://${req.get('host')}`;
+        const callerId     = req.user!.id;
+        const workspaceParam = req.query.workspace as string | undefined;
+        const orgIdParam     = req.query.orgId     as string | undefined;
+
+        // Verify active membership when accessing an org workspace.
+        // Removed/blacklisted members cannot access org data.
+        if (workspaceParam === 'organization' && orgIdParam) {
+            const [membership] = await db
+                .select({ role: schema.organizationMemberships.role })
+                .from(schema.organizationMemberships)
+                .where(
+                    and(
+                        eq(schema.organizationMemberships.userId, callerId),
+                        eq(schema.organizationMemberships.orgId, orgIdParam),
+                        eq(schema.organizationMemberships.status, 'active'),
+                    )
+                )
+                .limit(1);
+
+            // Also allow the org creator (may not have a membership row in edge cases)
+            if (!membership) {
+                const [orgRow] = await db
+                    .select({ createdBy: schema.orgs.createdBy })
+                    .from(schema.orgs)
+                    .where(eq(schema.orgs.id, orgIdParam))
+                    .limit(1);
+                if (!orgRow || orgRow.createdBy !== callerId) {
+                    res.status(403).json({ error: 'Access denied to this organization workspace' });
+                    return;
+                }
+            }
+        }
 
         const patientsData = await db.query.patients.findMany({
             with: {
@@ -106,68 +155,79 @@ app.get('/api/patients', async (req, res) => {
                     orderBy: (v, { desc }) => [desc(v.date)],
                     with: {
                         studies: {
-                            with: {
-                                scans: true
-                            }
+                            with: { scans: true }
                         },
                         reports: true
                     }
                 },
                 studies: {
-                    with: {
-                        scans: true
-                    }
+                    with: { scans: true }
                 }
             }
         });
 
         const formattedPatients = patientsData.map(p => {
-            const studies = p.studies.map(s => ({
+            let studies = p.studies.map(s => ({
                 ...s,
-                patientId: s.patientId,
-                visitId: s.visitId,
-                modality: s.modality || 'X-Ray',
-                source: s.source || 'Import',
+                patientId:       s.patientId,
+                visitId:         s.visitId,
+                modality:        s.modality        || 'X-Ray',
+                source:          s.source          || 'Import',
                 acquisitionDate: s.acquisitionDate || '',
+                organizationId:  s.organizationId  ?? null,
+                ownerUserId:     s.ownerUserId      ?? null,
                 scans: s.scans.map(sc => ({
-                    id: sc.id,
-                    studyId: sc.studyId,
+                    id:       sc.id,
+                    studyId:  sc.studyId,
                     imageUrl: toAbsoluteUrl(sc.filePath, baseUrl),
-                    type: sc.type || 'Imported',
-                    date: sc.date || ''
+                    type:     sc.type || 'Imported',
+                    date:     sc.date || ''
                 }))
             }));
 
+            // ── Workspace-scoped study filter ──────────────────────────────
+            if (workspaceParam === 'personal') {
+                // Personal workspace: caller's own studies only (organization_id IS NULL)
+                studies = studies.filter(s =>
+                    s.organizationId === null &&
+                    (s.ownerUserId === callerId || s.ownerUserId === null)
+                );
+            } else if (workspaceParam === 'organization' && orgIdParam) {
+                // Organization workspace: EVERYONE (including admins) sees only their own studies.
+                // Admins access other members' data only through the member-inspection endpoint.
+                studies = studies.filter(s =>
+                    s.organizationId === orgIdParam &&
+                    (s.ownerUserId === callerId || s.ownerUserId === null)
+                );
+            }
+            // No workspace param: no filter (backward compat for canvas workspace)
+
             const visits = p.visits.map((v, idx) => {
                 const isLatestVisit = idx === 0;
-                const visitStudies = studies.filter(s => s.visitId === v.id || (isLatestVisit && !s.visitId));
-
+                const visitStudies  = studies.filter(s =>
+                    s.visitId === v.id || (isLatestVisit && !s.visitId)
+                );
                 return {
                     ...v,
-                    visitNumber: v.visitNumber || '0000',
-                    date: v.date || '',
-                    time: v.time || '',
-                    diagnosis: v.diagnosis || '',
-                    comments: v.comments || '',
-                    height: v.height || '',
-                    weight: v.weight || '',
-                    consultants: v.consultants || '',
-                    surgeryDate: v.surgeryDate || '',
-                    studies: visitStudies,
-                    scans: visitStudies.flatMap(s => s.scans || [])
+                    visitNumber:  v.visitNumber  || '0000',
+                    date:         v.date         || '',
+                    time:         v.time         || '',
+                    diagnosis:    v.diagnosis    || '',
+                    comments:     v.comments     || '',
+                    height:       v.height       || '',
+                    weight:       v.weight       || '',
+                    consultants:  v.consultants  || '',
+                    surgeryDate:  v.surgeryDate  || '',
+                    studies:      visitStudies,
+                    scans:        visitStudies.flatMap(s => s.scans || [])
                 };
             });
 
-            if (p.studies?.[0]?.scans?.[0]) {
-                const testScan = p.studies[0].scans[0];
-                console.log(`[DEBUG] Patient: ${p.name}, Study: ${p.studies[0].id}, Scan: ${testScan.id}, File: ${testScan.filePath}, URL: ${toAbsoluteUrl(testScan.filePath, baseUrl)}`);
-            }
-
             return {
                 ...p,
-                gender: normalizeGender(p.gender),
+                gender:    normalizeGender(p.gender),
                 lastVisit: p.lastVisit || '',
-                hasAlert: !!p.hasAlert,
+                hasAlert:  !!p.hasAlert,
                 isArchived: !!p.isArchived,
                 visits,
                 studies
@@ -268,25 +328,30 @@ app.delete('/api/visits/:id', async (req, res) => {
     }
 });
 
-// Add Study
-app.post('/api/studies', async (req, res) => {
-    const { id, patientId, visitId, modality, source, acquisitionDate } = req.body;
+// Add Study (authenticated — stamps owner_user_id on creation)
+app.post('/api/studies', authenticate, async (req, res) => {
+    const { id, patientId, visitId, modality, source, acquisitionDate, organizationId } = req.body;
+    const ownerUserId = req.user!.id;
     try {
-        console.log(`Saving study: ${id} for patient: ${patientId}, visit: ${visitId}`);
+        console.log(`Saving study: ${id} for patient: ${patientId}, owner: ${ownerUserId}, org: ${organizationId ?? 'personal'}`);
         await db.insert(schema.studies).values({
             id,
             patientId,
-            visitId: visitId || null,
-            modality: modality || 'X-Ray',
-            source: source || 'Import',
-            acquisitionDate: acquisitionDate || ''
+            visitId:        visitId        || null,
+            modality:       modality       || 'X-Ray',
+            source:         source         || 'Import',
+            acquisitionDate: acquisitionDate || '',
+            organizationId: organizationId || null,
+            ownerUserId,
         }).onConflictDoUpdate({
             target: schema.studies.id,
             set: {
-                visitId: visitId || null,
-                modality: modality || 'X-Ray',
-                source: source || 'Import',
-                acquisitionDate: acquisitionDate || ''
+                // Never update ownerUserId on conflict — ownership is immutable
+                visitId:         visitId        || null,
+                modality:        modality       || 'X-Ray',
+                source:          source         || 'Import',
+                acquisitionDate: acquisitionDate || '',
+                organizationId:  organizationId || null,
             }
         });
         res.json({ success: true });

@@ -9,22 +9,24 @@ import {
 } from "@/components/ui/dialog";
 import { FileText, Loader2, ExternalLink } from "lucide-react";
 import { api } from "@/lib/api";
+import { useAppStore } from "@/lib/store/index";
 
 export function ReportsListDialog({ visitId }: { visitId: string }) {
     const [open, setOpen] = useState(false);
     const [reports, setReports] = useState<any[]>([]);
     const [loading, setLoading] = useState(false);
     const [selectedReportUrl, setSelectedReportUrl] = useState<string | null>(null);
+    const token = useAppStore(s => s.token);
 
     useEffect(() => {
         if (open) {
             setLoading(true);
-            api.getReports(visitId)
+            api.getReports(visitId, token)
                 .then(setReports)
                 .catch(err => console.error(err))
                 .finally(() => setLoading(false));
         }
-    }, [open, visitId]);
+    }, [open, visitId, token]);
 
     return (
         <>

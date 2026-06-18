@@ -99,7 +99,8 @@ export function ImagingImportDialog({ patientId, visitId }: ImagingImportDialogP
     const handleImportFolder = async () => {
         setImportStatus('scanning');
         try {
-            const result = await api.importFolder(folderPath, patientId, visitId);
+            const token = useAppStore.getState().token;
+            const result = await api.importFolder(folderPath, patientId, visitId, token);
             // Refresh patient data in store
             await useAppStore.getState().initializeStore();
             setImportStatus('complete');

@@ -59,7 +59,8 @@ export interface AuthSlice {
   loginWithCredentials: (email: string, password: string) => Promise<void>;
   clearAuth:           () => void;
   fetchOrgLists:       () => Promise<void>;
-  initializeStore:     () => void;
+  /** @internal overridden by patientSlice at runtime */
+  initializeStore:     () => Promise<void>;
 }
 
 export const createAuthSlice: StateCreator<AppState, [], [], AuthSlice> = (set, get) => ({
@@ -106,7 +107,15 @@ export const createAuthSlice: StateCreator<AppState, [], [], AuthSlice> = (set, 
   setOrgId: (orgId) => set({ orgId }),
 
   /** Switch workspace — pure frontend state, no server call, no JWT change */
-  setActiveWorkspace: (ws) => set({ activeWorkspace: ws }),
+  setActiveWorkspace: (ws) => {
+    set({ activeWorkspace: ws });
+    // Re-fetch patients filtered by new workspace context
+    // (initializeStore is defined in patientSlice but merged into AppState)
+    // We call it via get() after the state update settles
+    setTimeout(() => {
+      get().initializeStore();
+    }, 0);
+  },
 
   // ── loginWithCredentials ───────────────────────────────────────────────────
   loginWithCredentials: async (email: string, password: string) => {
@@ -226,8 +235,9 @@ export const createAuthSlice: StateCreator<AppState, [], [], AuthSlice> = (set, 
   },
 
   // ── initializeStore ────────────────────────────────────────────────────────
-  // Called once on app mount. Derives isAuthenticated from persisted token.
-  initializeStore: () => {
+  // Stub: overridden by patientSlice at runtime (spread order in index.ts).
+  // Sets isAuthenticated from persisted token so guards work on first render.
+  initializeStore: async () => {
     const { token } = get();
     if (token) {
       set({ isAuthenticated: true });

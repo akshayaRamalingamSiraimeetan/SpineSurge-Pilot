@@ -37,7 +37,9 @@ export const createPatientSlice: StateCreator<AppState, [], [], PatientSlice> = 
 
     initializeStore: async () => {
         try {
-            const patients = await api.getPatients();
+            const workspace = get().activeWorkspace;
+            const token     = get().token;
+            const patients  = await api.getPatients(workspace, token);
             set({ patients, isAuthenticated: true });
 
             const currentActiveId = get().activePatientId;
@@ -45,109 +47,117 @@ export const createPatientSlice: StateCreator<AppState, [], [], PatientSlice> = 
                 const idToActivate = currentActiveId && patients.find(p => p.id === currentActiveId)
                     ? currentActiveId
                     : patients[0].id;
-
-                // Guard: only activate a patient if we have a valid non-empty id
                 if (idToActivate) {
                     await get().setActivePatient(idToActivate);
                 }
+            } else {
+                // No patients in this workspace — clear active patient
+                set({ activePatientId: null, contexts: [], contextStates: [] });
             }
         } catch (e) {
-            console.error("Initialization failed", e);
+            console.error('Initialization failed', e);
         }
     },
 
     setActivePatient: async (id, initialContextId = null) => {
-        // Guard: never attempt to fetch contexts with an empty/falsy patient id
         if (!id) {
-            console.warn('[setActivePatient] called with falsy id — skipping context fetch');
+            console.warn('[setActivePatient] called with falsy id — skipping');
             return;
         }
 
         set({ activePatientId: id, activeContextId: initialContextId });
+        const token = get().token;
+
         try {
-            // If patient is not in the list, try to fetch it specifically or refresh the list
+            // Re-use already-loaded patients from store; only fall back to fresh fetch if missing
             const currentPatients = get().patients;
             if (!currentPatients.find(p => p.id === id)) {
-                const allPatients = await api.getPatients();
+                const workspace  = get().activeWorkspace;
+                const allPatients = await api.getPatients(workspace, token);
                 set({ patients: allPatients });
             }
 
-            const fetchedContexts = await api.getContexts(id);
+            const fetchedContexts = await api.getContexts(id, token);
             const contexts: Context[] = fetchedContexts.map((c: any) => ({
-                id: c.id,
-                patientId: c.patientId,
-                visitId: c.visitId,
-                studyIds: c.studyIds,
-                mode: c.mode,
-                name: c.name,
-                lastModified: c.lastModified
+                id:           c.id,
+                patientId:    c.patientId,
+                visitId:      c.visitId,
+                studyIds:     c.studyIds,
+                mode:         c.mode,
+                name:         c.name,
+                lastModified: c.lastModified,
             }));
 
             const contextStates: ContextState[] = fetchedContexts.map((c: any) => ({
-                contextId: c.id,
-                measurements: c.measurements || [],
-                implants: c.implants || [],
-                threeDImplants: c.threeDImplants || [],
+                contextId:          c.id,
+                measurements:       c.measurements       || [],
+                implants:           c.implants           || [],
+                threeDImplants:     c.threeDImplants     || [],
                 pedicleSimulations: c.pedicleSimulations || [],
-                annotations: c.annotations || [],
-                toolState: c.toolState || {},
-                currentImage: c.currentImage
+                annotations:        c.annotations        || [],
+                toolState:          c.toolState          || {},
+                currentImage:       c.currentImage,
             }));
 
             set({ contexts, contextStates });
         } catch (e) {
-            console.error("Failed to fetch contexts", e);
+            console.error('Failed to fetch contexts', e);
         }
     },
 
     addPatient: async (patient) => {
+        const token = get().token;
         try {
-            await api.savePatient(patient);
+            await api.savePatient(patient, token);
             set((state: AppState) => ({
-                patients: [patient, ...state.patients],
-                activePatientId: patient.id
+                patients:        [patient, ...state.patients],
+                activePatientId: patient.id,
             }));
         } catch (e) {
-            console.error("Save patient failed", e);
+            console.error('Save patient failed', e);
         }
     },
 
     updatePatient: async (patient) => {
+        const token = get().token;
         try {
-            await api.savePatient(patient);
+            await api.savePatient(patient, token);
             set((state: AppState) => ({
-                patients: state.patients.map(p => p.id === patient.id ? patient : p)
+                patients: state.patients.map(p => p.id === patient.id ? patient : p),
             }));
         } catch (e) {
-            console.error("Update patient failed", e);
+            console.error('Update patient failed', e);
         }
     },
 
     archivePatient: async (patientId, archived) => {
+        const token = get().token;
         try {
-            await api.archivePatient(patientId, archived);
+            await api.archivePatient(patientId, archived, token);
             set((state: AppState) => ({
                 patients: state.patients.map(p =>
                     p.id === patientId ? { ...p, isArchived: archived } : p
-                )
+                ),
             }));
         } catch (e) {
-            console.error("Archive patient failed", e);
+            console.error('Archive patient failed', e);
         }
     },
 
     addVisit: async (patientId, visit) => {
+        const token = get().token;
         try {
-            await api.saveVisit(patientId, visit);
-            await get().initializeStore(); // Refresh to get linked studies from backend
+            await api.saveVisit(patientId, visit, token);
+            await get().initializeStore();
         } catch (e) {
-            console.error("Failed to add visit", e);
+            console.error('Failed to add visit', e);
         }
     },
 
     updateVisit: async (patientId, visitId, visit) => {
+        const token = get().token;
         try {
-            await api.saveVisit(patientId, visit);
+            await api.saveVisit(patientId, visit, token);
             set((state: AppState) => {
                 const updatedPatients = state.patients.map((p: Patient) =>
                     p.id === patientId
@@ -157,23 +167,25 @@ export const createPatientSlice: StateCreator<AppState, [], [], PatientSlice> = 
                 return { patients: updatedPatients };
             });
         } catch (e) {
-            console.error("Failed to update visit", e);
+            console.error('Failed to update visit', e);
         }
     },
 
     deleteVisit: (patientId, visitId) => {
+        const token = get().token;
         set((state: AppState) => {
             const updatedPatients = state.patients.map((p: Patient) =>
                 p.id === patientId
                     ? { ...p, visits: p.visits.filter((v: Visit) => v.id !== visitId) }
                     : p
             );
-            api.deleteVisit(visitId);
+            api.deleteVisit(visitId, token);
             return { patients: updatedPatients };
         });
     },
 
     reorderVisits: async (patientId, visits) => {
+        const token = get().token;
         try {
             set((state: AppState) => {
                 const updatedPatients = state.patients.map((p: Patient) =>
@@ -182,32 +194,38 @@ export const createPatientSlice: StateCreator<AppState, [], [], PatientSlice> = 
                             ...p,
                             visits: visits.map((v: Visit, index: number) => ({
                                 ...v,
-                                visitNumber: `#${String(visits.length - index).padStart(4, '0')}`
-                            }))
-                        }
+                                visitNumber: `#${String(visits.length - index).padStart(4, '0')}`,
+                            })),
+                          }
                         : p
                 );
                 return { patients: updatedPatients };
             });
-            await Promise.all(visits.map(v => api.saveVisit(patientId, v)));
+            await Promise.all(visits.map(v => api.saveVisit(patientId, v, token)));
         } catch (e) {
-            console.error("Failed to reorder visits", e);
+            console.error('Failed to reorder visits', e);
         }
     },
 
     addStudy: async (study) => {
+        const token     = get().token;
+        const workspace = get().activeWorkspace;
         try {
-            await api.saveStudy(study as Study);
-            await get().initializeStore(); // Refresh to get proper linking
+            // Stamp organizationId from active workspace — immutable after creation
+            const organizationId = workspace.type === 'organization' ? workspace.orgId : null;
+            const studyWithOrg   = { ...study, organizationId } as Study;
+            await api.saveStudy(studyWithOrg, token);
+            await get().initializeStore();
         } catch (e) {
-            console.error("Add study failed", e);
+            console.error('Add study failed', e);
             throw e;
         }
     },
 
     addScan: async (patientId, studyId, scanMetadata, file) => {
+        const token = get().token;
         try {
-            const { imageUrl } = await api.uploadScan(studyId, scanMetadata, file);
+            const { imageUrl } = await api.uploadScan(studyId, scanMetadata, file, token);
             const fullScan: Scan = { ...scanMetadata, imageUrl };
             set((state: AppState) => {
                 const updatedPatients = state.patients.map((p: Patient) =>
@@ -225,40 +243,45 @@ export const createPatientSlice: StateCreator<AppState, [], [], PatientSlice> = 
                                     s.id === studyId
                                         ? { ...s, scans: [...(s.scans || []), fullScan] }
                                         : s
-                                )
-                            }))
-                        }
+                                ),
+                            })),
+                          }
                         : p
                 );
                 return { patients: updatedPatients };
             });
         } catch (e) {
-            console.error("Upload failed", e);
+            console.error('Upload failed', e);
             throw e;
         }
     },
 
     addContext: async (context) => {
+        const token = get().token;
         try {
-            await api.saveContext(context);
+            await api.saveContext(context, token);
             set((state: AppState) => ({
-                contexts: [...state.contexts, context],
+                contexts:      [...state.contexts, context],
                 activeContextId: context.id,
-                contextStates: [...state.contextStates, {
-                    contextId: context.id,
-                    measurements: [],
-                    implants: [],
-                    annotations: [],
-                    toolState: {}
-                }]
+                contextStates: [
+                    ...state.contextStates,
+                    {
+                        contextId:    context.id,
+                        measurements: [],
+                        implants:     [],
+                        annotations:  [],
+                        toolState:    {},
+                    },
+                ],
             }));
         } catch (e) {
-            console.error("Add context failed", e);
+            console.error('Add context failed', e);
             throw e;
         }
     },
 
     updateContextState: async (contextId: string, updates: Partial<ContextState>) => {
+        const token = get().token;
         set((state: AppState) => {
             const context = state.contexts.find((c: Context) => c.id === contextId);
             if (!context) return state;
@@ -269,18 +292,21 @@ export const createPatientSlice: StateCreator<AppState, [], [], PatientSlice> = 
 
             const stateForServer = updatedStates.find((s: ContextState) => s.contextId === contextId);
             if (stateForServer) {
-                api.saveContext({
-                    ...context,
-                    state: {
-                        measurements: stateForServer.measurements,
-                        annotations: stateForServer.annotations,
-                        toolState: stateForServer.toolState,
-                        implants: stateForServer.implants || [],
-                        threeDImplants: stateForServer.threeDImplants || [],
-                        pedicleSimulations: stateForServer.pedicleSimulations || [],
-                        currentImage: stateForServer.currentImage
-                    }
-                }).catch(e => console.error("Context sync failed", e));
+                api.saveContext(
+                    {
+                        ...context,
+                        state: {
+                            measurements:       stateForServer.measurements,
+                            annotations:        stateForServer.annotations,
+                            toolState:          stateForServer.toolState,
+                            implants:           stateForServer.implants           || [],
+                            threeDImplants:     stateForServer.threeDImplants     || [],
+                            pedicleSimulations: stateForServer.pedicleSimulations || [],
+                            currentImage:       stateForServer.currentImage,
+                        },
+                    },
+                    token
+                ).catch(e => console.error('Context sync failed', e));
             }
             return { contextStates: updatedStates };
         });

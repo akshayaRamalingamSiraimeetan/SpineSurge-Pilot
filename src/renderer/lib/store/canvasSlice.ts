@@ -2,6 +2,16 @@ import { StateCreator } from 'zustand';
 import { Measurement } from './types';
 import type { AppState } from './index';
 
+export interface InspectionMode {
+    active:       boolean;
+    ownerName:    string;        // display name of the member being inspected
+    ownerUserId:  string;        // userId of the member
+    orgId:        string;        // the org this inspection is for
+    studyId:      string;        // the specific study being inspected
+    patientId:    string;        // the synthetic patient id
+    contextId:    string | null; // the synthetic context id if any
+}
+
 export interface CanvasSlice {
     currentImage: string | null;
     canvas: {
@@ -33,6 +43,10 @@ export interface CanvasSlice {
     isWizardIconVisible: boolean;
     activeDialog: string | null;
     managers: Record<string, any>;
+
+    // ── Inspection mode (admin reads another user's study) ─────────────────
+    inspectionMode: InspectionMode | null;
+    setInspectionMode: (mode: InspectionMode | null) => void;
 
     loadImage: (imageUrl: string) => void;
     clearImage: () => void;
@@ -138,6 +152,7 @@ export const createCanvasSlice: StateCreator<AppState, [], [], CanvasSlice> = (s
     isWizardIconVisible: true,
     activeDialog: null,
     managers: {},
+    inspectionMode: null,
 
     loadImage: (imageUrl: string) => set((state) => {
         console.log('[CanvasSlice] loadImage called', imageUrl);
@@ -150,7 +165,7 @@ export const createCanvasSlice: StateCreator<AppState, [], [], CanvasSlice> = (s
             canvas: { ...state.canvas, zoom: 1, pan: { x: 0, y: 0 }, rotation: 0, brightness: 100, contrast: 100, sharpness: 0, flipX: false }
         };
     }),
-    clearImage: () => set({ currentImage: null, isDicomMode: false, dicomSeries: [] }),
+    clearImage: () => set({ currentImage: null, isDicomMode: false, dicomSeries: [], inspectionMode: null }),
     setActiveTool: (toolId) => set({ activeTool: toolId }),
     setSelection: (selection) => set({ selection }),
     setZoom: (zoom) => set((state) => {
@@ -344,9 +359,9 @@ export const createCanvasSlice: StateCreator<AppState, [], [], CanvasSlice> = (s
         managers: { ...state.managers, [side]: manager }
     })),
     getManager: (side) => {
-        // Since we can't easily access state inside the function without 'get', we use a trick or just let the component call useAppStore
-        return undefined; // Handled in component
+        return undefined;
     },
+    setInspectionMode: (mode) => set({ inspectionMode: mode }),
     setCalibration: (ratio) => set((state) => {
         const side = state.isComparisonMode ? state.activeCanvasSide : null;
         const calibrationEnabledAt = ratio ? Date.now() : null;
