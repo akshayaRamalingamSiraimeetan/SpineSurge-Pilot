@@ -458,7 +458,8 @@ export function ReportDialog({ open, onOpenChange, checkedCount }: { open: boole
                         s.scans.some(scan => scan.imageUrl === currentImage)
                     );
                     if (targetStudy) {
-                        targetVisit = activePatient.visits.find(v => v.id === targetStudy.id) || activePatient.visits[0];
+                        // Use the study's visitId to find the correct visit
+                        targetVisit = activePatient.visits.find(v => v.id === targetStudy.visitId) || activePatient.visits[0];
                     }
                 }
                 if (!targetVisit && activePatient.visits.length > 0) {

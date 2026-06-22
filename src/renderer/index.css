@@ -2,7 +2,7 @@
 
 /**
  * SPINE SURGE - ENTERPRISE MEDICAL THEME
- * Premium medical SaaS · Clean · Minimal · Professional
+ * Premium medical SaaS - Clean - Minimal - Professional
  * Phase 1: Foundation layer redesign
  */
 
@@ -59,7 +59,7 @@
         --ns-text: #F5F5F7;
         --ns-text-muted: #9CA3AF;
 
-        /* Legacy custom tokens — kept for backward compatibility */
+        /* Legacy custom tokens -- kept for backward compatibility */
         --ns-glow: 3 95% 61%;               /* remapped to accent red */
         --ns-hover: 3 95% 65%;
         --ns-warning: 14 100% 63%;          /* #FF7043 */
@@ -139,9 +139,9 @@
 }
 
 /*
- * ═══════════════════════════════════════
+ * =======================================
  * GLOBAL TRANSITIONS
- * ═══════════════════════════════════════
+ * =======================================
  */
 
 html {
@@ -154,7 +154,7 @@ html {
     transition-duration: 300ms;
 }
 
-/* Backdrop blur — neutralized to surface color (no more neon tint) */
+/* Backdrop blur -- neutralized to surface color (no more neon tint) */
 .backdrop-blur-xl {
     backdrop-filter: blur(20px);
 }
@@ -168,11 +168,11 @@ html {
 }
 
 /*
- * ═══════════════════════════════════════
+ * =======================================
  * NEUTRALIZED LEGACY GLOW UTILITIES
  * Classes are preserved so existing JSX doesn't break,
  * but all cyan glow is replaced with subtle enterprise shadows.
- * ═══════════════════════════════════════
+ * =======================================
  */
 
 .ns-glow {
@@ -187,14 +187,14 @@ html {
     box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04), 0 8px 24px rgba(0, 0, 0, 0.08);
 }
 
-/* Glass effect — neutralized, no cyan tint */
+/* Glass effect -- neutralized, no cyan tint */
 .ns-glass {
     background: rgba(20, 20, 22, 0.75);
     backdrop-filter: blur(10px);
     border: 1px solid rgba(36, 36, 39, 0.8);
 }
 
-/* Gradient button — replaced with flat accent red */
+/* Gradient button -- replaced with flat accent red */
 .ns-gradient-btn {
     background: #FF453A;
     color: #ffffff;
@@ -209,20 +209,20 @@ html {
     transform: translateY(-1px);
 }
 
-/* Pulse — neutralized, no cyan glow animation */
+/* Pulse -- neutralized, no cyan glow animation */
 .ns-pulse {
     /* animation removed; class kept for API compatibility */
 }
 
-/* Border pulse — neutralized */
+/* Border pulse -- neutralized */
 .ns-border-pulse {
     /* animation removed; class kept for API compatibility */
 }
 
 /*
- * ═══════════════════════════════════════
+ * =======================================
  * SCROLLBAR
- * ═══════════════════════════════════════
+ * =======================================
  */
 
 ::-webkit-scrollbar {
@@ -263,9 +263,9 @@ html {
 }
 
 /*
- * ═══════════════════════════════════════
+ * =======================================
  * INPUT & FORM STYLING
- * ═══════════════════════════════════════
+ * =======================================
  */
 
 input, textarea, select {
@@ -300,9 +300,9 @@ option {
 }
 
 /*
- * ═══════════════════════════════════════
+ * =======================================
  * TEXT SELECTION
- * ═══════════════════════════════════════
+ * =======================================
  */
 
 ::selection {

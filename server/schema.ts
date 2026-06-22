@@ -65,6 +65,7 @@ export const contexts = pgTable('contexts', {
     lastModified: text('last_modified'),
     annotations: text('annotations').default('[]'),
     toolState: text('tool_state').default('{}'),
+    currentImage: text('current_image'),
 });
 
 export const contextStudies = pgTable('context_studies', {

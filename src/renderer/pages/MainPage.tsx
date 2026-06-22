@@ -68,6 +68,18 @@ const MainPage = () => {
         }
     }, [location.search, setActivePatient, setActiveContextId]);
 
+    // Persist currentImage to context state whenever it changes while a context is active
+    useEffect(() => {
+        if (activeContextId && currentImage) {
+            const state = useAppStore.getState();
+            const existingState = state.contextStates.find(s => s.contextId === activeContextId);
+            // Only save if the image actually changed to avoid thrashing
+            if (existingState?.currentImage !== currentImage) {
+                state.updateContextState(activeContextId, { currentImage });
+            }
+        }
+    }, [currentImage, activeContextId]);
+
     // Populate 3D State from Context
     useEffect(() => {
         if (activeContextId) {

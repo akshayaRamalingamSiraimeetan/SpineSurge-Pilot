@@ -156,12 +156,17 @@ const CanvasWorkspace = ({ side }: CanvasWorkspaceProps) => {
             setComparisonMeasurements(side, measurements);
             setComparisonImplants(side, implants);
         } else if (store.activeContextId) {
-            store.updateContextState(store.activeContextId, { measurements, implants });
+            // Include currentImage so the active scan URL is persisted alongside measurements
+            store.updateContextState(store.activeContextId, {
+                measurements,
+                implants,
+                currentImage: store.currentImage ?? undefined,
+            });
         } else {
             storeSetMeasurements(measurements);
             storeSetImplants(implants);
         }
-    }, [isComparisonMode, side, storeSetMeasurements, storeSetImplants, store.activeContextId, store.updateContextState, setComparisonMeasurements, setComparisonImplants, store.inspectionMode]);
+    }, [isComparisonMode, side, storeSetMeasurements, storeSetImplants, store.activeContextId, store.updateContextState, setComparisonMeasurements, setComparisonImplants, store.inspectionMode, store.currentImage]);
 
     const setMeasurements = (measurements: Measurement[]) => {
         const currentImplants = managerRef.current?.current?.data.implants || storeImplants;

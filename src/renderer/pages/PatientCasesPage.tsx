@@ -440,7 +440,7 @@ const PatientCasesPage = () => {
 
     const handleContinueContext = (context: any) => {
         setActiveContextId(context.id);
-        navigate('/dashboard');
+        navigate('/workspace');
     };
 
     const handleStartNewFromStudy = async (study: any) => {
@@ -454,7 +454,7 @@ const PatientCasesPage = () => {
             lastModified: format(new Date(), 'yyyy-MM-dd HH:mm')
         };
         await addContext(newContext);
-        navigate('/dashboard');
+        navigate('/workspace');
     };
 
     return (

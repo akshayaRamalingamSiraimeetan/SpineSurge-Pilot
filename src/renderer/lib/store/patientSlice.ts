@@ -259,7 +259,9 @@ export const createPatientSlice: StateCreator<AppState, [], [], PatientSlice> = 
     addContext: async (context) => {
         const token = get().token;
         try {
+            console.log(`[addContext] Saving new context id=${context.id} patient=${context.patientId} studyIds=${JSON.stringify(context.studyIds)}`);
             await api.saveContext(context, token);
+            console.log(`[addContext] Save OK id=${context.id}`);
             set((state: AppState) => ({
                 contexts:      [...state.contexts, context],
                 activeContextId: context.id,
@@ -275,7 +277,7 @@ export const createPatientSlice: StateCreator<AppState, [], [], PatientSlice> = 
                 ],
             }));
         } catch (e) {
-            console.error('Add context failed', e);
+            console.error(`[addContext] FAILED id=${context.id}`, e);
             throw e;
         }
     },
@@ -284,7 +286,10 @@ export const createPatientSlice: StateCreator<AppState, [], [], PatientSlice> = 
         const token = get().token;
         set((state: AppState) => {
             const context = state.contexts.find((c: Context) => c.id === contextId);
-            if (!context) return state;
+            if (!context) {
+                console.warn(`[updateContextState] EARLY RETURN — context ${contextId} not found in state.contexts (count=${state.contexts.length})`);
+                return state;
+            }
 
             const updatedStates = state.contextStates.map((s: ContextState) =>
                 s.contextId === contextId ? { ...s, ...updates } : s
@@ -292,21 +297,26 @@ export const createPatientSlice: StateCreator<AppState, [], [], PatientSlice> = 
 
             const stateForServer = updatedStates.find((s: ContextState) => s.contextId === contextId);
             if (stateForServer) {
-                api.saveContext(
-                    {
-                        ...context,
-                        state: {
-                            measurements:       stateForServer.measurements,
-                            annotations:        stateForServer.annotations,
-                            toolState:          stateForServer.toolState,
-                            implants:           stateForServer.implants           || [],
-                            threeDImplants:     stateForServer.threeDImplants     || [],
-                            pedicleSimulations: stateForServer.pedicleSimulations || [],
-                            currentImage:       stateForServer.currentImage,
-                        },
+                // Always include the current canvas image so it survives page reload
+                const currentImage = updates.currentImage ?? state.currentImage ?? stateForServer.currentImage ?? null;
+
+                const payload = {
+                    ...context,
+                    state: {
+                        measurements:       stateForServer.measurements,
+                        annotations:        stateForServer.annotations,
+                        toolState:          stateForServer.toolState,
+                        implants:           stateForServer.implants           || [],
+                        threeDImplants:     stateForServer.threeDImplants     || [],
+                        pedicleSimulations: stateForServer.pedicleSimulations || [],
+                        currentImage,
                     },
-                    token
-                ).catch(e => console.error('Context sync failed', e));
+                };
+                console.log(`[updateContextState] SAVING contextId=${contextId} measurements=${stateForServer.measurements.length} annotations=${Array.isArray(stateForServer.annotations) ? stateForServer.annotations.length : 0} currentImage=${currentImage}`);
+
+                api.saveContext(payload, token)
+                    .then(() => console.log(`[updateContextState] SAVE OK contextId=${contextId}`))
+                    .catch(e => console.error(`[updateContextState] SAVE FAILED contextId=${contextId}`, e));
             }
             return { contextStates: updatedStates };
         });

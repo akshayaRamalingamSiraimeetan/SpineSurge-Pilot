@@ -422,6 +422,7 @@ app.get('/api/contexts/:patientId', async (req, res) => {
             mode: c.mode,
             name: c.name,
             lastModified: c.lastModified,
+            currentImage: c.currentImage ?? null,
             measurements: c.measurements.map(m => ({
                 ...m,
                 points: JSON.parse(m.points || '[]'),
@@ -445,7 +446,14 @@ app.get('/api/contexts/:patientId', async (req, res) => {
 app.post('/api/contexts', async (req, res) => {
     const { id, patientId, visitId, studyIds, mode, name, lastModified, state } = req.body;
     try {
-        console.log(`[POST /api/contexts] Saving context: ${id}, patient: ${patientId}, studies: ${studyIds?.length || 0}`);
+        const measurementCount = state?.measurements?.length ?? 0;
+        const annotationCount  = Array.isArray(state?.annotations) ? state.annotations.length : 0;
+        console.log(`[POST /api/contexts] id=${id} patient=${patientId} measurements=${measurementCount} annotations=${annotationCount} currentImage=${state?.currentImage ?? 'none'} studyIds=${JSON.stringify(studyIds)}`);
+        if (!id || !patientId) {
+            console.error('[POST /api/contexts] Missing id or patientId — rejecting');
+            res.status(400).json({ error: 'Missing id or patientId' });
+            return;
+        }
 
         await db.transaction(async (tx) => {
             const vId = visitId === "" ? null : visitId;
@@ -461,7 +469,8 @@ app.post('/api/contexts', async (req, res) => {
                 name: name || '',
                 lastModified: lastModified || new Date().toISOString(),
                 annotations: JSON.stringify(state?.annotations || []),
-                toolState: JSON.stringify(state?.toolState || {})
+                toolState: JSON.stringify(state?.toolState || {}),
+                currentImage: state?.currentImage ?? null,
             }).onConflictDoUpdate({
                 target: schema.contexts.id,
                 set: {
@@ -470,7 +479,8 @@ app.post('/api/contexts', async (req, res) => {
                     name: name || '',
                     lastModified: lastModified || new Date().toISOString(),
                     annotations: JSON.stringify(state?.annotations || []),
-                    toolState: JSON.stringify(state?.toolState || {})
+                    toolState: JSON.stringify(state?.toolState || {}),
+                    currentImage: state?.currentImage ?? null,
                 }
             });
 
