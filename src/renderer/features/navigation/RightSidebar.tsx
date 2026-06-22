@@ -357,6 +357,29 @@ const MeasurementCard = ({
 };
 
 /* ── ComparisonTable ──────────────────────────────────────────── */
+const COMPARISON_GROUPS: Record<string, string> = {
+    'pi_ll': 'Sagittal Alignment',
+    'sva': 'Sagittal Alignment',
+    'tk': 'Sagittal Alignment',
+    'll': 'Sagittal Alignment',
+    'pt': 'Sagittal Alignment',
+    'cobb': 'Coronal Alignment',
+    'csvl': 'Coronal Alignment',
+    'ts': 'Coronal Alignment',
+    'avt': 'Coronal Alignment',
+    'rvad': 'Coronal Alignment',
+    'pi': 'Pelvic Parameters',
+    'ss': 'Pelvic Parameters',
+    'c7pl': 'Global',
+    'tpa': 'Global',
+    'spa': 'Global',
+    'ssa': 'Global',
+    't1spi': 'Global',
+    't9spi': 'Global',
+    'odha': 'Global',
+    'cbva': 'Global',
+};
+
 const ComparisonTable = ({
     leftMeasurements, rightMeasurements, category,
     leftPixelToMm, rightPixelToMm,
@@ -409,7 +432,6 @@ const ComparisonTable = ({
         [...leftMeasurements, ...rightMeasurements].forEach((item) => {
             if (item.toolKey === 'point') return;
             if (REF_LINE_KEYS.has(item.toolKey)) return;
-            if (category !== 'All' && !MODULE_TOOL_MAPPING[category as keyof typeof MODULE_TOOL_MAPPING]?.includes(item.toolKey)) return;
             const level = item.measurement?.level || '';
             const groupKey = `${item.toolKey}-${level}`;
             if (seen.has(groupKey)) return;
@@ -421,74 +443,95 @@ const ComparisonTable = ({
             });
         });
         return data.sort((a, b) => a.key.localeCompare(b.key));
-    }, [leftMeasurements, rightMeasurements, category]);
+    }, [leftMeasurements, rightMeasurements]);
+
+    const groupedData = useMemo(() => {
+        const groups = new Map<string, typeof tableData>();
+        const ORDER = ['Sagittal Alignment', 'Coronal Alignment', 'Pelvic Parameters', 'Global', 'Other'];
+        tableData.forEach((item) => {
+            const groupName = COMPARISON_GROUPS[item.key] || 'Other';
+            if (!groups.has(groupName)) groups.set(groupName, []);
+            groups.get(groupName)!.push(item);
+        });
+        return ORDER.filter((g) => groups.has(g)).map((g) => ({
+            label: g,
+            items: groups.get(g)!,
+        }));
+    }, [tableData]);
 
     if (!tableData.length) {
         return (
-            <div className="empty-state">
-                <div className="es-ico"><Activity size={22} /></div>
-                <div className="es-t">No comparable measurements</div>
-                <div className="es-s">Ensure matching levels for auto-pairing.</div>
+            <div style={{ textAlign: 'center', padding: '24px 0', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
+                <div style={{ fontSize: 24, opacity: 0.5 }}>✏️</div>
+                <div style={{ fontWeight: 600, fontSize: 13, color: 'var(--text)' }}>No measurements yet.</div>
+                <div style={{ fontSize: 11, color: 'var(--text-3)' }}>Place measurements on either study to begin comparison.</div>
             </div>
         );
     }
 
     return (
-        <div style={{ padding: '0 12px 12px' }}>
-            <div className="cmp-table-head">
-                <span className="cmp-th">Parameter</span>
-                <span className="cmp-th" style={{ textAlign: 'right' }}>Pre-Op</span>
-                <span className="cmp-th" style={{ textAlign: 'right' }}>Post-Op</span>
-                <span className="cmp-th" style={{ textAlign: 'right' }}>Δ</span>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1fr', gap: 8, paddingBottom: 6, borderBottom: '1px solid var(--border-2)' }}>
+                <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-3)' }}>Parameter</span>
+                <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-3)', textAlign: 'right' }}>Current Study</span>
+                <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-3)', textAlign: 'right' }}>Selected Study</span>
+                <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-3)', textAlign: 'right' }}>Change</span>
             </div>
-            {tableData.map(({ key, level, left, right }) => {
-                const lr = formatResultWithCalibration(left?.result, leftPixelToMm, shouldConvert(left, leftCalibrationApplied, leftCalibrationEnabledAt));
-                const rr = formatResultWithCalibration(right?.result, rightPixelToMm, shouldConvert(right, rightCalibrationApplied, rightCalibrationEnabledAt));
-                const lv = extractNum(left, leftPixelToMm, leftCalibrationApplied, leftCalibrationEnabledAt);
-                const rv = extractNum(right, rightPixelToMm, rightCalibrationApplied, rightCalibrationEnabledAt);
-                const lu = getUnit(lr);
-                const ru = getUnit(rr);
-                const cmpUnit = lu && lu === ru ? lu : '';
+            {groupedData.map((group) => (
+                <div key={group.label} style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '.05em' }}>
+                        {group.label}
+                    </div>
+                    {group.items.map(({ key, level, left, right }) => {
+                        const lr = formatResultWithCalibration(left?.result, leftPixelToMm, shouldConvert(left, leftCalibrationApplied, leftCalibrationEnabledAt));
+                        const rr = formatResultWithCalibration(right?.result, rightPixelToMm, shouldConvert(right, rightCalibrationApplied, rightCalibrationEnabledAt));
+                        const lv = extractNum(left, leftPixelToMm, leftCalibrationApplied, leftCalibrationEnabledAt);
+                        const rv = extractNum(right, rightPixelToMm, rightCalibrationApplied, rightCalibrationEnabledAt);
+                        const lu = getUnit(lr);
+                        const ru = getUnit(rr);
+                        const cmpUnit = lu && lu === ru ? lu : '';
 
-                if (typeof lv === 'object' && lv !== null) {
-                    const rvObj = typeof rv === 'object' ? rv : {};
-                    return Object.keys(lv).map((subKey) => {
-                        const la = lv[subKey];
-                        const ra = rvObj?.[subKey];
-                        const delta = la !== undefined && ra !== undefined ? ra - la : null;
+                        if (typeof lv === 'object' && lv !== null) {
+                            const rvObj = typeof rv === 'object' ? rv : {};
+                            return Object.keys(lv).map((subKey) => {
+                                const la = lv[subKey];
+                                const ra = rvObj?.[subKey];
+                                const delta = la !== undefined && ra !== undefined ? ra - la : null;
+                                return (
+                                    <div key={`${key}-${level}-${subKey}`} style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1fr', gap: 8, fontSize: 13, padding: '4px 0' }}>
+                                        <span style={{ color: 'var(--text)', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }}>
+                                            {subKey}
+                                            {level && <span style={{ fontSize: 9, background: 'var(--accent-soft)', color: 'var(--accent)', padding: '1px 4px', borderRadius: 3, marginLeft: 5, fontWeight: 700 }}>{level}</span>}
+                                        </span>
+                                        <span style={{ textAlign: 'right', fontWeight: 500, color: 'var(--text-2)' }}>{la !== undefined ? `${la.toFixed(1)}${lu}` : '—'}</span>
+                                        <span style={{ textAlign: 'right', fontWeight: 500, color: 'var(--text-2)' }}>{ra !== undefined ? `${ra.toFixed(1)}${ru}` : '—'}</span>
+                                        <span style={{ textAlign: 'right', fontWeight: 600, color: delta !== null ? (delta > 0 ? 'var(--val-bad)' : 'var(--val-good)') : 'var(--text-3)' }}>
+                                            {delta !== null ? `${delta > 0 ? '+' : ''}${delta.toFixed(1)}${cmpUnit}` : '—'}
+                                        </span>
+                                    </div>
+                                );
+                            });
+                        }
+
+                        const lNum = typeof lv === 'number' ? lv : null;
+                        const rNum = typeof rv === 'number' ? rv : null;
+                        const delta = lNum !== null && rNum !== null ? rNum - lNum : null;
                         return (
-                            <div className="cmp-row" key={`${key}-${level}-${subKey}`}>
-                                <span className="cl">
-                                    {subKey}
+                            <div key={`${key}-${level}`} style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1fr', gap: 8, fontSize: 13, padding: '4px 0' }}>
+                                <span style={{ color: 'var(--text)', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }}>
+                                    {TOOL_DISPLAY_NAMES[key] || key}
                                     {level && <span style={{ fontSize: 9, background: 'var(--accent-soft)', color: 'var(--accent)', padding: '1px 4px', borderRadius: 3, marginLeft: 5, fontWeight: 700 }}>{level}</span>}
                                 </span>
-                                <span className="cval a" style={{ textAlign: 'right' }}>{la !== undefined ? `${la.toFixed(1)}${lu}` : '-'}</span>
-                                <span className="cval b" style={{ textAlign: 'right' }}>{ra !== undefined ? `${ra.toFixed(1)}${ru}` : '-'}</span>
-                                <span className={`cval ${delta !== null ? (delta > 0 ? 'd-bad' : 'd-good') : 'd-flat'}`} style={{ textAlign: 'right' }}>
-                                    {delta !== null ? `${delta > 0 ? '+' : ''}${delta.toFixed(1)}${cmpUnit}` : '-'}
+                                <span style={{ textAlign: 'right', fontWeight: 500, color: 'var(--text-2)' }}>{lNum !== null ? `${lNum.toFixed(1)}${lu}` : '—'}</span>
+                                <span style={{ textAlign: 'right', fontWeight: 500, color: 'var(--text-2)' }}>{rNum !== null ? `${rNum.toFixed(1)}${ru}` : '—'}</span>
+                                <span style={{ textAlign: 'right', fontWeight: 600, color: delta !== null ? (delta !== 0 ? (delta > 0 ? 'var(--val-bad)' : 'var(--val-good)') : 'var(--text-2)') : 'var(--text-3)' }}>
+                                    {delta !== null ? `${delta > 0 ? '+' : ''}${delta.toFixed(1)}${cmpUnit}` : '—'}
                                 </span>
                             </div>
                         );
-                    });
-                }
-
-                const lNum = typeof lv === 'number' ? lv : null;
-                const rNum = typeof rv === 'number' ? rv : null;
-                const delta = lNum !== null && rNum !== null ? rNum - lNum : null;
-                return (
-                    <div className="cmp-row" key={`${key}-${level}`}>
-                        <span className="cl">
-                            {TOOL_DISPLAY_NAMES[key] || key}
-                            {level && <span style={{ fontSize: 9, background: 'var(--accent-soft)', color: 'var(--accent)', padding: '1px 4px', borderRadius: 3, marginLeft: 5, fontWeight: 700 }}>{level}</span>}
-                        </span>
-                        <span className="cval a" style={{ textAlign: 'right' }}>{lNum !== null ? `${lNum.toFixed(1)}${lu}` : '-'}</span>
-                        <span className="cval b" style={{ textAlign: 'right' }}>{rNum !== null ? `${rNum.toFixed(1)}${ru}` : '-'}</span>
-                        <span className={`cval ${delta !== null ? (delta !== 0 ? (delta > 0 ? 'd-bad' : 'd-good') : 'd-flat') : 'd-flat'}`} style={{ textAlign: 'right' }}>
-                            {delta !== null ? `${delta > 0 ? '+' : ''}${delta.toFixed(1)}${cmpUnit}` : '-'}
-                        </span>
-                    </div>
-                );
-            })}
+                    })}
+                </div>
+            ))}
         </div>
     );
 };
@@ -773,7 +816,7 @@ const RightSidebar = () => {
         };
         document.addEventListener('mousemove', onMove);
         document.addEventListener('mouseup', onUp);
-        return () => { document.removeEventListener('mousemove', onMove); document.removeEventListener('mouseup', onUp); };
+        return () => { document.removeEventListener('mousemove', onMove); document.addEventListener('mouseup', onUp); };
     }, []);
 
     const filteredMeasurements = combinedItems;
@@ -897,46 +940,65 @@ const RightSidebar = () => {
                             {/* Case Summary */}
                             <CaseSummary isOpen={caseSummaryOpen} onOpenChange={setCaseSummaryOpen} />
 
-                            {/* Current measurements */}
-                            <CollapseSection title="Current Measurements" badge={filteredMeasurements.length || undefined} defaultOpen>
-                                {filteredMeasurements.length === 0 ? (
-                                    <div style={{ textAlign: 'center', padding: '32px 16px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
-                                        <div style={{ fontSize: 24, opacity: 0.5 }}>✏️</div>
-                                        <div style={{ fontWeight: 600, fontSize: 13, color: 'var(--text)' }}>No measurements yet</div>
-                                        <div style={{ fontSize: 11, color: 'var(--text-3)' }}>Add measurements to see results here.</div>
-                                    </div>
-                                ) : (
-                                    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-                                        {groupMeasurementsByCategory(filteredMeasurements).map((group) => (
-                                            <div key={group.label} className="mgroup" style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                                                <div className="mgroup-name" style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '.05em' }}>
-                                                    {group.label}
+                            {/* Measurement Comparison (only visible in compare mode) */}
+                            {isComparisonMode && comparison?.left && comparison?.right && (
+                                <CollapseSection title="Measurement Comparison" defaultOpen>
+                                    <ComparisonTable
+                                        leftMeasurements={comparison.left.measurements || []}
+                                        rightMeasurements={comparison.right.measurements || []}
+                                        category="All"
+                                        leftPixelToMm={comparison.left.canvas.pixelToMm}
+                                        rightPixelToMm={comparison.right.canvas.pixelToMm}
+                                        leftCalibrationApplied={!!comparison.left.canvas.calibrationApplied}
+                                        rightCalibrationApplied={!!comparison.right.canvas.calibrationApplied}
+                                        leftCalibrationEnabledAt={comparison.left.canvas.calibrationEnabledAt}
+                                        rightCalibrationEnabledAt={comparison.right.canvas.calibrationEnabledAt}
+                                    />
+                                </CollapseSection>
+                            )}
+
+                            {/* Current measurements (hidden in Compare Mode) */}
+                            {!isComparisonMode && (
+                                <CollapseSection title="Current Measurements" badge={filteredMeasurements.length || undefined} defaultOpen>
+                                    {filteredMeasurements.length === 0 ? (
+                                        <div style={{ textAlign: 'center', padding: '32px 16px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
+                                            <div style={{ fontSize: 24, opacity: 0.5 }}>✏️</div>
+                                            <div style={{ fontWeight: 600, fontSize: 13, color: 'var(--text)' }}>No measurements yet</div>
+                                            <div style={{ fontSize: 11, color: 'var(--text-3)' }}>Add measurements to see results here.</div>
+                                        </div>
+                                    ) : (
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                                            {groupMeasurementsByCategory(filteredMeasurements).map((group) => (
+                                                <div key={group.label} className="mgroup" style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                                                    <div className="mgroup-name" style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '.05em' }}>
+                                                        {group.label}
+                                                    </div>
+                                                    {group.items.map((m: any) => {
+                                                        const displayName = TOOL_DISPLAY_NAMES[m.toolKey] || m.toolKey.toUpperCase();
+                                                        const displayValue = formatValue(m, activePixelToMm, shouldConvert(m));
+                                                        return (
+                                                            <MeasurementCard
+                                                                key={m.id}
+                                                                label={displayName}
+                                                                value={displayValue}
+                                                                range={NORMAL_RANGES[m.toolKey] || ''}
+                                                                toolKey={m.toolKey}
+                                                                checked={m.selected || false}
+                                                                onCheckedChange={() => toggleMeasurementSelection(m.id)}
+                                                                onDelete={() => m.isImplant ? deleteImplant(m.id) : deleteMeasurement(m.id)}
+                                                                setMeasurements={setMeasurements}
+                                                                m={m}
+                                                                pixelToMm={activePixelToMm}
+                                                                shouldConvert={shouldConvert(m)}
+                                                            />
+                                                        );
+                                                    })}
                                                 </div>
-                                                {group.items.map((m: any) => {
-                                                    const displayName = TOOL_DISPLAY_NAMES[m.toolKey] || m.toolKey.toUpperCase();
-                                                    const displayValue = formatValue(m, activePixelToMm, shouldConvert(m));
-                                                    return (
-                                                        <MeasurementCard
-                                                            key={m.id}
-                                                            label={displayName}
-                                                            value={displayValue}
-                                                            range={NORMAL_RANGES[m.toolKey] || ''}
-                                                            toolKey={m.toolKey}
-                                                            checked={m.selected || false}
-                                                            onCheckedChange={() => toggleMeasurementSelection(m.id)}
-                                                            onDelete={() => m.isImplant ? deleteImplant(m.id) : deleteMeasurement(m.id)}
-                                                            setMeasurements={setMeasurements}
-                                                            m={m}
-                                                            pixelToMm={activePixelToMm}
-                                                            shouldConvert={shouldConvert(m)}
-                                                        />
-                                                    );
-                                                })}
-                                            </div>
-                                        ))}
-                                    </div>
-                                )}
-                            </CollapseSection>
+                                            ))}
+                                        </div>
+                                    )}
+                                </CollapseSection>
+                            )}
 
                             {/* Reference Lines section */}
                             <CollapseSection title="Reference Lines" defaultOpen>
