@@ -6,7 +6,7 @@ import { useState } from 'react';
 import { Icon } from '@/components/Icon';
 import { Collapse, ToolGlyph } from '@/components/primitives';
 import { assessmentTabs } from '../data';
-import { AnnotationList, CaseSummary, ComputedMeasurements, MeasurementGroups, RefLinesPanel, ViewerDock } from '../components';
+import { AnnotationList, CaseSummary, ComputedMeasurements, RefLinesPanel, ViewerDock } from '../components';
 import { CanvasWorkspace } from '@/features/canvas/CanvasWorkspace';
 import { useWorkspaceStore } from '@/lib/store/workspace';
 
@@ -127,15 +127,17 @@ export function Assessment() {
 
       {/* right: case summary + live measurement results */}
       <div className="ws-panel right">
-        <div className="ws-panel-head" style={{ paddingBottom: 0 }} />
         <div className="ws-panel-scroll">
-          <CaseSummary defaultOpen={false} />
-          <Collapse title="Current Measurements" defaultOpen>
-            <ComputedMeasurements />
-            <AnnotationList />
-            <MeasurementGroups groups={data.groups} />
-            <RefLinesPanel lines={data.refLines} />
-          </Collapse>
+          <div style={{ display: 'flex', flexDirection: 'column' }}>
+            <CaseSummary defaultOpen={false} />
+            <Collapse title="Current Measurements" defaultOpen>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                <ComputedMeasurements />
+                <AnnotationList />
+                <RefLinesPanel lines={(useWorkspaceStore as any)((s: any) => s.refLines) || []} />
+              </div>
+            </Collapse>
+          </div>
         </div>
       </div>
     </div>

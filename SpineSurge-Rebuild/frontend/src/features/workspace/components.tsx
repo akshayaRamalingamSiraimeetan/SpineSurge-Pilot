@@ -592,25 +592,37 @@ export function CaseSummary({ defaultOpen = false }: { defaultOpen?: boolean }) 
   ];
   return (
     <Collapse title="Case Summary" defaultOpen={defaultOpen}>
-      <div className="cs-row" style={{ paddingTop: 0 }}>
-        <span className="csl">Study Imported</span>
-        <span className="csv" style={{ color: 'var(--text-2)' }}>
-          <Icon name="calendar" size={15} /> {c.imported}
-        </span>
-      </div>
-      {rows.map((r, i) => (
-        <div className="cs-row" key={i} style={{ borderTop: '1px solid var(--border)' }}>
-          <span className="csl">
-            <Icon name={r[0]} size={16} /> {r[1]}
-          </span>
-          <span className="csv">
-            {r[2]}{' '}
-            <button className="cs-edit">
-              <Icon name="edit" size={15} />
-            </button>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+        <div className="cs-row" style={{ paddingTop: 0, paddingBottom: 12 }}>
+          <span className="csl" style={{ fontSize: 13, color: 'var(--text-3)' }}>Study Imported</span>
+          <span className="csv" style={{ color: 'var(--text-2)', fontSize: 13, fontWeight: 600 }}>
+            <Icon name="calendar" size={14} style={{ marginRight: 4 }} /> {c.imported}
           </span>
         </div>
-      ))}
+        {rows.map((r, i) => (
+          <div className="cs-row" key={i} style={{ borderTop: '1px solid var(--border)', padding: '10px 0' }}>
+            <span className="csl" style={{ fontSize: 13, color: 'var(--text-3)', display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Icon name={r[0]} size={16} /> {r[1]}
+            </span>
+            <span className="csv" style={{ fontSize: 13, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8 }}>
+              {r[2]}
+              <button className="cs-edit" style={{ color: 'var(--text-3)', padding: 2 }}>
+                <Icon name="edit" size={14} />
+              </button>
+            </span>
+          </div>
+        ))}
+        <div style={{ borderTop: '1px solid var(--border)', paddingTop: 12, marginTop: 4 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+            <span style={{ fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.05em', color: 'var(--text-3)' }}>Study Notes</span>
+            <button style={{ color: 'var(--text-3)' }}><Icon name="info" size={14} /></button>
+          </div>
+          <div className="notes-box" style={{ background: 'var(--surface-2)', border: '1px solid var(--border-2)', borderRadius: 6, padding: '10px 12px', fontSize: 13 }}>
+            <span style={{ color: 'var(--text-3)' }}>Add notes...</span>
+            <button style={{ color: 'var(--text-3)' }}><Icon name="edit" size={14} /></button>
+          </div>
+        </div>
+      </div>
     </Collapse>
   );
 }

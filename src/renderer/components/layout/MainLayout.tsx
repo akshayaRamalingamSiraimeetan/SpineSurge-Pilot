@@ -1,12 +1,18 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { Outlet, useNavigate } from "react-router-dom";
-import { ShieldAlert, Copy, X } from "lucide-react";
+import { ShieldAlert, Copy, X, FileText } from "lucide-react";
 import TopMenuBar from "@/features/navigation/TopMenuBar";
 import LeftSidebar from "@/features/navigation/LeftSidebar";
 import RightSidebar from "@/features/navigation/RightSidebar";
 import BottomToolbar from "@/features/canvas/BottomToolbar";
+import { WorkspaceShell } from "@/features/navigation/WorkspaceShell";
 import { useAppStore } from "@/lib/store/index";
 import { API_BASE } from "@/lib/api";
+import { Button } from "@/components/ui/button";
+
+// ─── Workspace tab header (Assessment · Planning · Compare · Report) ──────────
+
+
 
 // ─── Inspection Banner ────────────────────────────────────────────────────────
 
@@ -124,15 +130,19 @@ const MainLayout: React.FC = () => {
             <InspectionBanner />
             <div className={`flex flex-1 ${bannerOffset} h-screen overflow-hidden`}>
                 <LeftSidebar />
-                <main className="flex-1 relative bg-black overflow-hidden flex flex-col">
+                <main className="flex-1 relative overflow-hidden flex flex-col" style={{ background: 'var(--bg-2)' }}>
                     {/* Grid Overlay */}
-                    <div className="absolute inset-0 pointer-events-none opacity-[0.02]"
-                        style={{ backgroundImage: 'linear-gradient(rgba(255,255,255,0.22) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.22) 1px, transparent 1px)', backgroundSize: '40px 40px' }}>
+                    <div className="absolute inset-0 pointer-events-none opacity-[0.015]"
+                        style={{ backgroundImage: 'linear-gradient(rgba(255,255,255,0.22) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.22) 1px, transparent 1px)', backgroundSize: '40px 40px', zIndex: 0 }}>
                     </div>
 
-                    <Outlet />
-
-                    {hasImageForToolbar && <BottomToolbar />}
+                    {/* WorkspaceShell provides the Assessment/Planning/Compare/Report tab header */}
+                    <div className="ws" style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+                        <div style={{ flex: 1, minHeight: 0, position: 'relative', display: 'flex', flexDirection: 'column' }}>
+                            <Outlet />
+                            {hasImageForToolbar && <BottomToolbar />}
+                        </div>
+                    </div>
                 </main>
                 <RightSidebar />
             </div>

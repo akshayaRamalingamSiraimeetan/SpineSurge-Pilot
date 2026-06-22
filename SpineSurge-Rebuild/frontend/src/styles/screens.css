@@ -88,7 +88,7 @@
 
 /* ============================================================ workspace shell */
 .ws { display: flex; flex-direction: column; height: 100%; min-height: 0; }
-.ws-header { display: flex; align-items: center; gap: 18px; padding: 14px 26px; border-bottom: 1px solid var(--border); flex-shrink: 0; }
+.ws-header { display: flex; align-items: center; gap: 18px; padding: 10px 24px; border-bottom: 1px solid var(--border); flex-shrink: 0; background: var(--surface); }
 .ws-back { display: flex; align-items: center; gap: 13px; }
 .ws-title { font-size: 21px; font-weight: 700; letter-spacing: -.01em; line-height: 1.15; }
 .ws-sub { color: var(--text-2); font-size: 13px; margin-top: 1px; }

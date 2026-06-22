@@ -4,7 +4,7 @@
    their own content. Settings opens as a modal; the rail avatar opens a profile/org popover. */
 import { useEffect, useRef, useState } from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
-import { Icon, Logo } from '@/components/Icon';
+import { Icon } from '@/components/Icon';
 import { useTheme } from '@/lib/theme/useTheme';
 import { useAuth } from '@/lib/auth/AuthProvider';
 import { DEV_ORGS } from '@/lib/auth/devOrgs';
@@ -88,9 +88,6 @@ export function AppShell() {
   return (
     <div className="app">
       <nav className="rail">
-        <div className="rail-logo">
-          <Logo size={34} />
-        </div>
         <div className="rail-nav">
           {NAV_ITEMS.map((it) => (
             <NavLink key={it.to} to={it.to} className={({ isActive }) => 'rail-btn' + (isActive ? ' active' : '')}>

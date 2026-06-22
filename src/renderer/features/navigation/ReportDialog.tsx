@@ -44,7 +44,7 @@ export function ReportDialog({ open, onOpenChange, checkedCount }: { open: boole
         setIsGenerating(true);
         console.log("Starting PDF generation...");
         try {
-            const selectedMeasurements = measurements.filter(m => m.selected);
+            const selectedMeasurements = measurements.filter(m => m.selected && m.toolKey !== 'c7pl' && m.toolKey !== 'csvl' && !m?.measurement?.isCalibration);
             if (selectedMeasurements.length === 0) {
                 alert("No measurements selected for the report.");
                 setIsGenerating(false);

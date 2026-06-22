@@ -117,19 +117,27 @@ export function Icon({ name, size = 20, style, strokeWidth = 1.7, className }: I
   );
 }
 
-/** SpineSurge S-mark — clean geometric vertebral mark in brand red. */
 export function Logo({ size = 34 }: { size?: number }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 32 32" fill="none" aria-label="SpineSurge">
-      <path
-        d="M22 8.5C20.2 6.8 17.8 6 15.2 6.6 11.6 7.4 9.4 10.8 10.6 13.8c.9 2.3 3.4 3.1 6.2 3.6 2.8.5 4.4 1.2 4.9 2.6.7 1.9-.8 4-3.6 4.6-2.2.5-4.4-.1-6-1.6"
-        stroke="var(--accent)"
-        strokeWidth="3.1"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-      <circle cx="9.5" cy="22.5" r="1.9" fill="var(--accent)" />
-    </svg>
+    <div
+      style={{
+        width: size,
+        height: size,
+        backgroundColor: '#EC3327',
+        color: '#FFFFFF',
+        fontWeight: 900,
+        fontSize: size * 0.6,
+        fontFamily: 'var(--font-sans)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        borderRadius: 4,
+        userSelect: 'none',
+      }}
+      aria-label="SpineSurge"
+    >
+      S
+    </div>
   );
 }
 

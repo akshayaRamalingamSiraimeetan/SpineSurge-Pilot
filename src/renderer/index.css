@@ -1,5 +1,198 @@
 @import "tailwindcss";
 
+/* ============================================================
+   SpineSurge Rebuild Design System — tokens & workspace styles
+   Imported from SpineSurge-Rebuild for visual consistency
+   ============================================================ */
+
+/* ---- Rebuild design tokens (layered over existing Tailwind vars) ---- */
+:root {
+  --r-xs: 6px; --r-sm: 8px; --r-md: 10px; --r-lg: 14px;
+  --r-xl: 18px; --r-2xl: 22px; --r-pill: 999px;
+
+  --shadow-xs: 0 1px 2px rgba(20,20,30,.05);
+  --shadow-sm: 0 1px 3px rgba(20,20,30,.06), 0 1px 2px rgba(20,20,30,.04);
+  --shadow-md: 0 4px 14px rgba(20,20,30,.07), 0 1px 3px rgba(20,20,30,.05);
+  --shadow-lg: 0 12px 32px rgba(20,20,30,.12), 0 4px 10px rgba(20,20,30,.06);
+  --shadow-modal: 0 24px 60px rgba(15,15,25,.22), 0 8px 20px rgba(15,15,25,.12);
+
+  --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+
+  /* Dark (default) palette mapped to Rebuild tokens */
+  --bg:            #0A0A0B;
+  --bg-2:          #0E0E10;
+  --surface:       #141416;
+  --surface-2:     #1A1A1D;
+  --surface-3:     #202024;
+  --sidebar:       #0D0D0F;
+  --border:        #242427;
+  --border-2:      #2C2C30;
+  --border-strong: #3A3A40;
+  --overlay:       rgba(0,0,0,.6);
+  --text:          #F3F3F5;
+  --text-2:        #A4A4AC;
+  --text-3:        #6C6C74;
+  --accent:        #F23A2E;
+  --accent-hover:  #FF5347;
+  --accent-soft:   #2A1513;
+  --accent-soft-2: #371A16;
+  --val-angle:  #E6A23C;
+  --val-good:   #3BD07E;
+  --val-pelvic: #5B9BFF;
+  --val-bad:    #FF5A4D;
+  --val-purple: #B49BF0;
+  --success: #34C77B;  --success-soft: #112A1D;
+  --viewer-bg: #0B0B0C;
+}
+
+.light {
+  --bg:            #F4F4F6;
+  --bg-2:          #EFEFF2;
+  --surface:       #FFFFFF;
+  --surface-2:     #FAFAFA;
+  --surface-3:     #F4F4F6;
+  --sidebar:       #FFFFFF;
+  --border:        #E8E8EC;
+  --border-2:      #DEDEE3;
+  --border-strong: #CFCFD6;
+  --text:   #17171A;
+  --text-2: #58585F;
+  --text-3: #8A8A93;
+  --accent:        #EC3327;
+  --accent-hover:  #D52A1F;
+  --accent-soft:   #FDECEA;
+  --accent-soft-2: #FBDED9;
+  --val-angle:  #C77A14;
+  --val-good:   #15924F;
+  --val-pelvic: #2563EB;
+  --val-bad:    #DC2626;
+  --val-purple: #7A53D1;
+  --success: #15924F;  --success-soft: #E6F5ED;
+  --viewer-bg: #0B0B0C;
+}
+
+/* ---- Workspace layout shell ---- */
+.ws { display: flex; flex-direction: column; height: 100%; min-height: 0; }
+.ws-header { display: flex; align-items: center; gap: 18px; padding: 14px 24px; border-bottom: 1px solid var(--border); flex-shrink: 0; background: var(--surface); }
+.ws-back { display: flex; align-items: center; gap: 13px; }
+.ws-title { font-size: 18px; font-weight: 700; letter-spacing: -.01em; line-height: 1.15; color: var(--text); }
+.ws-sub { color: var(--text-3); font-size: 12px; margin-top: 1px; }
+.ws-tabs { display: flex; gap: 4px; background: var(--surface-3); padding: 4px; border-radius: var(--r-lg); margin: 0 auto; }
+.ws-tab { padding: 8px 18px; border-radius: var(--r-md); font-size: 13px; font-weight: 600; color: var(--text-2); transition: all .14s; border: none; cursor: pointer; background: transparent; }
+.ws-tab:hover { color: var(--text); }
+.ws-tab.on { background: var(--accent-soft); color: var(--accent); }
+.ws-body { flex: 1; display: grid; grid-template-columns: 304px 1fr 336px; min-height: 0; overflow: hidden; }
+.ws-panel { border-right: 1px solid var(--border); display: flex; flex-direction: column; min-height: 0; overflow: hidden; background: var(--surface); }
+.ws-panel.right { border-right: none; border-left: 1px solid var(--border); }
+.ws-panel-head { padding: 16px 18px 10px; flex-shrink: 0; }
+.ws-panel-head h3 { font-size: 14px; font-weight: 700; color: var(--text); }
+.ws-panel-scroll { flex: 1; overflow-y: auto; }
+
+/* center viewer */
+.ws-viewer { background: var(--bg-2); padding: 0; display: flex; min-height: 0; flex-direction: column; flex: 1; position: relative; overflow: hidden; }
+
+/* ---- A/D/E/M/G tab tiles (Alignment/Extended/Morphology/Generic) ---- */
+.adpm { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin: 12px 0 10px; }
+.adpm-tile { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 8px 4px 6px; border-radius: var(--r-md); border: 1px solid transparent; transition: all .14s; background: transparent; cursor: pointer; }
+.adpm-tile:hover { background: var(--surface-3); }
+.adpm-tile .lt { font-size: 16px; font-weight: 700; color: var(--text-2); font-family: var(--font-mono, monospace); }
+.adpm-tile .lb { font-size: 10px; font-weight: 600; color: var(--text-3); text-align: center; line-height: 1.2; }
+.adpm-tile.on { background: var(--accent-soft); box-shadow: inset 0 -2px 0 var(--accent); }
+.adpm-tile.on .lt, .adpm-tile.on .lb { color: var(--accent); }
+
+/* plane toggle */
+.plane-toggle { display: grid; grid-template-columns: 1fr 1fr; gap: 0; border: 1px solid var(--border-2); border-radius: var(--r-md); overflow: hidden; margin-bottom: 12px; }
+.plane-toggle button { padding: 8px; font-size: 12.5px; font-weight: 600; color: var(--text-2); background: var(--surface); transition: all .14s; border: none; cursor: pointer; }
+.plane-toggle button.on { background: var(--accent-soft); color: var(--accent); }
+
+/* tool list */
+.tool-list { display: flex; flex-direction: column; gap: 2px; }
+.tool-item { display: flex; align-items: center; gap: 11px; padding: 10px 10px; border-radius: var(--r-md); border: 1px solid transparent; cursor: pointer; transition: background .12s, border-color .12s; background: transparent; text-align: left; width: 100%; }
+.tool-item:hover { background: var(--surface-2); }
+.tool-item.on { background: var(--accent-soft); border-color: var(--accent-soft-2); }
+.tool-item .ti-name { font-weight: 600; font-size: 13px; color: var(--text); display: block; }
+.tool-item.on .ti-name { color: var(--accent); }
+.tool-item .ti-desc { color: var(--text-3); font-size: 11px; margin-top: 1px; display: block; }
+
+/* tool glyph */
+.tool-glyph {
+  display: grid; place-items: center; border-radius: var(--r-md);
+  font-family: var(--font-mono, monospace); font-weight: 600; font-size: 10px; letter-spacing: -.02em;
+  background: var(--surface-3); color: var(--text-2); flex-shrink: 0; line-height: 1;
+  width: 34px; height: 34px;
+}
+.tool-glyph.tone-accent { background: var(--accent-soft); color: var(--accent); }
+.tool-glyph.tone-pelvic { background: rgba(91,155,255,.12); color: var(--val-pelvic); }
+.tool-glyph.tone-violet { background: rgba(180,155,240,.1); color: var(--val-purple); }
+
+/* refline items */
+.refline-item { display: flex; align-items: center; gap: 10px; padding: 8px 2px; }
+.refline-dot { width: 6px; height: 6px; border-radius: 99px; background: var(--success); flex-shrink: 0; }
+.refline-name { font-weight: 600; font-size: 13px; color: var(--text); }
+.refline-desc { color: var(--text-3); font-size: 11px; }
+
+/* calibration button */
+.calib-btn { width: 100%; display: flex; align-items: center; justify-content: center; gap: 8px; height: 42px; border-radius: var(--r-md); border: 1px solid var(--accent-soft-2); background: var(--accent-soft); color: var(--accent); font-weight: 600; font-size: 13px; margin-top: 10px; transition: background .14s; cursor: pointer; }
+.calib-btn:hover { background: var(--accent-soft-2); }
+.calib-btn.on { border-color: var(--accent); }
+
+/* measurement groups */
+.mgroup { margin-bottom: 16px; }
+.mgroup-name { font-size: 10px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--text-3); margin-bottom: 8px; display: flex; align-items: center; justify-content: space-between; }
+.mrow { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 6px 0; border-bottom: 1px solid var(--border); }
+.mrow:last-child { border-bottom: none; }
+.mrow .ml { font-size: 13px; color: var(--text); display: flex; align-items: center; gap: 8px; }
+.mrow .mv { font-size: 13px; font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.mv.angle { color: var(--val-angle); } .mv.good { color: var(--val-good); }
+.mv.pelvic { color: var(--val-pelvic); } .mv.bad { color: var(--val-bad); }
+.mv.purple { color: var(--val-purple); } .mv.plain { color: var(--text); }
+.msub { padding: 4px 0 4px 16px; }
+.msub .mrow { padding: 4px 0; }
+.msub .ml { color: var(--text-2); font-size: 12px; }
+
+/* collapse section */
+.collapse { border-bottom: 1px solid var(--border); }
+.collapse:last-child { border-bottom: none; }
+.collapse-head { width: 100%; display: flex; align-items: center; justify-content: space-between; padding: 14px 18px; background: transparent; border: none; cursor: pointer; }
+.collapse-title { font-size: 14px; font-weight: 700; letter-spacing: -.01em; color: var(--text); }
+.collapse-badge { min-width: 20px; height: 20px; padding: 0 6px; border-radius: 99px; background: var(--surface-3); color: var(--text-2); font-size: 11px; font-weight: 700; display: grid; place-items: center; }
+.collapse-body { padding: 0 18px 16px; }
+
+/* case summary rows */
+.cs-row { display: flex; align-items: center; justify-content: space-between; padding: 8px 0; gap: 10px; }
+.cs-row .csl { display: flex; align-items: center; gap: 8px; color: var(--text-2); font-size: 13px; }
+.cs-row .csv { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 500; color: var(--text); }
+
+/* empty state */
+.empty-state { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 32px 10px; text-align: center; }
+.empty-state .es-ico { width: 48px; height: 48px; border-radius: 50%; background: var(--surface-3); display: grid; place-items: center; color: var(--text-3); }
+.empty-state .es-t { color: var(--accent); font-weight: 700; font-size: 13px; }
+.empty-state .es-s { color: var(--text-3); font-size: 12px; max-width: 200px; }
+
+/* compare layout */
+.compare-top { display: flex; align-items: flex-end; gap: 16px; padding: 14px 18px; border-bottom: 1px solid var(--border); flex-shrink: 0; }
+.cmp-viewers { flex: 1; display: grid; grid-template-columns: 1fr 1fr; gap: 12px; padding: 12px; min-height: 0; overflow: hidden; }
+.cmp-pane { position: relative; background: var(--viewer-bg); border-radius: var(--r-lg); overflow: hidden; min-height: 0; }
+.cmp-table-head { display: grid; grid-template-columns: 1.5fr 1fr 1fr 1fr; padding: 10px 0; border-bottom: 1px solid var(--border); }
+.cmp-th { font-size: 12px; font-weight: 700; color: var(--text-2); }
+.cmp-row { display: grid; grid-template-columns: 1.5fr 1fr 1fr 1fr; padding: 8px 0; align-items: center; border-bottom: 1px solid var(--border); }
+.cmp-row:last-child { border-bottom: none; }
+.cmp-row .cl { font-size: 13px; color: var(--text); }
+.cmp-row .cval { font-size: 13px; font-weight: 700; text-align: right; font-variant-numeric: tabular-nums; }
+.cval.a { color: var(--val-bad); } .cval.b { color: var(--val-pelvic); }
+.cval.d-good { color: var(--val-good); } .cval.d-bad { color: var(--val-bad); } .cval.d-flat { color: var(--text-3); }
+
+/* dots */
+.dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; display: inline-block; }
+.dot-red { background: var(--accent); }
+.dot-green { background: var(--success); }
+.dot-blue { background: var(--val-pelvic); }
+.dot-violet { background: var(--val-purple); }
+.dot-amber { background: var(--val-angle); }
+
+/* mono util */
+.mono { font-family: var(--font-mono, monospace); }
+
 /**
  * SPINE SURGE - ENTERPRISE MEDICAL THEME
  * Premium medical SaaS - Clean - Minimal - Professional
