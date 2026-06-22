@@ -92,7 +92,8 @@ const TopMenuBar = () => {
     const [profileOpen, setProfileOpen]   = useState(false);
     const [settingsOpen, setSettingsOpen] = useState(false);
     const [reportOpen, setReportOpen]     = useState(false);
-    const [wsTab, setWsTab]               = useState<WsTab>('assessment');
+    const queryParams = useMemo(() => new URLSearchParams(location.search), [location.search]);
+    const wsTab = (queryParams.get('tab') as WsTab) || 'assessment';
 
     const lastMainRouteRef = useRef('/dashboard');
     if (location.pathname === '/dashboard' || location.pathname === '/compare') {
@@ -129,13 +130,14 @@ const TopMenuBar = () => {
 
     /* ── Tab switching ───────────────────────────────────────── */
     const handleWsTab = (key: WsTab) => {
-        setWsTab(key);
         if (key === 'compare') {
             setComparisonMode(true);
             navigate('/compare');
         } else {
             if (isComparisonMode) setComparisonMode(false);
-            if (location.pathname !== '/workspace') navigate('/workspace');
+            const searchParams = new URLSearchParams(location.search);
+            searchParams.set('tab', key);
+            navigate(`/workspace?${searchParams.toString()}`);
             if (key === 'report') { setReportOpen(true); setActiveDialog('report'); }
         }
     };

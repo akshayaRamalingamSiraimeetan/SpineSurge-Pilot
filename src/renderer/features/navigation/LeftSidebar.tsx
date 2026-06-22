@@ -19,10 +19,11 @@
  * Planning tools are in a separate Planning tab (P in A/D/P/M is Pathology).
  * The app nav rail is rendered separately in MainLayout (DashboardSidebar / TopMenuBar).
  */
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { Scale } from 'lucide-react';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { useAppStore } from '@/lib/store/index';
+import { useLocation } from 'react-router-dom';
 
 /* ── Types ─────────────────────────────────────────────────── */
 type TabKey = 'alignment' | 'extended' | 'morphology' | 'generic' | 'planning';
@@ -170,21 +171,21 @@ const TABS: TabDef[] = [
     label: 'Planning',
     sections: [
       {
-        title: 'Osteotomies',
+        title: 'Osteotomy',
         tools: [
-          { id: 'ost-pso',   abbr: 'PSO',    label: 'Pedicle Subtraction',  desc: 'Pedicle Subtraction Osteotomy' },
-          { id: 'ost-spo',   abbr: 'SPO',    label: 'Smith-Petersen',       desc: 'Smith-Petersen Osteotomy' },
-          { id: 'ost-open',  abbr: 'Open',   label: 'Opening Wedge',        desc: 'Opening Wedge Osteotomy' },
-          { id: 'ost-resect',abbr: 'Resect', label: 'Resection',            desc: 'Bone resection planning' },
+          { id: 'ost-pso',    abbr: 'PSO',    label: 'PSO',       desc: 'Pedicle Subtraction Osteotomy' },
+          { id: 'ost-spo',    abbr: 'SPO',    label: 'SPO',       desc: 'Smith-Petersen Osteotomy' },
+          { id: 'ost-resect', abbr: 'Resect', label: 'Resect',    desc: 'Bone resection planning' },
+          { id: 'ost-open',   abbr: 'Open',   label: 'Open',      desc: 'Opening Wedge Osteotomy' },
         ],
       },
       {
-        title: 'Implants',
+        title: 'Instruments',
         tools: [
-          { id: 'screw',     abbr: 'Screw',  label: 'Pedicle Screw',        desc: 'Place pedicle screw' },
-          { id: 'rod',       abbr: 'Rod',    label: 'Spinal Rod',           desc: 'Place spinal rod' },
-          { id: 'cage',      abbr: 'Cage',   label: 'Interbody Cage',       desc: 'Place interbody cage' },
-          { id: 'plate',     abbr: 'Plate',  label: 'Spinal Plate',         desc: 'Place spinal plate' },
+          { id: 'screw',     abbr: 'Screw',   label: 'Screw',     desc: 'Place pedicle screw' },
+          { id: 'rod',       abbr: 'Rod',     label: 'Rod',       desc: 'Place spinal rod' },
+          { id: 'cage',      abbr: 'Cage',    label: 'Cage',      desc: 'Place interbody cage' },
+          { id: 'itilt',     abbr: 'UIV/LIV', label: 'UIV/LIV',   desc: 'Instrumented Tilt (UIV/LIV)' },
         ],
       },
     ],
@@ -316,10 +317,15 @@ function RefLineRow({ refLine, active, onClick }: { refLine: RefLineDef; active:
 /* ── Main LeftSidebar ────────────────────────────────────────── */
 const LeftSidebar = () => {
   const { activeTool, setActiveTool } = useAppStore();
+  const location = useLocation();
+  const queryParams = useMemo(() => new URLSearchParams(location.search), [location.search]);
+  const isPlanningMode = queryParams.get('tab') === 'planning';
+
   const [activeTab, setActiveTab] = useState<TabKey>('alignment');
   const [plane, setPlane] = useState<Plane>('coronal');
 
-  const tab = TABS.find((t) => t.key === activeTab)!;
+  const currentTabKey = isPlanningMode ? 'planning' : activeTab;
+  const tab = TABS.find((t) => t.key === currentTabKey)!;
 
   const sections: SectionDef[] = tab.planes
     ? (plane === 'coronal' ? tab.coronal! : tab.sagittal!)
@@ -351,53 +357,55 @@ const LeftSidebar = () => {
         flexShrink: 0,
       }}>
         <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)', marginBottom: 12 }}>
-          Measurement Tools
+          {isPlanningMode ? 'Planning Tools' : 'Measurement Tools'}
         </div>
 
-        {/* A / D / P / M tiles */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6 }}>
-          {TABS.map((t) => (
-            <button
-              key={t.key}
-              onClick={() => { setActiveTab(t.key); setActiveTool(null); }}
-              style={{
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                gap: 3,
-                padding: '8px 4px 6px',
-                borderRadius: 8,
-                border: 'none',
-                cursor: 'pointer',
-                background: activeTab === t.key ? 'var(--accent-soft)' : 'transparent',
-                boxShadow: activeTab === t.key ? 'inset 0 -2px 0 var(--accent)' : 'none',
-                transition: 'all .14s',
-              }}
-              onMouseEnter={(e) => { if (activeTab !== t.key) (e.currentTarget as HTMLElement).style.background = 'var(--surface-3)'; }}
-              onMouseLeave={(e) => { if (activeTab !== t.key) (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
-            >
-              <span style={{
-                fontSize: 17,
-                fontWeight: 700,
-                color: activeTab === t.key ? 'var(--accent)' : 'var(--text-2)',
-                lineHeight: 1,
-              }}>
-                {t.short}
-              </span>
-              <span style={{
-                fontSize: 10,
-                fontWeight: 600,
-                color: activeTab === t.key ? 'var(--accent)' : 'var(--text-3)',
-                lineHeight: 1.2,
-              }}>
-                {t.label}
-              </span>
-            </button>
-          ))}
-        </div>
+        {/* A / E / M / G tiles */}
+        {!isPlanningMode && (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6 }}>
+            {TABS.slice(0, 4).map((t) => (
+              <button
+                key={t.key}
+                onClick={() => { setActiveTab(t.key); setActiveTool(null); }}
+                style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  gap: 3,
+                  padding: '8px 4px 6px',
+                  borderRadius: 8,
+                  border: 'none',
+                  cursor: 'pointer',
+                  background: activeTab === t.key ? 'var(--accent-soft)' : 'transparent',
+                  boxShadow: activeTab === t.key ? 'inset 0 -2px 0 var(--accent)' : 'none',
+                  transition: 'all .14s',
+                }}
+                onMouseEnter={(e) => { if (activeTab !== t.key) (e.currentTarget as HTMLElement).style.background = 'var(--surface-3)'; }}
+                onMouseLeave={(e) => { if (activeTab !== t.key) (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
+              >
+                <span style={{
+                  fontSize: 17,
+                  fontWeight: 700,
+                  color: activeTab === t.key ? 'var(--accent)' : 'var(--text-2)',
+                  lineHeight: 1,
+                }}>
+                  {t.short}
+                </span>
+                <span style={{
+                  fontSize: 10,
+                  fontWeight: 600,
+                  color: activeTab === t.key ? 'var(--accent)' : 'var(--text-3)',
+                  lineHeight: 1.2,
+                }}>
+                  {t.label}
+                </span>
+              </button>
+            ))}
+          </div>
+        )}
 
         {/* Coronal / Sagittal toggle */}
-        {tab.planes && (
+        {!isPlanningMode && tab.planes && (
           <div style={{
             display: 'grid',
             gridTemplateColumns: '1fr 1fr',
@@ -459,34 +467,36 @@ const LeftSidebar = () => {
           ))}
 
           {/* Calibration button */}
-          <div style={{ padding: '10px 4px 4px' }}>
-            <button
-              onClick={() => handleTool('calibration')}
-              style={{
-                width: '100%',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: 8,
-                height: 40,
-                borderRadius: 8,
-                border: `1px solid ${activeTool === 'calibration' ? 'var(--accent)' : 'var(--accent-soft-2, #371A16)'}`,
-                background: 'var(--accent-soft)',
-                color: 'var(--accent)',
-                fontSize: 13,
-                fontWeight: 600,
-                cursor: 'pointer',
-                transition: 'all .14s',
-              }}
-            >
-              <Scale size={15} />
-              {activeTool === 'calibration' ? 'Click two points…' : 'Calibration'}
-            </button>
-          </div>
+          {!isPlanningMode && (
+            <div style={{ padding: '10px 4px 4px' }}>
+              <button
+                onClick={() => handleTool('calibration')}
+                style={{
+                  width: '100%',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 8,
+                  height: 40,
+                  borderRadius: 8,
+                  border: `1px solid ${activeTool === 'calibration' ? 'var(--accent)' : 'var(--accent-soft-2, #371A16)'}`,
+                  background: 'var(--accent-soft)',
+                  color: 'var(--accent)',
+                  fontSize: 13,
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  transition: 'all .14s',
+                }}
+              >
+                <Scale size={15} />
+                {activeTool === 'calibration' ? 'Click two points…' : 'Calibration'}
+              </button>
+            </div>
+          )}
         </div>
 
         {/* ── Reference Lines section ───────────────────────── */}
-        {refLines.length > 0 && (
+        {!isPlanningMode && refLines.length > 0 && (
           <div style={{ borderTop: '1px solid var(--border)', marginTop: 4 }}>
             <div style={{
               display: 'flex',
@@ -521,8 +531,6 @@ const LeftSidebar = () => {
             </div>
           </div>
         )}
-
-        {/* No ref lines for alignment/pathology/manual — show nothing */}
       </ScrollArea>
     </div>
   );
