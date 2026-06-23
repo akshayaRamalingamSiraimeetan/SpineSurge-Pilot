@@ -29,6 +29,14 @@ const MainPage = () => {
         disconnectLiveRoom
     } = useAppStore();
 
+    useEffect(() => {
+        console.log("Workspace (MainPage) mounted/updated state: ", {
+            activePatientId,
+            activeContextId,
+            currentImage
+        });
+    }, [activePatientId, activeContextId, currentImage]);
+
     // Initialize Live Room when context OR patient is active
     useEffect(() => {
         if (activeContextId) {

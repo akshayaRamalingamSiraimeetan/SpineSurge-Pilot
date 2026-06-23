@@ -41,7 +41,7 @@ export function ImagingImportDialog({ patientId, visitId }: ImagingImportDialogP
     const [selectedFile, setSelectedFile] = useState<File | null>(null);
 
     // Import Folder State
-    const [folderPath, setFolderPath] = useState("C:/Users/veera/Downloads/Spine_Data");
+    const [folderPath, setFolderPath] = useState("");
     const [importStatus, setImportStatus] = useState<'idle' | 'scanning' | 'complete' | 'error' | 'processing'>('idle');
     const [importCount, setImportCount] = useState(0);
 

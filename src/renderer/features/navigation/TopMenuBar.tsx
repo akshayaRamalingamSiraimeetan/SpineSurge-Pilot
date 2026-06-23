@@ -251,15 +251,17 @@ const TopMenuBar = () => {
                                 whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
                                 maxWidth: 200,
                             }}>
-                                {patient?.name ?? (activePatientId ? 'Loading…' : 'No patient')}
+                                {activePatientId ? (patient?.name ?? 'Loading…') : 'Untitled Study'}
                             </div>
-                            <div style={{
-                                fontSize: 11, color: 'var(--text-3)',
-                                whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-                                maxWidth: 200,
-                            }}>
-                                {subtitle ?? '—'}
-                            </div>
+                            {activePatientId && (
+                                <div style={{
+                                    fontSize: 11, color: 'var(--text-3)',
+                                    whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                                    maxWidth: 200,
+                                }}>
+                                    {subtitle ?? '—'}
+                                </div>
+                            )}
                         </div>
                     </>
                 )}

@@ -72,7 +72,14 @@ const DashboardHeader = () => {
         <Button
           size="sm"
           className="h-9 gap-2 rounded-lg bg-[#FF453A] text-white font-semibold hover:bg-[#e03d33] text-sm"
-          onClick={() => navigate('/workspace')}
+          onClick={() => {
+            console.log("Before navigation to /workspace from DashboardHeader: ", {
+              activePatientId: useAppStore.getState().activePatientId,
+              activeContextId: useAppStore.getState().activeContextId
+            });
+            useAppStore.getState().resetWorkspace();
+            navigate('/workspace');
+          }}
         >
           <Plus className="h-4 w-4" />
           New Study

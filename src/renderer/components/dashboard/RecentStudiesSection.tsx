@@ -57,7 +57,10 @@ const RecentStudiesSection = () => {
           title="No studies yet"
           description="Upload your first study to get started."
           actionLabel="New Study"
-          onAction={() => navigate('/workspace')}
+          onAction={() => {
+            useAppStore.getState().resetWorkspace();
+            navigate('/workspace');
+          }}
         />
       ) : (
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -83,7 +86,10 @@ const RecentStudiesSection = () => {
           ))}
           {/* Add new study tile */}
           <button
-            onClick={() => navigate('/workspace')}
+            onClick={() => {
+              useAppStore.getState().resetWorkspace();
+              navigate('/workspace');
+            }}
             className="flex flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-[#242427] bg-transparent p-4 text-[#6B7280] transition-colors hover:border-[#3A3A3E] hover:text-[#9CA3AF]"
           >
             <Plus className="h-5 w-5" />

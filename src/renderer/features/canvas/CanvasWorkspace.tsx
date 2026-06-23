@@ -152,6 +152,8 @@ const CanvasWorkspace = ({ side }: CanvasWorkspaceProps) => {
         // In inspection mode, the admin is viewing a member's study — never write back
         if (store.inspectionMode?.active) return;
 
+        console.log("LOG 1: CanvasManager measurements passed to syncStoreWithCanvas:", JSON.stringify(measurements, null, 2));
+
         if (isComparisonMode && side) {
             setComparisonMeasurements(side, measurements);
             setComparisonImplants(side, implants);
@@ -161,12 +163,24 @@ const CanvasWorkspace = ({ side }: CanvasWorkspaceProps) => {
                 measurements,
                 implants,
                 currentImage: store.currentImage ?? undefined,
+            }).then(() => {
+                const latestContextState = store.contextStates.find(s => s.contextId === store.activeContextId);
+                console.log("LOG 2 (Context Active): Store measurements immediately after insertion:", {
+                    activeContextId: store.activeContextId,
+                    contextStateMeasurements: latestContextState?.measurements,
+                    storeMeasurementsFallback: store.measurements
+                });
             });
         } else {
             storeSetMeasurements(measurements);
             storeSetImplants(implants);
+            setTimeout(() => {
+                console.log("LOG 2 (No Context): Store measurements immediately after insertion:", {
+                    storeMeasurements: store.measurements
+                });
+            }, 0);
         }
-    }, [isComparisonMode, side, storeSetMeasurements, storeSetImplants, store.activeContextId, store.updateContextState, setComparisonMeasurements, setComparisonImplants, store.inspectionMode, store.currentImage]);
+    }, [isComparisonMode, side, storeSetMeasurements, storeSetImplants, store.activeContextId, store.updateContextState, setComparisonMeasurements, setComparisonImplants, store.inspectionMode, store.currentImage, store.contextStates, store.measurements]);
 
     const setMeasurements = (measurements: Measurement[]) => {
         const currentImplants = managerRef.current?.current?.data.implants || storeImplants;

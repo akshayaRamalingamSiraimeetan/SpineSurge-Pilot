@@ -37,7 +37,7 @@ export function ScanUploadDialog({ patientId, visitId }: ScanUploadDialogProps) 
     const [selectedFile, setSelectedFile] = useState<File | null>(null);
 
     // Import Folder State
-    const [folderPath, setFolderPath] = useState("C:/Users/veera/Downloads/Spine_Data/Patient_A");
+    const [folderPath, setFolderPath] = useState("");
     const [importStatus, setImportStatus] = useState<'idle' | 'scanning' | 'complete' | 'error'>('idle');
     const [importCount, setImportCount] = useState(0);
 

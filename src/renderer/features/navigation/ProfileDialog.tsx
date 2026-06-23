@@ -22,21 +22,31 @@ export function ProfileDialog({ open, onOpenChange }: { open: boolean, onOpenCha
     const user = useAppStore(state => state.user);
     const updateUser = useAppStore(state => state.updateUser);
 
-    const [localProfile, setLocalProfile] = useState(user || {
-        name: "",
-        title: "",
-        email: "",
-        specialty: "",
-        joined: "",
-        subsection: ""
+    const [localProfile, setLocalProfile] = useState({
+        name: user?.name || (user as any)?.fullName || "",
+        title: user?.title || "",
+        email: user?.email || "",
+        specialty: user?.specialty || "",
+        joined: user?.joined || "",
+        subsection: user?.subsection || ""
     });
 
     useEffect(() => {
-        if (user) setLocalProfile(user);
+        if (user) {
+            setLocalProfile({
+                name: user.name || (user as any).fullName || "",
+                title: user.title || "",
+                email: user.email || "",
+                specialty: user.specialty || "",
+                joined: user.joined || "",
+                subsection: user.subsection || ""
+            });
+        }
     }, [user, open]);
 
     const initial = useMemo(() => {
-        const parts = localProfile.name.replace(/^(Dr\.|Mr\.|Ms\.)\s+/i, '').split(' ');
+        const nameVal = localProfile.name || "";
+        const parts = nameVal.replace(/^(Dr\.|Mr\.|Ms\.)\s+/i, '').split(' ');
         return parts[0] ? parts[0][0].toUpperCase() : 'U';
     }, [localProfile.name]);
 

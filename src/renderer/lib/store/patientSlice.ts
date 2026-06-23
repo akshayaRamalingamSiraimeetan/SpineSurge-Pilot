@@ -25,6 +25,7 @@ export interface PatientSlice {
     addContext: (context: Context) => Promise<void>;
     updateContextState: (contextId: string, updates: Partial<ContextState>) => Promise<void>;
     setActiveContextId: (contextId: string | null) => void;
+    resetWorkspace: () => void;
 }
 
 export const createPatientSlice: StateCreator<AppState, [], [], PatientSlice> = (set, get) => ({
@@ -43,15 +44,14 @@ export const createPatientSlice: StateCreator<AppState, [], [], PatientSlice> = 
             set({ patients, isAuthenticated: true });
 
             const currentActiveId = get().activePatientId;
-            if (patients.length > 0) {
-                const idToActivate = currentActiveId && patients.find(p => p.id === currentActiveId)
-                    ? currentActiveId
-                    : patients[0].id;
+            if (currentActiveId && patients.length > 0) {
+                const idToActivate = patients.find(p => p.id === currentActiveId) ? currentActiveId : null;
                 if (idToActivate) {
                     await get().setActivePatient(idToActivate);
+                } else {
+                    set({ activePatientId: null, contexts: [], contextStates: [] });
                 }
             } else {
-                // No patients in this workspace — clear active patient
                 set({ activePatientId: null, contexts: [], contextStates: [] });
             }
         } catch (e) {
@@ -323,4 +323,44 @@ export const createPatientSlice: StateCreator<AppState, [], [], PatientSlice> = 
     },
 
     setActiveContextId: (contextId) => set({ activeContextId: contextId }),
+    resetWorkspace: () => set({
+        activePatientId: null,
+        activeContextId: null,
+        contexts: [],
+        contextStates: [],
+        currentImage: null,
+        measurements: [],
+        implants: [],
+        isDicomMode: false,
+        dicomSeries: [],
+        inspectionMode: null,
+        isComparisonMode: false,
+        activeCanvasSide: 'left',
+        canvas: {
+            zoom: 1,
+            rotation: 0,
+            brightness: 100,
+            contrast: 100,
+            sharpness: 0,
+            flipX: false,
+            pan: { x: 0, y: 0 },
+            pixelToMm: null,
+            calibrationApplied: false,
+            calibrationEnabledAt: null
+        },
+        comparison: {
+            left: {
+                image: null,
+                measurements: [],
+                implants: [],
+                canvas: { zoom: 1, rotation: 0, brightness: 100, contrast: 100, sharpness: 0, flipX: false, pan: { x: 0, y: 0 }, pixelToMm: null, calibrationApplied: false, calibrationEnabledAt: null }
+            },
+            right: {
+                image: null,
+                measurements: [],
+                implants: [],
+                canvas: { zoom: 1, rotation: 0, brightness: 100, contrast: 100, sharpness: 0, flipX: false, pan: { x: 0, y: 0 }, pixelToMm: null, calibrationApplied: false, calibrationEnabledAt: null }
+            }
+        }
+    }),
 });
