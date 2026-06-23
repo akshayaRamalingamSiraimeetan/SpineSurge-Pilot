@@ -860,6 +860,7 @@ const RightSidebar = () => {
         addStudy,
         addContext,
         setActivePatient,
+        updateContextState,
     } = useAppStore();
 
     const isRightSidebarOpen = storeIsRightSidebarOpen &&
@@ -1044,12 +1045,23 @@ const RightSidebar = () => {
             lastModified: new Date().toISOString()
         };
 
+        const workspaceState = useAppStore.getState();
+        const isFirstContextFromUntitled = !workspaceState.activePatientId;
+        const { measurements, implants, currentImage } = workspaceState;
+
         try {
             await addPatient(newPatient);
             await addVisit(patientId, newVisit);
             await addStudy(newStudy);
             await addContext(newContext);
             await setActivePatient(patientId, contextId);
+            if (isFirstContextFromUntitled) {
+                await updateContextState(contextId, {
+                    measurements,
+                    implants,
+                    ...(currentImage ? { currentImage } : {}),
+                });
+            }
             setCreatePatientOpen(false);
             setNewPatientData({
                 name: '', id: '', age: '', gender: 'M', dob: '', sex: '', contact: '', height: '', weight: '', diagnosis: '', comments: ''

@@ -258,9 +258,33 @@ export const createPatientSlice: StateCreator<AppState, [], [], PatientSlice> = 
 
     addContext: async (context) => {
         const token = get().token;
+        const state = get();
+        const isFirstContextFromUntitled =
+            state.contextStates.length === 0 &&
+            (state.measurements.length > 0 ||
+                (state.implants?.length ?? 0) > 0 ||
+                !!state.currentImage);
+
+        const measurements = isFirstContextFromUntitled ? state.measurements : [];
+        const implants = isFirstContextFromUntitled ? (state.implants || []) : [];
+        const currentImage = isFirstContextFromUntitled ? (state.currentImage ?? undefined) : undefined;
+
+        const payload = isFirstContextFromUntitled
+            ? {
+                ...context,
+                state: {
+                    measurements,
+                    implants,
+                    annotations: [],
+                    toolState: {},
+                    currentImage: currentImage ?? null,
+                },
+            }
+            : context;
+
         try {
-            console.log(`[addContext] Saving new context id=${context.id} patient=${context.patientId} studyIds=${JSON.stringify(context.studyIds)}`);
-            await api.saveContext(context, token);
+            console.log(`[addContext] Saving new context id=${context.id} patient=${context.patientId} studyIds=${JSON.stringify(context.studyIds)} measurements=${measurements.length}`);
+            await api.saveContext(payload, token);
             console.log(`[addContext] Save OK id=${context.id}`);
             set((state: AppState) => ({
                 contexts:      [...state.contexts, context],
@@ -269,10 +293,11 @@ export const createPatientSlice: StateCreator<AppState, [], [], PatientSlice> = 
                     ...state.contextStates,
                     {
                         contextId:    context.id,
-                        measurements: [],
-                        implants:     [],
+                        measurements,
+                        implants,
                         annotations:  [],
                         toolState:    {},
+                        ...(currentImage ? { currentImage } : {}),
                     },
                 ],
             }));
