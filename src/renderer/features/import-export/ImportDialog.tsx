@@ -21,6 +21,7 @@ import {
     FolderInput // Added
 } from "lucide-react"
 import { useRef, useState, useMemo } from "react"
+import { useNavigate } from "react-router-dom"
 import { useAppStore, Patient, Visit } from "@/lib/store/index";
 import { useTheme } from "@/components/theme-provider";
 import { cn } from "@/lib/utils";
@@ -45,9 +46,12 @@ type ImportStep =
 interface ImportDialogProps {
     children: React.ReactNode;
     targetSide?: 'left' | 'right';
+    resetOnOpen?: boolean;
+    navigateOnImport?: boolean;
 }
 
-export function ImportDialog({ children, targetSide }: ImportDialogProps) {
+export function ImportDialog({ children, targetSide, resetOnOpen, navigateOnImport }: ImportDialogProps) {
+    const navigate = useNavigate();
     const { resolvedTheme } = useTheme();
     const isDark = resolvedTheme === "dark";
     const [open, setOpen] = useState(false)
@@ -81,6 +85,10 @@ export function ImportDialog({ children, targetSide }: ImportDialogProps) {
     const [selectedFile, setSelectedFile] = useState<File | null>(null)
 
     const importSide = isComparisonMode ? (targetSide || activeCanvasSide) : null;
+
+    const goToWorkspace = () => {
+        if (navigateOnImport) navigate('/workspace');
+    };
 
     const filteredPatients = useMemo(() => {
         return patients.filter(p =>
@@ -185,6 +193,7 @@ export function ImportDialog({ children, targetSide }: ImportDialogProps) {
         }
 
         handleClose();
+        goToWorkspace();
     }
 
     const handleDicomFolderSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -192,7 +201,8 @@ export function ImportDialog({ children, targetSide }: ImportDialogProps) {
         if (files && files.length > 0) {
             const fileArray = Array.from(files);
             useAppStore.getState().loadDicomSeries(fileArray);
-            handleClose()
+            handleClose();
+            goToWorkspace();
         }
     }
 
@@ -284,11 +294,13 @@ export function ImportDialog({ children, targetSide }: ImportDialogProps) {
             }
         }
 
-        handleClose()
+        handleClose();
+        goToWorkspace();
     }
 
     return (
         <Dialog open={open} onOpenChange={(val) => {
+            if (val && resetOnOpen) useAppStore.getState().resetWorkspace();
             setOpen(val);
             setActiveDialog(val ? 'import' : null);
             if (!val) resetWizard();
