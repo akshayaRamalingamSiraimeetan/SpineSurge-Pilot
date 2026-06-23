@@ -7,7 +7,7 @@ import WorkspaceSwitcher from './WorkspaceSwitcher';
 const NAV_ITEMS = [
   { icon: Home,       label: 'Home',      to: '/dashboard' },
   { icon: BookOpen,   label: 'Studies',   to: '/studies'   },
-  { icon: Users,      label: 'Members',   to: '/members'   },
+  { icon: Users,      label: 'Patients',  to: '/patients'  },
   { icon: FolderOpen, label: 'Resources', to: '/resources' },
   { icon: Settings,   label: 'Settings',  to: '/settings'  },
 ] as const;

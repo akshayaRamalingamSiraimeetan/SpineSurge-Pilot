@@ -87,6 +87,11 @@ const App = () => {
                 <DashboardPage />
               </RouteErrorBoundary>
             } />
+            <Route path="/patients" element={
+              <RouteErrorBoundary routeName="/patients">
+                <PatientCasesPage />
+              </RouteErrorBoundary>
+            } />
             <Route path="/members" element={
               <RouteErrorBoundary routeName="/members">
                 <OrgMembersPage />
@@ -149,18 +154,8 @@ const App = () => {
             <Route path="/compare"   element={<RouteErrorBoundary routeName="/compare"><ComparePage /></RouteErrorBoundary>} />
           </Route>
 
-          {/* ── Standalone protected route ───────────────────────── */}
-          <Route path="/cases" element={
-            <RequireAuth>
-              <RequireVerified>
-                <RequireProfile>
-                  <RouteErrorBoundary routeName="/cases">
-                    <PatientCasesPage />
-                  </RouteErrorBoundary>
-                </RequireProfile>
-              </RequireVerified>
-            </RequireAuth>
-          } />
+          {/* Legacy route — redirect to Patients page */}
+          <Route path="/cases" element={<Navigate to="/patients" replace />} />
         </Routes>
       </Router>
     </ThemeProvider>

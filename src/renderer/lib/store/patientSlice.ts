@@ -21,6 +21,7 @@ export interface PatientSlice {
     deleteVisit: (patientId: string, visitId: string) => void;
     reorderVisits: (patientId: string, visits: Visit[]) => Promise<void>;
     addStudy: (study: Omit<Study, 'scans'>) => Promise<void>;
+    updateStudy: (patientId: string, studyId: string, updates: Partial<Pick<Study, 'name' | 'status' | 'modality' | 'source' | 'acquisitionDate' | 'visitId'>>) => Promise<void>;
     addScan: (patientId: string, studyId: string, scanMetadata: Omit<Scan, 'imageUrl'>, file: File) => Promise<void>;
     addContext: (context: Context) => Promise<void>;
     updateContextState: (contextId: string, updates: Partial<ContextState>) => Promise<void>;
@@ -213,11 +214,44 @@ export const createPatientSlice: StateCreator<AppState, [], [], PatientSlice> = 
         try {
             // Stamp organizationId from active workspace — immutable after creation
             const organizationId = workspace.type === 'organization' ? workspace.orgId : null;
-            const studyWithOrg   = { ...study, organizationId } as Study;
+            const studyWithOrg   = { ...study, organizationId, status: study.status ?? 'Draft' } as Study;
             await api.saveStudy(studyWithOrg, token);
             await get().initializeStore();
         } catch (e) {
             console.error('Add study failed', e);
+            throw e;
+        }
+    },
+
+    updateStudy: async (patientId, studyId, updates) => {
+        const token = get().token;
+        const patient = get().patients.find((p: Patient) => p.id === patientId);
+        if (!patient) return;
+
+        const fromPatient = patient.studies.find((s: Study) => s.id === studyId);
+        const fromVisit = patient.visits.flatMap(v => v.studies || []).find((s: Study) => s.id === studyId);
+        const existing = fromPatient || fromVisit;
+        if (!existing) return;
+
+        const updated: Study = { ...existing, ...updates };
+        try {
+            await api.saveStudy(updated, token);
+            set((state: AppState) => ({
+                patients: state.patients.map((p: Patient) =>
+                    p.id !== patientId
+                        ? p
+                        : {
+                            ...p,
+                            studies: p.studies.map((s: Study) => s.id === studyId ? updated : s),
+                            visits: p.visits.map(v => ({
+                                ...v,
+                                studies: (v.studies || []).map((s: Study) => s.id === studyId ? updated : s),
+                            })),
+                        }
+                ),
+            }));
+        } catch (e) {
+            console.error('Update study failed', e);
             throw e;
         }
     },

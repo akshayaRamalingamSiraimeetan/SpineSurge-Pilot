@@ -1,11 +1,12 @@
 import { FolderOpen, Plus } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { useAppStore } from '@/lib/store/index';
+import { useAppStore, getStudyDisplayName } from '@/lib/store/index';
 import EmptyStateCard from './EmptyStateCard';
 
 interface StudyRow {
   id: string;
   patientName: string;
+  studyTitle: string;
   modality: string;
   acquisitionDate: string;
 }
@@ -25,6 +26,7 @@ const RecentStudiesSection = () => {
       (p.studies ?? []).map((s) => ({
         id:              s.id,
         patientName:     p.name,
+        studyTitle:      getStudyDisplayName(s),
         modality:        s.modality,
         acquisitionDate: s.acquisitionDate ?? '—',
       }))
@@ -43,7 +45,7 @@ const RecentStudiesSection = () => {
         </h2>
         {recentStudies.length > 0 && (
           <button
-            onClick={() => navigate('/cases')}
+            onClick={() => navigate('/patients')}
             className="text-xs text-[#9CA3AF] hover:text-[#F5F5F7] transition-colors"
           >
             View all
@@ -76,9 +78,9 @@ const RecentStudiesSection = () => {
                 </div>
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-medium text-[#F5F5F7]">
-                    {study.patientName}
+                    {study.studyTitle}
                   </p>
-                  <p className="text-xs text-[#6B7280]">{study.modality}</p>
+                  <p className="text-xs text-[#6B7280]">{study.patientName} · {study.modality}</p>
                 </div>
               </div>
               <p className="text-xs text-[#6B7280]">{study.acquisitionDate}</p>

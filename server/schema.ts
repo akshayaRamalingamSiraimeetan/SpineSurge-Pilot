@@ -34,6 +34,8 @@ export const studies = pgTable('studies', {
     modality: text('modality').default('X-Ray'),
     source: text('source').default('Import'),
     acquisitionDate: text('acquisition_date'),
+    name: text('name'),
+    status: text('status').default('Draft'),
     // Workspace ownership (migration 006):
     // NULL  = personal workspace study
     // set   = organization workspace study

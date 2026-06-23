@@ -45,7 +45,7 @@ import { ProfileDialog } from "./ProfileDialog";
 import { SettingsDialog } from "./SettingsDialog";
 import { ReportDialog } from "./ReportDialog";
 import { ShareDialog } from "./ShareDialog";
-import { useAppStore } from "@/lib/store/index";
+import { useAppStore, getStudyDisplayName } from "@/lib/store/index";
 import { cn } from "@/lib/utils";
 
 /* ── Workspace mode tabs ─────────────────────────────────────── */
@@ -112,13 +112,26 @@ const TopMenuBar = () => {
         () => contexts.find((c) => c.id === activeContextId) ?? null,
         [activeContextId, contexts],
     );
+    const headerTitle = useMemo(() => {
+        if (!activePatientId) return 'Untitled Study';
+        if (activeContextId && context && patient) {
+            const studyId = context.studyIds?.[0];
+            const study =
+                patient.studies?.find(s => s.id === studyId) ||
+                patient.visits?.flatMap(v => v.studies || []).find(s => s.id === studyId);
+            if (study) return getStudyDisplayName(study);
+            if (context.name) return context.name;
+        }
+        return patient?.name ?? 'Loading…';
+    }, [activePatientId, activeContextId, context, patient]);
+
     const subtitle = useMemo(() => {
         if (!patient) return null;
         const parts: string[] = [];
-        if (patient.age)                    parts.push(`${patient.age}${patient.gender ?? ''}`);
-        if ((patient as any).contact)       parts.push(`MRN ${(patient as any).contact}`);
+        if (patient.age) parts.push(`${patient.age}${patient.gender ?? ''}`);
+        if (patient.contact) parts.push(`MRN ${patient.contact}`);
         const dx = patient.visits?.[0]?.diagnosis;
-        if (dx)                             parts.push(dx);
+        if (dx) parts.push(dx);
         return parts.length ? parts.join(' · ') : null;
     }, [patient]);
 
@@ -144,15 +157,15 @@ const TopMenuBar = () => {
 
     /* ── Other navigation ────────────────────────────────────── */
     const handleCompareToggle = () => {
-        if (location.pathname === '/cases') { setComparisonMode(true); navigate('/compare'); return; }
+        if (location.pathname === '/patients') { setComparisonMode(true); navigate('/compare'); return; }
         const next = !isComparisonMode;
         setComparisonMode(next);
         navigate(next ? '/compare' : '/dashboard');
     };
 
     const handlePatientsToggle = () => {
-        if (location.pathname === '/cases') navigate(lastMainRouteRef.current);
-        else navigate('/cases');
+        if (location.pathname === '/patients') navigate(lastMainRouteRef.current);
+        else navigate('/patients');
     };
 
     /* ── Share handler (unchanged logic) ─────────────────────── */
@@ -251,7 +264,7 @@ const TopMenuBar = () => {
                                 whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
                                 maxWidth: 200,
                             }}>
-                                {activePatientId ? (patient?.name ?? 'Loading…') : 'Untitled Study'}
+                                {headerTitle}
                             </div>
                             {activePatientId && (
                                 <div style={{
@@ -362,7 +375,7 @@ const TopMenuBar = () => {
                 {/* Cases (non-workspace only) */}
                 {!isWorkspaceRoute && (
                     <Button variant="ghost" size="icon"
-                        className={cn(iconBtn, location.pathname === '/cases' && "bg-primary/20 text-primary border-primary/30")}
+                        className={cn(iconBtn, location.pathname === '/patients' && "bg-primary/20 text-primary border-primary/30")}
                         onClick={handlePatientsToggle} title="Patient Cases">
                         <FolderOpen className="h-3.5 w-3.5" />
                     </Button>

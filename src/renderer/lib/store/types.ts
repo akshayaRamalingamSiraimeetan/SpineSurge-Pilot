@@ -15,6 +15,10 @@ export interface Scan {
     date: string;
 }
 
+export type StudyStatus = 'Draft' | 'In Progress' | 'Completed' | 'Archived';
+
+export const STUDY_STATUSES: StudyStatus[] = ['Draft', 'In Progress', 'Completed', 'Archived'];
+
 export interface Study {
     id: string;
     patientId: string;
@@ -22,9 +26,19 @@ export interface Study {
     modality: string;
     source: string;
     acquisitionDate: string;
+    name?: string | null;
+    status?: StudyStatus | string | null;
     scans: Scan[];
     /** Workspace ownership: null = personal, set = org id */
     organizationId?: string | null;
+}
+
+export function getStudyDisplayName(study: Pick<Study, 'name' | 'modality'>): string {
+    const trimmed = study.name?.trim();
+    if (trimmed) return trimmed;
+    const modality = study.modality?.trim();
+    if (modality) return modality;
+    return 'Untitled Study';
 }
 
 export interface Context {

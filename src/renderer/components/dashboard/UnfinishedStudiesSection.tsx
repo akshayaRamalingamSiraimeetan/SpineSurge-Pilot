@@ -1,6 +1,6 @@
 import { CheckCircle2, ClipboardList } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { useAppStore } from '@/lib/store/index';
+import { useAppStore, getStudyDisplayName } from '@/lib/store/index';
 import EmptyStateCard from './EmptyStateCard';
 
 interface UnfinishedRow {
@@ -32,12 +32,14 @@ const UnfinishedStudiesSection = () => {
     .map((c) => {
       const patient = patientMap.get(c.patientId);
       const visit   = patient?.visits?.find((v) => v.id === c.visitId);
+      const linkedStudy = patient?.studies?.find(s => c.studyIds?.includes(s.id))
+        || patient?.visits?.flatMap(v => v.studies || []).find(s => c.studyIds?.includes(s.id));
       return {
         id:         c.id,
-        studyName:  c.name || 'Untitled Study',
+        studyName:  linkedStudy ? getStudyDisplayName(linkedStudy) : (c.name || 'Untitled Study'),
         diagnosis:  visit?.diagnosis || '—',
         lastEdited: c.lastModified || '—',
-        status:     'In Progress',
+        status:     linkedStudy?.status || 'In Progress',
         patientId:  c.patientId,
         contextId:  c.id,
       };

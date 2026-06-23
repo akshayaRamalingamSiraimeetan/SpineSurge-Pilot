@@ -174,6 +174,8 @@ app.get('/api/patients', authenticate, async (req, res) => {
                 modality:        s.modality        || 'X-Ray',
                 source:          s.source          || 'Import',
                 acquisitionDate: s.acquisitionDate || '',
+                name:            s.name            || null,
+                status:          s.status          || 'Draft',
                 organizationId:  s.organizationId  ?? null,
                 ownerUserId:     s.ownerUserId      ?? null,
                 scans: s.scans.map(sc => ({
@@ -330,7 +332,7 @@ app.delete('/api/visits/:id', async (req, res) => {
 
 // Add Study (authenticated — stamps owner_user_id on creation)
 app.post('/api/studies', authenticate, async (req, res) => {
-    const { id, patientId, visitId, modality, source, acquisitionDate, organizationId } = req.body;
+    const { id, patientId, visitId, modality, source, acquisitionDate, organizationId, name, status } = req.body;
     const ownerUserId = req.user!.id;
     try {
         console.log(`Saving study: ${id} for patient: ${patientId}, owner: ${ownerUserId}, org: ${organizationId ?? 'personal'}`);
@@ -341,6 +343,8 @@ app.post('/api/studies', authenticate, async (req, res) => {
             modality:       modality       || 'X-Ray',
             source:         source         || 'Import',
             acquisitionDate: acquisitionDate || '',
+            name:           name           || null,
+            status:         status         || 'Draft',
             organizationId: organizationId || null,
             ownerUserId,
         }).onConflictDoUpdate({
@@ -351,6 +355,8 @@ app.post('/api/studies', authenticate, async (req, res) => {
                 modality:        modality       || 'X-Ray',
                 source:          source         || 'Import',
                 acquisitionDate: acquisitionDate || '',
+                name:            name           ?? null,
+                status:          status         || 'Draft',
                 organizationId:  organizationId || null,
             }
         });
