@@ -8,6 +8,13 @@ SpineSurge Pro is a high-performance medical imaging and surgical planning appli
 ---
 
 ## 🚀 Quick Start: How to Run
+### 0. Setup .env :
+Create a .env file in the project root:
+copy .env.example .env
+
+and add in the following values:
+# PostgreSQL Database
+DATABASE_URL=postgresql://<DB_USERNAME>:<DB_PASSWORD>@<DB_HOST>:<DB_PORT>/<DB_NAME>
 
 ### 1. Install Dependencies
 ```bash
