@@ -25,6 +25,82 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { useAppStore } from '@/lib/store/index';
 import { useLocation } from 'react-router-dom';
 
+/* ── Planning sub-tab ──────────────────────────────────────── */
+type PlanningTab = 'target' | 'simulation';
+
+/** Minimal display-name map reused from RightSidebar constants. */
+const TC_DISPLAY_NAMES: Record<string, string> = {
+  'cobb':     'Cobb Angle',
+  'sva':      'SVA',
+  'pi_ll':    'PI-LL Mismatch',
+  'cl':       'Cervical Lordosis (CL)',
+  'tk':       'Thoracic Kyphosis (TK)',
+  'll':       'Lumbar Lordosis (LL)',
+  'pelvis':   'Pelvic Parameters',
+  'stenosis': 'Canal Area',
+  'spondy':   'Spondylolisthesis',
+  'line':     'Distance Line',
+  'ts':       'Trunk Shift',
+  'avt':      'Apical Vert. Translation',
+  'rvad':     'RVAD',
+  'po':       'Pelvic Obliquity',
+  'tpa':      'TPA',
+  'spa':      'SPA',
+  'ssa':      'SSA',
+  't1spi':    'T1SPi',
+  't9spi':    'T9SPi',
+  'odha':     'ODHA',
+  'cbva':     'CBVA',
+  'cmc':      'Cobb Multi-Curve',
+  'pi':       'Pelvic Incidence (PI)',
+  'pt':       'Pelvic Tilt (PT)',
+  'ss':       'Sacral Slope (SS)',
+  'sc':       'Custom Curve',
+  'vbm':      'Vertebral Body Metrics',
+  'ost-pso':  'PSO',
+  'ost-spo':  'SPO',
+  'ost-resect':'Resection Plan',
+  'ost-open': 'Opening Wedge',
+};
+
+/**
+ * Derive a concise, human-readable current-value string for a measurement.
+ * Mirrors the core logic of `formatValue` in RightSidebar without calibration
+ * (calibration is a display concern the user sees in Current Measurements).
+ */
+function tcFormatValue(m: any): string {
+  if (['ost-pso','ost-spo','ost-open','ost-resect'].includes(m.toolKey)) {
+    const existing = typeof m.result === 'string' ? m.result : '';
+    if (existing && existing !== 'Planning...') return existing.split('\n')[0];
+    if (Array.isArray(m.points) && m.points.length >= 3) {
+      const p = m.points[0], h = m.points[1], a = m.points[2];
+      const mov = Math.atan2(p.y - h.y, p.x - h.x);
+      const fix = Math.atan2(a.y - h.y, a.x - h.x);
+      const norm = ((fix - mov + Math.PI) % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI) - Math.PI;
+      return `${Math.abs(norm * 180 / Math.PI).toFixed(1)}°`;
+    }
+    return '—';
+  }
+  if (['vbm','spondy','pelvis','pi_ll','cmc','rvad'].includes(m.toolKey)) {
+    if (typeof m.result === 'string' && m.result) {
+      // Return just the first line as a compact summary
+      return m.result.split('\n')[0] || 'Metrics';
+    }
+    return 'Metrics';
+  }
+  if (typeof m.result === 'string' && m.result && m.result !== 'Planning...') {
+    return m.result.split('\n')[0];
+  }
+  return '—';
+}
+
+/** Determine the accent colour for a value string (mirrors MeasurementCard). */
+function tcValueColor(val: string): string {
+  if (val.includes('°')) return 'var(--val-bad)';
+  if (val.includes('mm')) return 'var(--val-good)';
+  return 'var(--text-2)';
+}
+
 /* ── Types ─────────────────────────────────────────────────── */
 type TabKey = 'alignment' | 'extended' | 'morphology' | 'generic' | 'planning';
 type Plane = 'coronal' | 'sagittal';
@@ -316,13 +392,39 @@ function RefLineRow({ refLine, active, onClick }: { refLine: RefLineDef; active:
 
 /* ── Main LeftSidebar ────────────────────────────────────────── */
 const LeftSidebar = () => {
-  const { activeTool, setActiveTool } = useAppStore();
+  const { activeTool, setActiveTool, measurements, canvas } = useAppStore();
   const location = useLocation();
   const queryParams = useMemo(() => new URLSearchParams(location.search), [location.search]);
   const isPlanningMode = queryParams.get('tab') === 'planning';
 
   const [activeTab, setActiveTab] = useState<TabKey>('alignment');
   const [plane, setPlane] = useState<Plane>('coronal');
+
+  /* ── Planning sub-tabs ──────────────────────────────────── */
+  const [planningTab, setPlanningTab] = useState<PlanningTab>('target');
+
+  /** Target values keyed by measurement id — purely local, session-lived. */
+  const [targetValues, setTargetValues] = useState<Record<string, string>>({});
+  const setTarget = (id: string, val: string) =>
+    setTargetValues((prev) => ({ ...prev, [id]: val }));
+
+  /**
+   * Measurements that are checked (selected) in Current Measurements panel
+   * and are not calibration markers or reference lines.
+   */
+  const REF_LINE_KEYS = new Set(['c7pl', 'csvl']);
+  const checkedMeasurements = useMemo(() =>
+    measurements.filter(
+      (m: any) =>
+        m.selected &&
+        !m?.measurement?.isCalibration &&
+        !REF_LINE_KEYS.has(m.toolKey),
+    ),
+    [measurements],
+  );
+
+  const pixelToMm = canvas?.pixelToMm ?? null;
+  void pixelToMm; // reserved for future calibration-aware display
 
   const currentTabKey = isPlanningMode ? 'planning' : activeTab;
   const tab = TABS.find((t) => t.key === currentTabKey)!;
@@ -359,6 +461,65 @@ const LeftSidebar = () => {
         <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)', marginBottom: 12 }}>
           {isPlanningMode ? 'Planning Tools' : 'Measurement Tools'}
         </div>
+
+        {/* ── Planning sub-tab switcher ─────────────────────── */}
+        {isPlanningMode && (
+          <div style={{
+            display: 'flex',
+            gap: 4,
+            background: 'var(--surface-3)',
+            padding: 3,
+            borderRadius: 10,
+            marginBottom: 4,
+          }}>
+            {([
+              { key: 'target' as PlanningTab, num: 1, label: 'Target Correction' },
+              { key: 'simulation' as PlanningTab, num: 2, label: 'Simulation' },
+            ] as const).map((t) => {
+              const active = planningTab === t.key;
+              return (
+                <button
+                  key={t.key}
+                  onClick={() => setPlanningTab(t.key)}
+                  style={{
+                    flex: 1,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: 5,
+                    padding: '7px 6px',
+                    borderRadius: 7,
+                    border: 'none',
+                    cursor: 'pointer',
+                    background: active ? 'var(--accent)' : 'transparent',
+                    color: active ? '#fff' : 'var(--text-2)',
+                    fontSize: 11.5,
+                    fontWeight: 700,
+                    transition: 'all .14s',
+                    whiteSpace: 'nowrap',
+                    lineHeight: 1.2,
+                  }}
+                >
+                  <span style={{
+                    display: 'inline-grid',
+                    placeItems: 'center',
+                    width: 16,
+                    height: 16,
+                    borderRadius: '50%',
+                    background: active ? 'rgba(255,255,255,0.25)' : 'var(--surface)',
+                    color: active ? '#fff' : 'var(--accent)',
+                    fontSize: 9,
+                    fontWeight: 800,
+                    flexShrink: 0,
+                  }}>
+                    {t.num}
+                  </span>
+                  {t.label}
+                </button>
+              );
+            })}
+          </div>
+        )}
 
         {/* A / E / M / G tiles */}
         {!isPlanningMode && (
@@ -438,62 +599,213 @@ const LeftSidebar = () => {
         )}
       </div>
 
-      {/* ── Scrollable tool list ──────────────────────────────── */}
+      {/* ── Scrollable content ────────────────────────────────── */}
       <ScrollArea style={{ flex: 1 }}>
-        <div style={{ padding: '8px 8px' }}>
-          {sections.map((section, idx) => (
-            <div key={idx}>
-              {section.title && (
-                <div style={{
-                  fontSize: 10,
-                  fontWeight: 700,
-                  letterSpacing: '.06em',
-                  textTransform: 'uppercase',
-                  color: 'var(--text-3)',
-                  padding: '8px 12px 4px',
-                }}>
-                  {section.title}
-                </div>
-              )}
-              {section.tools.map((tool) => (
-                <ToolRow
-                  key={tool.id}
-                  tool={tool}
-                  active={activeTool === tool.id}
-                  onClick={() => handleTool(tool.id)}
-                />
-              ))}
-            </div>
-          ))}
 
-          {/* Calibration button */}
-          {!isPlanningMode && (
-            <div style={{ padding: '10px 4px 4px' }}>
-              <button
-                onClick={() => handleTool('calibration')}
-                style={{
-                  width: '100%',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: 8,
-                  height: 40,
-                  borderRadius: 8,
-                  border: `1px solid ${activeTool === 'calibration' ? 'var(--accent)' : 'var(--accent-soft-2, #371A16)'}`,
-                  background: 'var(--accent-soft)',
-                  color: 'var(--accent)',
-                  fontSize: 13,
-                  fontWeight: 600,
-                  cursor: 'pointer',
-                  transition: 'all .14s',
-                }}
-              >
-                <Scale size={15} />
-                {activeTool === 'calibration' ? 'Click two points…' : 'Calibration'}
-              </button>
+        {/* ── Target Correction panel (planning mode only) ───── */}
+        {isPlanningMode && planningTab === 'target' && (
+          <div style={{ padding: '12px 12px 16px' }}>
+
+            {/* Hint */}
+            <div style={{
+              fontSize: 10,
+              fontWeight: 700,
+              letterSpacing: '.06em',
+              textTransform: 'uppercase',
+              color: 'var(--text-3)',
+              marginBottom: 10,
+            }}>
+              Alignment Goals
             </div>
-          )}
-        </div>
+
+            {checkedMeasurements.length === 0 ? (
+              /* Empty state */
+              <div style={{
+                textAlign: 'center',
+                padding: '32px 12px',
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                gap: 8,
+              }}>
+                <div style={{ fontSize: 26, opacity: 0.4 }}>🎯</div>
+                <div style={{ fontWeight: 600, fontSize: 12.5, color: 'var(--text)' }}>
+                  No measurements selected
+                </div>
+                <div style={{ fontSize: 11, color: 'var(--text-3)', lineHeight: 1.4 }}>
+                  Check measurements in the{' '}
+                  <span style={{ color: 'var(--text-2)', fontWeight: 600 }}>Current Measurements</span>
+                  {' '}panel on the right to set targets here.
+                </div>
+              </div>
+            ) : (
+              /* Rows — one per checked measurement */
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                {checkedMeasurements.map((m: any) => {
+                  const name = TC_DISPLAY_NAMES[m.toolKey] ?? m.toolKey.toUpperCase();
+                  const currentVal = tcFormatValue(m);
+                  const currentColor = tcValueColor(currentVal);
+                  const targetVal = targetValues[m.id] ?? '';
+
+                  return (
+                    <div
+                      key={m.id}
+                      style={{
+                        background: 'var(--surface-2)',
+                        borderRadius: 10,
+                        padding: '10px 12px',
+                        border: '1px solid var(--border)',
+                        marginBottom: 6,
+                      }}
+                    >
+                      {/* Measurement name */}
+                      <div style={{
+                        fontSize: 12,
+                        fontWeight: 700,
+                        color: 'var(--text)',
+                        marginBottom: 8,
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap',
+                      }}>
+                        {name}
+                      </div>
+
+                      {/* Current / Target row */}
+                      <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end' }}>
+                        {/* Current */}
+                        <div style={{ flex: 1 }}>
+                          <div style={{
+                            fontSize: 9,
+                            fontWeight: 700,
+                            textTransform: 'uppercase',
+                            letterSpacing: '.06em',
+                            color: 'var(--text-3)',
+                            marginBottom: 3,
+                          }}>
+                            Current
+                          </div>
+                          <div style={{
+                            fontSize: 14,
+                            fontWeight: 700,
+                            color: currentColor,
+                            lineHeight: 1.2,
+                          }}>
+                            {currentVal}
+                          </div>
+                        </div>
+
+                        {/* Arrow */}
+                        <div style={{
+                          color: 'var(--text-3)',
+                          fontSize: 16,
+                          paddingBottom: 2,
+                          flexShrink: 0,
+                        }}>→</div>
+
+                        {/* Target */}
+                        <div style={{ flex: 1 }}>
+                          <div style={{
+                            fontSize: 9,
+                            fontWeight: 700,
+                            textTransform: 'uppercase',
+                            letterSpacing: '.06em',
+                            color: 'var(--text-3)',
+                            marginBottom: 3,
+                          }}>
+                            Target
+                          </div>
+                          <input
+                            type="text"
+                            value={targetVal}
+                            onChange={(e) => setTarget(m.id, e.target.value)}
+                            placeholder="e.g. 10°"
+                            style={{
+                              width: '100%',
+                              background: 'var(--surface)',
+                              border: '1px solid var(--border-2)',
+                              borderRadius: 6,
+                              padding: '4px 7px',
+                              fontSize: 13,
+                              fontWeight: 700,
+                              color: 'var(--accent)',
+                              outline: 'none',
+                              boxSizing: 'border-box',
+                            }}
+                            onFocus={(e) => {
+                              (e.currentTarget as HTMLInputElement).style.borderColor = 'var(--accent)';
+                            }}
+                            onBlur={(e) => {
+                              (e.currentTarget as HTMLInputElement).style.borderColor = 'var(--border-2)';
+                            }}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ── Simulation tool list (unchanged) ─────────────── */}
+        {(!isPlanningMode || planningTab === 'simulation') && (
+          <div style={{ padding: '8px 8px' }}>
+            {sections.map((section, idx) => (
+              <div key={idx}>
+                {section.title && (
+                  <div style={{
+                    fontSize: 10,
+                    fontWeight: 700,
+                    letterSpacing: '.06em',
+                    textTransform: 'uppercase',
+                    color: 'var(--text-3)',
+                    padding: '8px 12px 4px',
+                  }}>
+                    {section.title}
+                  </div>
+                )}
+                {section.tools.map((tool) => (
+                  <ToolRow
+                    key={tool.id}
+                    tool={tool}
+                    active={activeTool === tool.id}
+                    onClick={() => handleTool(tool.id)}
+                  />
+                ))}
+              </div>
+            ))}
+
+            {/* Calibration button (measurement mode only) */}
+            {!isPlanningMode && (
+              <div style={{ padding: '10px 4px 4px' }}>
+                <button
+                  onClick={() => handleTool('calibration')}
+                  style={{
+                    width: '100%',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: 8,
+                    height: 40,
+                    borderRadius: 8,
+                    border: `1px solid ${activeTool === 'calibration' ? 'var(--accent)' : 'var(--accent-soft-2, #371A16)'}`,
+                    background: 'var(--accent-soft)',
+                    color: 'var(--accent)',
+                    fontSize: 13,
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    transition: 'all .14s',
+                  }}
+                >
+                  <Scale size={15} />
+                  {activeTool === 'calibration' ? 'Click two points…' : 'Calibration'}
+                </button>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* ── Reference Lines section ───────────────────────── */}
         {!isPlanningMode && refLines.length > 0 && (
