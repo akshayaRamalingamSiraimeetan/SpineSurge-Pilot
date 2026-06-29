@@ -88,23 +88,33 @@ const MainPage = () => {
         }
     }, [currentImage, activeContextId]);
 
-    // Populate 3D State from Context
+    // Populate workspace state from active context (measurements, 3D state, image)
     useEffect(() => {
         if (activeContextId) {
             const contextState = useAppStore.getState().contextStates.find(s => s.contextId === activeContextId);
             if (contextState) {
+                const patch: Record<string, unknown> = {};
+                if (contextState.measurements) {
+                    patch.measurements = contextState.measurements;
+                }
+                if (contextState.implants) {
+                    patch.implants = contextState.implants;
+                }
                 if (contextState.threeDImplants) {
-                    useAppStore.setState({ threeDImplants: contextState.threeDImplants });
+                    patch.threeDImplants = contextState.threeDImplants;
                 }
                 if (contextState.pedicleSimulations) {
-                    useAppStore.setState({ pedicleSimulations: contextState.pedicleSimulations });
+                    patch.pedicleSimulations = contextState.pedicleSimulations;
                 }
                 if (contextState.currentImage && !useAppStore.getState().currentImage) {
-                    useAppStore.setState({ currentImage: contextState.currentImage });
+                    patch.currentImage = contextState.currentImage;
+                }
+                if (Object.keys(patch).length > 0) {
+                    useAppStore.setState(patch);
                 }
             }
         }
-    }, [activeContextId, contextStates]); // Observe contextStates for hydration
+    }, [activeContextId, contextStates]);
 
     useEffect(() => {
         if (activeContextId && !isDicomMode) {

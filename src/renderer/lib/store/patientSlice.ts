@@ -100,7 +100,19 @@ export const createPatientSlice: StateCreator<AppState, [], [], PatientSlice> = 
                 currentImage:       c.currentImage,
             }));
 
-            set({ contexts, contextStates });
+            const activeState = initialContextId
+                ? contextStates.find((s) => s.contextId === initialContextId)
+                : null;
+
+            set({
+                contexts,
+                contextStates,
+                ...(activeState ? {
+                    measurements: activeState.measurements ?? [],
+                    implants: activeState.implants ?? [],
+                    ...(activeState.currentImage ? { currentImage: activeState.currentImage } : {}),
+                } : {}),
+            });
         } catch (e) {
             console.error('Failed to fetch contexts', e);
         }
@@ -334,6 +346,9 @@ export const createPatientSlice: StateCreator<AppState, [], [], PatientSlice> = 
                         ...(currentImage ? { currentImage } : {}),
                     },
                 ],
+                measurements,
+                implants,
+                ...(currentImage ? { currentImage } : {}),
             }));
         } catch (e) {
             console.error(`[addContext] FAILED id=${context.id}`, e);
@@ -355,6 +370,15 @@ export const createPatientSlice: StateCreator<AppState, [], [], PatientSlice> = 
             );
 
             const stateForServer = updatedStates.find((s: ContextState) => s.contextId === contextId);
+            const mirrorActiveContext = contextId === state.activeContextId && stateForServer;
+            const storeMirror: Partial<AppState> = mirrorActiveContext ? {
+                ...(updates.measurements !== undefined ? { measurements: stateForServer!.measurements } : {}),
+                ...(updates.implants !== undefined ? { implants: stateForServer!.implants || [] } : {}),
+                ...(updates.currentImage !== undefined && stateForServer!.currentImage
+                    ? { currentImage: stateForServer!.currentImage }
+                    : {}),
+            } : {};
+
             if (stateForServer) {
                 // Always include the current canvas image so it survives page reload
                 const currentImage = updates.currentImage ?? state.currentImage ?? stateForServer.currentImage ?? null;
@@ -377,11 +401,25 @@ export const createPatientSlice: StateCreator<AppState, [], [], PatientSlice> = 
                     .then(() => console.log(`[updateContextState] SAVE OK contextId=${contextId}`))
                     .catch(e => console.error(`[updateContextState] SAVE FAILED contextId=${contextId}`, e));
             }
-            return { contextStates: updatedStates };
+            return { contextStates: updatedStates, ...storeMirror };
         });
     },
 
-    setActiveContextId: (contextId) => set({ activeContextId: contextId }),
+    setActiveContextId: (contextId) => set((state) => {
+        if (!contextId) {
+            return { activeContextId: null };
+        }
+
+        const ctxState = state.contextStates.find((s) => s.contextId === contextId);
+        return {
+            activeContextId: contextId,
+            ...(ctxState ? {
+                measurements: ctxState.measurements ?? [],
+                implants: ctxState.implants ?? [],
+                ...(ctxState.currentImage ? { currentImage: ctxState.currentImage } : {}),
+            } : {}),
+        };
+    }),
     resetWorkspace: () => set({
         activePatientId: null,
         activeContextId: null,

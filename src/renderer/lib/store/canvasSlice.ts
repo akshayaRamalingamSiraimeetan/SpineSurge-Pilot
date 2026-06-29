@@ -1,6 +1,9 @@
 import { StateCreator } from 'zustand';
 import { Measurement } from './types';
 import type { AppState } from './index';
+import { resolveActiveMeasurements, syncManagerMeasurements } from '@/lib/canvas/measurementSync';
+
+export { syncManagerMeasurements } from '@/lib/canvas/measurementSync';
 
 export interface InspectionMode {
     active:       boolean;
@@ -111,18 +114,6 @@ const convertPxResultToMm = (result: unknown, ratio: number): { result: unknown;
     });
 
     return { result: withDistanceConverted, changed };
-};
-
-const syncManagerMeasurements = (manager: any, measurements: Measurement[]) => {
-    if (!manager?.current?.data) {
-        return;
-    }
-    manager.current.data.measurements = measurements.map((m) => ({
-        ...m,
-        points: m.points.map((p) => ({ ...p })),
-        result: m.result,
-        measurement: m.measurement ? { ...m.measurement } : m.measurement,
-    }));
 };
 
 export const createCanvasSlice: StateCreator<AppState, [], [], CanvasSlice> = (set, get) => ({
@@ -304,18 +295,30 @@ export const createCanvasSlice: StateCreator<AppState, [], [], CanvasSlice> = (s
         }
         return { implants };
     }),
-    deleteMeasurement: (id) => set((state) => {
+    deleteMeasurement: (id) => {
+        const state = get();
         if (state.isComparisonMode) {
             const side = state.activeCanvasSide;
-            return {
+            const updated = state.comparison[side].measurements.filter(m => m.id !== id);
+            syncManagerMeasurements(state.managers[side], updated);
+            set({
                 comparison: {
                     ...state.comparison,
-                    [side]: { ...state.comparison[side], measurements: state.comparison[side].measurements.filter(m => m.id !== id) }
-                }
-            };
+                    [side]: { ...state.comparison[side], measurements: updated },
+                },
+            });
+            return;
         }
-        return { measurements: state.measurements.filter(m => m.id !== id) };
-    }),
+
+        const updated = resolveActiveMeasurements(state).filter(m => m.id !== id);
+        syncManagerMeasurements(state.managers.main, updated);
+
+        if (state.activeContextId) {
+            get().updateContextState(state.activeContextId, { measurements: updated });
+        } else {
+            set({ measurements: updated });
+        }
+    },
     deleteImplant: (id) => set((state) => {
         if (state.isComparisonMode) {
             const side = state.activeCanvasSide;
@@ -328,18 +331,31 @@ export const createCanvasSlice: StateCreator<AppState, [], [], CanvasSlice> = (s
         }
         return { implants: state.implants.filter(i => i.id !== id) };
     }),
-    toggleMeasurementSelection: (id, selected) => set((state) => {
+    toggleMeasurementSelection: (id, selected) => {
+        const state = get();
+        const mapSelection = (measurements: Measurement[]) =>
+            measurements.map(m => m.id === id ? { ...m, selected } : m);
+
         if (state.isComparisonMode) {
             const side = state.activeCanvasSide;
-            return {
+            const updated = mapSelection(state.comparison[side].measurements);
+            set({
                 comparison: {
                     ...state.comparison,
-                    [side]: { ...state.comparison[side], measurements: state.comparison[side].measurements.map(m => m.id === id ? { ...m, selected } : m) }
-                }
-            };
+                    [side]: { ...state.comparison[side], measurements: updated },
+                },
+            });
+            return;
         }
-        return { measurements: state.measurements.map(m => m.id === id ? { ...m, selected } : m) };
-    }),
+
+        const updated = mapSelection(resolveActiveMeasurements(state));
+
+        if (state.activeContextId) {
+            get().updateContextState(state.activeContextId, { measurements: updated });
+        } else {
+            set({ measurements: updated });
+        }
+    },
     toggleRightSidebar: (isOpen) => set((state) => ({
         isRightSidebarOpen: isOpen !== undefined ? isOpen : !state.isRightSidebarOpen
     })),

@@ -26,6 +26,8 @@ export function ReportDialog({ open, onOpenChange, checkedCount }: { open: boole
         activeCanvasSide,
         comparison,
         measurements: storeMeasurements,
+        activeContextId,
+        contextStates,
         user,
         patients,
         activePatientId
@@ -35,8 +37,14 @@ export function ReportDialog({ open, onOpenChange, checkedCount }: { open: boole
         if (isComparisonMode && activeCanvasSide) {
             return comparison[activeCanvasSide].measurements;
         }
+        if (activeContextId) {
+            const ctxState = contextStates.find((s) => s.contextId === activeContextId);
+            if (ctxState) {
+                return ctxState.measurements ?? [];
+            }
+        }
         return storeMeasurements;
-    }, [isComparisonMode, activeCanvasSide, comparison, storeMeasurements]);
+    }, [isComparisonMode, activeCanvasSide, comparison, storeMeasurements, activeContextId, contextStates]);
 
     const activePatient = patients.find(p => p.id === activePatientId);
 

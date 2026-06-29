@@ -1,6 +1,7 @@
 import { useRef, useEffect, useState, useCallback, useMemo } from "react";
 import { useAppStore } from "@/lib/store/index";
 import { CanvasManager, Point, Measurement } from "@/lib/canvas/CanvasManager";
+import { measurementsDiffer, syncManagerMeasurements } from "@/lib/canvas/measurementSync";
 import {
     getPolygonCenter,
     isPointInPolygon,
@@ -351,9 +352,12 @@ const CanvasWorkspace = ({ side }: CanvasWorkspaceProps) => {
                 if (mgr && (mgr as any)._baseImage === currentImage) {
                     console.log('[CanvasWorkspace] Reusing existing manager for image', currentImage);
                     managerRef.current = mgr;
-                    const measurements = mgr.current?.data.measurements || [];
-                    console.log('[CanvasWorkspace] Manager check - measurements count:', measurements.length);
-                    setMeasurements(measurements);
+                    const managerMeasurements = mgr.current?.data.measurements || [];
+                    // Hydrate canvas FROM store/context — never overwrite persisted data with stale manager state
+                    if (measurementsDiffer(managerMeasurements, storeMeasurements)) {
+                        console.log('[CanvasWorkspace] Syncing manager from store/context measurements:', storeMeasurements.length);
+                        syncManagerMeasurements(mgr, storeMeasurements);
+                    }
                     setManagerReady(true);
                     return;
                 }
@@ -385,10 +389,25 @@ const CanvasWorkspace = ({ side }: CanvasWorkspaceProps) => {
                     }
                 }
                 setManagerReady(true);
+            } else {
+                setManagerReady(false);
             }
         };
         init();
     }, [currentImage, side, registerManager]);
+
+    // Re-hydrate canvas overlays when context measurements arrive after async load
+    useEffect(() => {
+        if (!managerRef.current || !managerReady || !currentImage) {
+            return;
+        }
+
+        const managerMeasurements = managerRef.current.current?.data.measurements ?? [];
+        if (measurementsDiffer(managerMeasurements, storeMeasurements)) {
+            console.log('[CanvasWorkspace] Hydrating manager after context/store update:', storeMeasurements.length);
+            syncManagerMeasurements(managerRef.current, storeMeasurements);
+        }
+    }, [storeMeasurements, managerReady, currentImage]);
 
     const draw = useCallback(() => {
         const canvas = canvasRef.current;

@@ -16,7 +16,7 @@
  * Reference lines (c7pl, csvl) are shown SEPARATELY under "Reference Lines",
  * NOT mixed into the Current Measurements list.
  */
-import { useState, useMemo, useRef, useEffect } from "react";
+import { useState, useMemo, useRef, useEffect, useCallback } from "react";
 import { useAppStore } from "@/lib/store/index";
 import {
     ChevronDown,
@@ -945,7 +945,13 @@ const RightSidebar = () => {
         prevCountRef.current = cur;
     }, [combinedItems.length, toggleRightSidebar]);
 
-    const setMeasurements = (m: any[]) => storeSetMeasurements(m);
+    const setMeasurements = useCallback((nextMeasurements: any[]) => {
+        if (activeContextId) {
+            updateContextState(activeContextId, { measurements: nextMeasurements });
+        } else {
+            storeSetMeasurements(nextMeasurements);
+        }
+    }, [activeContextId, updateContextState, storeSetMeasurements]);
 
     const [isReportOpen, setIsReportOpen] = useState(false);
     const [createPatientOpen, setCreatePatientOpen] = useState(false);
