@@ -258,9 +258,9 @@ const TABS: TabDef[] = [
       {
         title: 'Instruments',
         tools: [
-          { id: 'screw',     abbr: 'Screw',   label: 'Screw',     desc: 'Place pedicle screw' },
-          { id: 'rod',       abbr: 'Rod',     label: 'Rod',       desc: 'Place spinal rod' },
-          { id: 'cage',      abbr: 'Cage',    label: 'Cage',      desc: 'Place interbody cage' },
+          { id: 'imp-screw', abbr: 'Screw',   label: 'Screw',     desc: 'Place pedicle screw' },
+          { id: 'imp-rod',   abbr: 'Rod',     label: 'Rod',       desc: 'Place spinal rod' },
+          { id: 'imp-cage',  abbr: 'Cage',    label: 'Cage',      desc: 'Place interbody cage' },
           { id: 'itilt',     abbr: 'UIV/LIV', label: 'UIV/LIV',   desc: 'Instrumented Tilt (UIV/LIV)' },
         ],
       },
