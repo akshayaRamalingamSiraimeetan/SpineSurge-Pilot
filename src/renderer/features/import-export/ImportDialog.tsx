@@ -7,9 +7,7 @@ import {
     DialogTrigger,
 } from "@/components/ui/dialog"
 import {
-    FilePlus,
     Users,
-    UserPlus,
     ChevronLeft,
     Search as SearchIcon,
     Check,
@@ -18,7 +16,11 @@ import {
     Image as ImageIcon,
     Calendar,
     ArrowRight,
-    FolderInput // Added
+    ChevronRight,
+    CloudUpload,
+    HelpCircle,
+    FolderOpen,
+    Layers,
 } from "lucide-react"
 import { useRef, useState, useMemo } from "react"
 import { useNavigate } from "react-router-dom"
@@ -56,8 +58,9 @@ export function ImportDialog({ children, targetSide, resetOnOpen, navigateOnImpo
     const isDark = resolvedTheme === "dark";
     const [open, setOpen] = useState(false)
     const [step, setStep] = useState<ImportStep>('MODE')
+    const [comingSoonTarget, setComingSoonTarget] = useState<string | null>(null)
     const fileInputRef = useRef<HTMLInputElement>(null)
-    const folderInputRef = useRef<HTMLInputElement>(null) // Added
+    const folderInputRef = useRef<HTMLInputElement>(null)
 
     // Store State
     const {
@@ -70,7 +73,11 @@ export function ImportDialog({ children, targetSide, resetOnOpen, navigateOnImpo
         isComparisonMode,
         activeCanvasSide,
         setComparisonImage,
-        setActiveDialog
+        setActiveDialog,
+        addContext,
+        setActivePatient,
+        setActiveContextId,
+        updateContextState,
     } = useAppStore()
 
     // Selection State
@@ -252,6 +259,7 @@ export function ImportDialog({ children, targetSide, resetOnOpen, navigateOnImpo
 
         const studyId = `std-${Date.now()}`;
         const scanId = `scan-${Date.now()}`;
+        const contextId = `ctx-${Date.now()}`;
 
         await addStudy({
             id: studyId,
@@ -277,6 +285,23 @@ export function ImportDialog({ children, targetSide, resetOnOpen, navigateOnImpo
             if (found) serverUrl = found.imageUrl;
         });
 
+        const imageUrl = serverUrl ?? URL.createObjectURL(selectedFile);
+
+        if (!isComparisonMode) {
+            await addContext({
+                id: contextId,
+                patientId: selectedPatient.id,
+                visitId: selectedVisit.id,
+                studyIds: [studyId],
+                mode: 'plan',
+                name: `${selectedPatient.name} - ${format(new Date(), 'MMM dd, yyyy')}`,
+                lastModified: new Date().toISOString(),
+            });
+            await setActivePatient(selectedPatient.id, contextId);
+            setActiveContextId(contextId);
+            await updateContextState(contextId, { currentImage: imageUrl });
+        }
+
         if (serverUrl) {
             console.log('[ImportDialog] handleFinalImport: Using Server URL', serverUrl);
             if (isComparisonMode && importSide) {
@@ -285,12 +310,11 @@ export function ImportDialog({ children, targetSide, resetOnOpen, navigateOnImpo
                 loadImage(serverUrl)
             }
         } else {
-            const url = URL.createObjectURL(selectedFile);
-            console.warn('[ImportDialog] Server URL not found, using Blob', url);
+            console.warn('[ImportDialog] Server URL not found, using Blob', imageUrl);
             if (isComparisonMode && importSide) {
-                setComparisonImage(importSide, url)
+                setComparisonImage(importSide, imageUrl)
             } else {
-                loadImage(url)
+                loadImage(imageUrl)
             }
         }
 
@@ -341,7 +365,7 @@ export function ImportDialog({ children, targetSide, resetOnOpen, navigateOnImpo
                             </Button>
                         )}
                         <DialogTitle className={cn("text-xl font-bold", isDark ? 'text-[#F5F5F7]' : 'text-slate-900')}>
-                            {step === 'MODE' && "Import Scan"}
+                            {step === 'MODE' && "Create New Study"}
                             {step === 'NEW_PATIENT' && "New Patient Record"}
                             {step === 'SEARCH_PATIENT' && "Select Patient"}
                             {step === 'VISIT_CHOICE' && "Visit Information"}
@@ -351,7 +375,7 @@ export function ImportDialog({ children, targetSide, resetOnOpen, navigateOnImpo
                         </DialogTitle>
                     </div>
                     <DialogDescription className={isDark ? 'text-[#9CA3AF]/80' : 'text-slate-600'}>
-                        {step === 'MODE' && (isComparisonMode ? `Importing scan for View ${(importSide || 'left') === 'left' ? 'A' : 'B'}` : "Select how you'd like to process this scan.")}
+                        {step === 'MODE' && (isComparisonMode ? `Importing scan for View ${(importSide || 'left') === 'left' ? 'A' : 'B'}` : "Import images to create a new study and start planning.")}
                         {step === 'SEARCH_PATIENT' && "Find an existing patient record."}
                         {step === 'VISIT_CHOICE' && `Patient: ${selectedPatient?.name}`}
                         {step === 'SCAN_UPLOAD' && `Visit: ${selectedVisit?.visitNumber} - ${selectedVisit?.date}`}
@@ -359,40 +383,17 @@ export function ImportDialog({ children, targetSide, resetOnOpen, navigateOnImpo
                 </div>
 
                 <div className="p-6">
-                    {/* Step: MODE */}
+                    {/* Step: MODE — redesigned import source picker */}
                     {step === 'MODE' && (
-                        <div className="grid gap-3">
-                            <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={handleQuickFileChange} />
-
-                            <ModeButton
-                                icon={FilePlus}
-                                title="Quick Use"
-                                desc="Analyze immediately without saving."
-                                isDark={isDark}
-                                onClick={handleQuickUse}
+                        <div className="space-y-2">
+                            {/* Hidden file inputs — existing logic unchanged */}
+                            <input
+                                type="file"
+                                ref={fileInputRef}
+                                className="hidden"
+                                accept="image/*,.dcm,application/dicom"
+                                onChange={handleQuickFileChange}
                             />
-                            <ModeButton
-                                icon={UserPlus}
-                                title="Add New Patient"
-                                desc="Register a new patient and start analysis."
-                                isDark={isDark}
-                                onClick={() => setStep('NEW_PATIENT')}
-                            />
-                            <ModeButton
-                                icon={Users}
-                                title="Use Existing Patient"
-                                desc="Link scan to an existing patient record."
-                                isDark={isDark}
-                                onClick={() => setStep('SEARCH_PATIENT')}
-                            />
-                            <ModeButton
-                                icon={FolderInput}
-                                title="Import DICOM Folder"
-                                desc="Load a folder of DICOM files for MPR view."
-                                isDark={isDark}
-                                onClick={handleNativeFolderSelect}
-                            />
-                            {/* Hidden directory input */}
                             <input
                                 type="file"
                                 ref={folderInputRef}
@@ -403,6 +404,84 @@ export function ImportDialog({ children, targetSide, resetOnOpen, navigateOnImpo
                                 multiple
                                 onChange={handleDicomFolderSelect}
                             />
+
+                            {/* Section label */}
+                            <p className={cn(
+                                "text-xs font-bold uppercase tracking-widest pb-2",
+                                isDark ? "text-[#9CA3AF]/50" : "text-slate-400"
+                            )}>
+                                Choose Import Source
+                            </p>
+
+                            {/* 1. Local Files — rewired to existing Quick Use handler */}
+                            <ImportSourceCard
+                                icon={FolderOpen}
+                                title="Local Files"
+                                description="Import DICOM or image files from your computer."
+                                tags={["DICOM", "jpg", "png", "tiff", "bmp", "+ more"]}
+                                isDark={isDark}
+                                onClick={handleQuickUse}
+                            />
+
+                            {/* 2. Local Folder — placeholder */}
+                            <ImportSourceCard
+                                icon={FolderOpen}
+                                title="Local Folder"
+                                description="Import all imaging files from a selected folder."
+                                tags={["DICOM", "jpg", "png", "tiff", "bmp", "+ more"]}
+                                isDark={isDark}
+                                comingSoon
+                                comingSoonLabel={comingSoonTarget === 'folder' ? 'Coming Soon' : undefined}
+                                onClick={() => setComingSoonTarget(comingSoonTarget === 'folder' ? null : 'folder')}
+                            />
+
+                            {/* 3. PACS — placeholder */}
+                            <ImportSourceCard
+                                icon={CloudUpload}
+                                title="PACS"
+                                description="Query and retrieve studies from a PACS server."
+                                tags={["DICOM", "All Modalities"]}
+                                isDark={isDark}
+                                comingSoon
+                                comingSoonLabel={comingSoonTarget === 'pacs' ? 'Coming Soon' : undefined}
+                                onClick={() => setComingSoonTarget(comingSoonTarget === 'pacs' ? null : 'pacs')}
+                            />
+
+                            {/* 4. DICOM — rewired to existing DICOM folder handler */}
+                            <ImportSourceCard
+                                icon={Layers}
+                                title="DICOM"
+                                description="Load a folder of DICOM files for MPR / 3D view."
+                                tags={["DICOM", "Series", "MPR"]}
+                                isDark={isDark}
+                                onClick={handleNativeFolderSelect}
+                            />
+
+                            {/* Footer info + cancel */}
+                            <div className={cn(
+                                "flex items-center justify-between pt-4 mt-2 border-t",
+                                isDark ? "border-[#242427]" : "border-gray-200"
+                            )}>
+                                <div className="flex items-center gap-1.5">
+                                    <HelpCircle className={cn("h-3.5 w-3.5 flex-shrink-0", isDark ? "text-[#9CA3AF]/40" : "text-slate-400")} />
+                                    <span className={cn("text-[11px]", isDark ? "text-[#9CA3AF]/50" : "text-slate-500")}>
+                                        Supported: DICOM, JPG, PNG, TIFF, BMP and more.
+                                    </span>
+                                </div>
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className={cn(
+                                        "text-xs rounded-xl h-8 px-4",
+                                        isDark
+                                            ? "border-[#242427] text-[#9CA3AF] hover:bg-[#1B1B1E] hover:text-[#F5F5F7]"
+                                            : "border-gray-300 text-slate-600 hover:bg-gray-100"
+                                    )}
+                                    onClick={handleClose}
+                                >
+                                    Cancel
+                                </Button>
+                            </div>
                         </div>
                     )}
 
@@ -637,6 +716,137 @@ function ModeButton({ icon: Icon, title, desc, onClick, disabled = false, isDark
             </div>
         </Button>
     )
+}
+
+// ─── ImportSourceCard ─────────────────────────────────────────────────────────
+// Used exclusively by the redesigned MODE step.
+interface ImportSourceCardProps {
+    icon: React.ElementType;
+    title: string;
+    description: string;
+    tags: string[];
+    onClick: () => void;
+    disabled?: boolean;
+    comingSoon?: boolean;
+    comingSoonLabel?: string;
+    isDark?: boolean;
+}
+
+function ImportSourceCard({
+    icon: Icon,
+    title,
+    description,
+    tags,
+    onClick,
+    disabled = false,
+    comingSoon = false,
+    comingSoonLabel,
+    isDark = false,
+}: ImportSourceCardProps) {
+    const isDisabled = disabled;
+    return (
+        <button
+            type="button"
+            disabled={isDisabled}
+            onClick={onClick}
+            className={cn(
+                "w-full text-left flex items-center gap-4 p-4 rounded-2xl border transition-all group relative",
+                isDark
+                    ? isDisabled
+                        ? "bg-[#0A0A0B]/30 border-[#242427] opacity-50 cursor-not-allowed"
+                        : comingSoon
+                            ? "bg-[#141416] border-[#242427] hover:border-[#3a3a3d] hover:bg-[#1B1B1E] cursor-pointer"
+                            : "bg-[#141416] border-[#242427] hover:border-[#FF453A]/40 hover:bg-[#1B1B1E] cursor-pointer"
+                    : isDisabled
+                        ? "bg-gray-50 border-gray-200 opacity-50 cursor-not-allowed"
+                        : comingSoon
+                            ? "bg-white border-gray-200 hover:border-gray-300 hover:bg-gray-50 cursor-pointer shadow-sm"
+                            : "bg-white border-gray-200 hover:border-red-200 hover:bg-red-50/20 cursor-pointer shadow-sm"
+            )}
+        >
+            {/* Icon block */}
+            <div className={cn(
+                "flex-shrink-0 w-14 h-14 rounded-xl flex items-center justify-center transition-colors",
+                isDark
+                    ? comingSoon
+                        ? "bg-[rgba(255,69,58,0.07)]"
+                        : "bg-[rgba(255,69,58,0.12)] group-hover:bg-[rgba(255,69,58,0.18)]"
+                    : comingSoon
+                        ? "bg-red-50/60"
+                        : "bg-red-50 group-hover:bg-red-100"
+            )}>
+                <Icon className={cn(
+                    "h-6 w-6 transition-colors",
+                    comingSoon
+                        ? isDark ? "text-[#FF453A]/40" : "text-red-300"
+                        : "text-[#FF453A]"
+                )} />
+            </div>
+
+            {/* Text content */}
+            <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 mb-0.5">
+                    <span className={cn(
+                        "font-bold text-sm",
+                        isDark
+                            ? comingSoon ? "text-[#F5F5F7]/50" : "text-[#F5F5F7]"
+                            : comingSoon ? "text-slate-400" : "text-slate-900"
+                    )}>
+                        {title}
+                    </span>
+                    {comingSoon && (
+                        <span className={cn(
+                            "text-[9px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-full",
+                            isDark
+                                ? "bg-[#242427] text-[#9CA3AF]/60"
+                                : "bg-gray-100 text-slate-400"
+                        )}>
+                            {comingSoonLabel ?? "Coming Soon"}
+                        </span>
+                    )}
+                </div>
+                <p className={cn(
+                    "text-[11px] leading-relaxed mb-2",
+                    isDark
+                        ? comingSoon ? "text-[#9CA3AF]/30" : "text-[#9CA3AF]/60"
+                        : comingSoon ? "text-slate-300" : "text-slate-500"
+                )}>
+                    {description}
+                </p>
+                <div className="flex flex-wrap gap-1">
+                    {tags.map(tag => (
+                        <span
+                            key={tag}
+                            className={cn(
+                                "text-[10px] font-medium px-2 py-0.5 rounded-full",
+                                isDark
+                                    ? comingSoon
+                                        ? "bg-[#1B1B1E] text-[#9CA3AF]/30"
+                                        : "bg-[rgba(255,69,58,0.12)] text-[#FF453A]/80"
+                                    : comingSoon
+                                        ? "bg-gray-50 text-gray-300 border border-gray-100"
+                                        : "bg-red-50 text-red-500 border border-red-100"
+                            )}
+                        >
+                            {tag}
+                        </span>
+                    ))}
+                </div>
+            </div>
+
+            {/* Chevron */}
+            <ChevronRight className={cn(
+                "flex-shrink-0 h-4 w-4 transition-all",
+                isDark
+                    ? comingSoon
+                        ? "text-[#9CA3AF]/20"
+                        : "text-[#9CA3AF]/40 group-hover:text-[#FF453A] group-hover:translate-x-0.5"
+                    : comingSoon
+                        ? "text-gray-200"
+                        : "text-gray-300 group-hover:text-[#FF453A] group-hover:translate-x-0.5"
+            )} />
+        </button>
+    );
 }
 
 function FormItem({ label, children }: any) {
