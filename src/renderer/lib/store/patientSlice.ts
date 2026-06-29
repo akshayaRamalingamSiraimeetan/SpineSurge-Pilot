@@ -66,7 +66,20 @@ export const createPatientSlice: StateCreator<AppState, [], [], PatientSlice> = 
             return;
         }
 
-        set({ activePatientId: id, activeContextId: initialContextId });
+        // Reset DICOM state immediately when switching to any patient/study.
+        // Also clear currentImage so CanvasWorkspace cannot inherit a stale DICOM
+        // URL from the previous session via Priority-2 of its currentImage useMemo.
+        // When coming out of DICOM mode, additionally clear the managers map so
+        // CanvasWorkspace always creates a fresh CanvasManager.
+        const wasDicomMode = get().isDicomMode;
+        set({
+            activePatientId: id,
+            activeContextId: initialContextId,
+            isDicomMode: false,
+            dicomSeries: [],
+            currentImage: null,
+            ...(wasDicomMode ? { managers: {} } : {}),
+        });
         const token = get().token;
 
         try {
@@ -117,6 +130,7 @@ export const createPatientSlice: StateCreator<AppState, [], [], PatientSlice> = 
             console.error('Failed to fetch contexts', e);
         }
     },
+
 
     addPatient: async (patient) => {
         const token = get().token;

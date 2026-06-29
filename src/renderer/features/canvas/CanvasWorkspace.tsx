@@ -349,9 +349,19 @@ const CanvasWorkspace = ({ side }: CanvasWorkspaceProps) => {
                 const mgrKey = side || 'main';
                 let mgr = managers[mgrKey];
 
-                if (mgr && (mgr as any)._baseImage === currentImage) {
+                // Only reuse a manager that this CanvasWorkspace instance already owns.
+                // managerRef.current is null on every fresh mount (React ref is recreated),
+                // so the guard cannot fire after navigation — fresh initialization always runs.
+                // Within the same mount, managerRef.current === mgr, so intra-session reuse
+                // still works (e.g., when measurements update without changing the image).
+                console.log('[CanvasWorkspace] manager reuse', {
+                    currentImage,
+                    managerBaseImage: mgr ? (mgr as any)._baseImage : null,
+                    sameImage: mgr ? (mgr as any)._baseImage === currentImage : false,
+                    sameManager: managerRef.current === mgr,
+                });
+                if (mgr && (mgr as any)._baseImage === currentImage && managerRef.current === mgr) {
                     console.log('[CanvasWorkspace] Reusing existing manager for image', currentImage);
-                    managerRef.current = mgr;
                     const managerMeasurements = mgr.current?.data.measurements || [];
                     // Hydrate canvas FROM store/context — never overwrite persisted data with stale manager state
                     if (measurementsDiffer(managerMeasurements, storeMeasurements)) {

@@ -50,6 +50,7 @@ import { Label } from "@/components/ui/label";
 import { useNavigate } from "react-router-dom";
 import { cn } from "@/lib/utils";
 import { History } from "lucide-react";
+import { destroyCornerstone } from "@/lib/cornerstone/initCornerstone";
 
 const isQuickAnalysisPatient = (id?: string) => (id || '').startsWith('quick-');
 
@@ -294,12 +295,22 @@ const PatientCasesPage = () => {
     };
 
     const handleContinueContext = async (context: { id: string; patientId: string }) => {
+        // Tear down the Cornerstone runtime before opening a normal workspace.
+        // This prevents stale RenderingEngine / ToolGroup / cache state from
+        // the previous DICOM session from influencing CanvasWorkspace.
+        if (useAppStore.getState().isDicomMode) {
+            destroyCornerstone();
+        }
         await setActivePatient(context.patientId, context.id);
         setActiveContextId(context.id);
         navigate('/workspace');
     };
 
     const handleStartNewFromStudy = async (study: Study) => {
+        // Tear down the Cornerstone runtime before opening a normal workspace.
+        if (useAppStore.getState().isDicomMode) {
+            destroyCornerstone();
+        }
         const newContext = {
             id: `ctx-${Date.now()}`,
             patientId: study.patientId,

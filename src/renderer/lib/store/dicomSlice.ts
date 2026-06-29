@@ -275,17 +275,21 @@ export const createDicomSlice: StateCreator<AppState, [], [], DicomSlice> = (set
     setDicomCroppingActive: (active: boolean) => set((state) => ({
         dicom3D: { ...state.dicom3D, isCroppingActive: active }
     })),
-    loadDicomSeries: (files: File[]) => set(() => ({
-        dicomSeries: files,
-        isDicomMode: true,
-        currentImage: null,
-    })),
-    loadDicomURLs: (urls: string[]) => set(() => ({
-        dicomSeries: urls,
-        isDicomMode: true,
-        currentImage: null,
-    })),
-    exitDicomMode: () => set({ isDicomMode: false, dicomSeries: [] }),
+    loadDicomSeries: (files: File[]) => {
+        console.log('%c[TRACE] loadDicomSeries() called', 'color:red;font-weight:bold', { fileCount: files.length });
+        console.trace('[TRACE] loadDicomSeries call stack');
+        set(() => ({ dicomSeries: files, isDicomMode: true, currentImage: null }));
+    },
+    loadDicomURLs: (urls: string[]) => {
+        console.log('%c[TRACE] loadDicomURLs() called', 'color:red;font-weight:bold', { count: urls.length, first: urls[0]?.slice(0, 60) });
+        console.trace('[TRACE] loadDicomURLs call stack');
+        set(() => ({ dicomSeries: urls, isDicomMode: true, currentImage: null }));
+    },
+    exitDicomMode: () => {
+        console.log('%c[TRACE] exitDicomMode() called', 'color:green;font-weight:bold');
+        console.trace('[TRACE] exitDicomMode call stack');
+        set({ isDicomMode: false, dicomSeries: [] });
+    },
     addThreeDImplant: (implant: ThreeDImplant) => set((state) => {
         const nextImplants = [...state.threeDImplants, implant];
         if (state.activeContextId) {

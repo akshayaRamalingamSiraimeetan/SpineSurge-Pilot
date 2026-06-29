@@ -6,7 +6,7 @@ import { useAppStore } from "@/lib/store/index";
 import CanvasWorkspace from "@/features/canvas/CanvasWorkspace";
 import { DICOMViewer } from "@/features/dicom/DICOMViewer";
 
-import { useEffect } from "react";
+import { useEffect, useMemo } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { API_BASE } from "@/lib/api";
 
@@ -16,33 +16,34 @@ const MainPage = () => {
     const {
         currentImage,
         activeContextId,
-        activePatientId, // Added activePatientId
+        activePatientId,
         isDicomMode,
         dicomSeries,
         contexts,
         patients,
         contextStates,
         loadDicomURLs,
+        exitDicomMode,
         setActivePatient,
         setActiveContextId,
         initializeLiveRoom,
         disconnectLiveRoom
     } = useAppStore();
 
-    useEffect(() => {
-        console.log("Workspace (MainPage) mounted/updated state: ", {
-            activePatientId,
-            activeContextId,
-            currentImage
-        });
-    }, [activePatientId, activeContextId, currentImage]);
+    // ── Resolve the current study for logging & DICOM detection ─────────────
+    const currentStudy = useMemo(() => {
+        if (!activeContextId) return null;
+        const context = contexts.find((c: Context) => c.id === activeContextId);
+        if (!context) return null;
+        const patient = patients.find((p: Patient) => p.id === context.patientId);
+        return patient?.studies.find((s: any) => s.id === context.studyIds[0]) ?? null;
+    }, [activeContextId, contexts, patients]);
 
     // Initialize Live Room when context OR patient is active
     useEffect(() => {
         if (activeContextId) {
             initializeLiveRoom(activeContextId);
         } else if (activePatientId && activePatientId.startsWith('quick-')) {
-            // Special handling for Quick Analysis sharing - use patientId as room ID
             initializeLiveRoom(activePatientId);
         } else {
             disconnectLiveRoom();
@@ -66,11 +67,9 @@ const MainPage = () => {
         if (img) {
             const decodedImg = decodeURIComponent(img);
             if (decodedImg !== useAppStore.getState().currentImage) {
-                // Determine if it's a full URL or relative path
                 const finalUrl = (decodedImg.startsWith('http') || decodedImg.startsWith('blob:'))
                     ? decodedImg
-                    : `${API_BASE}/uploads/${decodedImg.split('/').pop()}`; // Best guess reconstruction if partial
-
+                    : `${API_BASE}/uploads/${decodedImg.split('/').pop()}`;
                 useAppStore.setState({ currentImage: finalUrl });
             }
         }
@@ -81,7 +80,6 @@ const MainPage = () => {
         if (activeContextId && currentImage) {
             const state = useAppStore.getState();
             const existingState = state.contextStates.find(s => s.contextId === activeContextId);
-            // Only save if the image actually changed to avoid thrashing
             if (existingState?.currentImage !== currentImage) {
                 state.updateContextState(activeContextId, { currentImage });
             }
@@ -94,18 +92,10 @@ const MainPage = () => {
             const contextState = useAppStore.getState().contextStates.find(s => s.contextId === activeContextId);
             if (contextState) {
                 const patch: Record<string, unknown> = {};
-                if (contextState.measurements) {
-                    patch.measurements = contextState.measurements;
-                }
-                if (contextState.implants) {
-                    patch.implants = contextState.implants;
-                }
-                if (contextState.threeDImplants) {
-                    patch.threeDImplants = contextState.threeDImplants;
-                }
-                if (contextState.pedicleSimulations) {
-                    patch.pedicleSimulations = contextState.pedicleSimulations;
-                }
+                if (contextState.measurements) patch.measurements = contextState.measurements;
+                if (contextState.implants) patch.implants = contextState.implants;
+                if (contextState.threeDImplants) patch.threeDImplants = contextState.threeDImplants;
+                if (contextState.pedicleSimulations) patch.pedicleSimulations = contextState.pedicleSimulations;
                 if (contextState.currentImage && !useAppStore.getState().currentImage) {
                     patch.currentImage = contextState.currentImage;
                 }
@@ -116,8 +106,9 @@ const MainPage = () => {
         }
     }, [activeContextId, contextStates]);
 
+    // DICOM auto-detection: fires when activeContextId changes
     useEffect(() => {
-        if (activeContextId && !isDicomMode) {
+        if (activeContextId) {
             const context = contexts.find((c: Context) => c.id === activeContextId);
             if (context) {
                 const patient = patients.find((p: Patient) => p.id === context.patientId);
@@ -127,17 +118,27 @@ const MainPage = () => {
                     const isDICOM = study.modality === 'CT' || study.modality === 'MRI' || firstScan.imageUrl.toLowerCase().endsWith('.dcm');
 
                     if (isDICOM) {
-                        const urls = study.scans.map((s: any) => {
-                            const url = s.imageUrl;
-                            if (url.startsWith('http') || url.startsWith('blob:')) return url;
-                            return `${API_BASE}${url.startsWith('/') ? '' : '/'}${url}`;
-                        });
-                        loadDicomURLs(urls);
+                        if (!isDicomMode) {
+                            const urls = study.scans.map((s: any) => {
+                                const url = s.imageUrl;
+                                if (url.startsWith('http') || url.startsWith('blob:')) return url;
+                                return `${API_BASE}${url.startsWith('/') ? '' : '/'}${url}`;
+                            });
+                            loadDicomURLs(urls);
+                        }
+                    } else {
+                        if (isDicomMode) {
+                            exitDicomMode();
+                        }
+                    }
+                } else {
+                    if (isDicomMode) {
+                        exitDicomMode();
                     }
                 }
             }
         }
-    }, [activeContextId, contexts, patients, isDicomMode, loadDicomURLs]);
+    }, [activeContextId, contexts, patients, isDicomMode, loadDicomURLs, exitDicomMode]);
 
     // ESC Key Navigation Handler
     useEffect(() => {
@@ -145,16 +146,13 @@ const MainPage = () => {
             if (e.key === 'Escape') {
                 e.preventDefault();
                 e.stopPropagation();
-
                 return;
 
-                // Priority 1: Clear DICOM Mode
                 if (useAppStore.getState().isDicomMode) {
-                    useAppStore.getState().clearImage(); // This clears isDicomMode too
+                    useAppStore.getState().clearImage();
                     return;
                 }
 
-                // Priority 2: Clear Active Canvas / Context
                 const state = useAppStore.getState();
                 if (state.currentImage || state.activeContextId) {
                     state.clearImage();
@@ -162,7 +160,6 @@ const MainPage = () => {
                     return;
                 }
 
-                // Priority 3: Navigate Back if not on Workspace
                 if (location.pathname !== '/workspace' && location.pathname !== '/') {
                     navigate('/dashboard');
                 }
@@ -173,7 +170,25 @@ const MainPage = () => {
         return () => window.removeEventListener('keydown', handleKeyDown);
     }, [location.pathname, navigate]);
 
+    // ── Render Decision ──────────────────────────────────────────────────────
     const hasActiveContent = !!currentImage || !!activeContextId || isDicomMode;
+    const renderBranch = isDicomMode ? 'DICOMViewer' : hasActiveContent ? 'CanvasWorkspace' : 'EmptyState';
+
+    // ── [TRACE] Single targeted log — the ONLY place that decides viewer ─────
+    console.log(
+        `%c[WORKSPACE RENDER] branch=${renderBranch}`,
+        `color:${renderBranch === 'DICOMViewer' ? 'red' : renderBranch === 'CanvasWorkspace' ? 'lime' : 'gray'};font-weight:bold`,
+        {
+            isDicomMode,
+            currentImage: currentImage ? currentImage.slice(0, 80) : null,
+            dicomSeriesLength: dicomSeries.length,
+            activePatientId,
+            activeContextId,
+            studyId:       currentStudy?.id       ?? null,
+            studyModality: currentStudy?.modality  ?? null,
+            firstScanUrl:  currentStudy?.scans?.[0]?.imageUrl?.slice(0, 80) ?? null,
+        }
+    );
 
     return (
         <div className="h-full w-full flex items-center justify-center relative bg-background overflow-hidden">

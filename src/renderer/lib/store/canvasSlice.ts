@@ -157,6 +157,7 @@ export const createCanvasSlice: StateCreator<AppState, [], [], CanvasSlice> = (s
         };
     }),
     clearImage: () => set({ currentImage: null, isDicomMode: false, dicomSeries: [], inspectionMode: null }),
+
     setActiveTool: (toolId) => set({ activeTool: toolId }),
     setSelection: (selection) => set({ selection }),
     setZoom: (zoom) => set((state) => {
