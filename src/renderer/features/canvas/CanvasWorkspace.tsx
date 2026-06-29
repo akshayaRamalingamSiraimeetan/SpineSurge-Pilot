@@ -2413,30 +2413,44 @@ const CanvasWorkspace = ({ side }: CanvasWorkspaceProps) => {
 
             {!currentImage && (
                 <div className="absolute inset-0 flex items-center justify-center z-20">
-                    <ImportDialog targetSide={side}>
-                        <Button
-                            variant="outline"
-                            className={cn(
-                                "group gap-2 py-8 px-8 rounded-2xl flex-col transition-all",
-                                isDark
-                                    ? "bg-[#141416] border-[#242427] hover:bg-[#1B1B1E] hover:border-[#3a3a3d] text-[#9CA3AF]"
-                                    : "bg-gray-100 border-gray-300 hover:bg-white hover:border-gray-400 text-slate-900"
-                            )}
-                            onClick={(e) => { e.stopPropagation(); handleCanvasClick(); }}
-                        >
-                            <div className={cn(
-                                "h-10 w-10 rounded-full flex items-center justify-center transition-all",
-                                isDark
-                                    ? "bg-[#242427] group-hover:scale-110 group-hover:bg-[rgba(255,69,58,0.12)]"
-                                    : "bg-gray-200 text-slate-600 group-hover:scale-110 group-hover:bg-gray-300"
-                            )}>
-                                <Plus className="h-6 w-6" />
+                    {/* In comparison mode, left side is auto-populated from the workspace.
+                        Show a passive message instead of the import dialog. */}
+                    {isComparisonMode && side === 'left' ? (
+                        <div className="flex flex-col items-center gap-2 opacity-40">
+                            <div className="h-10 w-10 rounded-full bg-[#242427] flex items-center justify-center">
+                                <Plus className="h-5 w-5" />
                             </div>
-                            <span className="text-xs font-bold uppercase tracking-wider">Load Scan {side === 'left' ? 'A' : 'B'}</span>
-                        </Button>
-                    </ImportDialog>
+                            <span className="text-xs font-bold uppercase tracking-wider">
+                                Loading workspace image…
+                            </span>
+                        </div>
+                    ) : (
+                        <ImportDialog targetSide={side}>
+                            <Button
+                                variant="outline"
+                                className={cn(
+                                    "group gap-2 py-8 px-8 rounded-2xl flex-col transition-all",
+                                    isDark
+                                        ? "bg-[#141416] border-[#242427] hover:bg-[#1B1B1E] hover:border-[#3a3a3d] text-[#9CA3AF]"
+                                        : "bg-gray-100 border-gray-300 hover:bg-white hover:border-gray-400 text-slate-900"
+                                )}
+                                onClick={(e) => { e.stopPropagation(); handleCanvasClick(); }}
+                            >
+                                <div className={cn(
+                                    "h-10 w-10 rounded-full flex items-center justify-center transition-all",
+                                    isDark
+                                        ? "bg-[#242427] group-hover:scale-110 group-hover:bg-[rgba(255,69,58,0.12)]"
+                                        : "bg-gray-200 text-slate-600 group-hover:scale-110 group-hover:bg-gray-300"
+                                )}>
+                                    <Plus className="h-6 w-6" />
+                                </div>
+                                <span className="text-xs font-bold uppercase tracking-wider">Load Scan {side === 'left' ? 'A' : 'B'}</span>
+                            </Button>
+                        </ImportDialog>
+                    )}
                 </div>
             )}
+
 
             <div className="absolute inset-0 pointer-events-none opacity-[0.05]"
                 style={{
