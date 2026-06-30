@@ -291,26 +291,31 @@ const TopMenuBar = () => {
                         padding: '3px',
                         borderRadius: 10,
                     }}>
-                        {WS_TABS.map((t) => (
-                            <button
-                                key={t.key}
-                                onClick={() => handleWsTab(t.key)}
-                                style={{
-                                    padding: '6px 16px',
-                                    borderRadius: 8,
-                                    fontSize: 13,
-                                    fontWeight: 600,
-                                    border: 'none',
-                                    cursor: 'pointer',
-                                    color: wsTab === t.key ? 'var(--accent)' : 'var(--text-2)',
-                                    background: wsTab === t.key ? 'var(--accent-soft)' : 'transparent',
-                                    transition: 'all .14s',
-                                    whiteSpace: 'nowrap',
-                                }}
-                            >
-                                {t.label}
-                            </button>
-                        ))}
+                        {WS_TABS.map((t) => {
+                            const isDisabled = isDicomMode && (t.key === 'assessment' || t.key === 'compare');
+                            return (
+                                <button
+                                    key={t.key}
+                                    onClick={() => !isDisabled && handleWsTab(t.key)}
+                                    disabled={isDisabled}
+                                    style={{
+                                        padding: '6px 16px',
+                                        borderRadius: 8,
+                                        fontSize: 13,
+                                        fontWeight: 600,
+                                        border: 'none',
+                                        cursor: isDisabled ? 'not-allowed' : 'pointer',
+                                        opacity: isDisabled ? 0.35 : 1,
+                                        color: wsTab === t.key ? 'var(--accent)' : 'var(--text-2)',
+                                        background: wsTab === t.key ? 'var(--accent-soft)' : 'transparent',
+                                        transition: 'all .14s',
+                                        whiteSpace: 'nowrap',
+                                    }}
+                                >
+                                    {t.label}
+                                </button>
+                            );
+                        })}
                     </div>
                 </div>
             ) : (

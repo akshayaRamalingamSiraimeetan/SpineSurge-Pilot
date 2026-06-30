@@ -30,7 +30,10 @@ export function ReportDialog({ open, onOpenChange, checkedCount }: { open: boole
         contextStates,
         user,
         patients,
-        activePatientId
+        activePatientId,
+        isDicomMode,
+        threeDImplants,
+        dicom3D
     } = useAppStore();
 
     const measurements = useMemo(() => {
@@ -53,8 +56,9 @@ export function ReportDialog({ open, onOpenChange, checkedCount }: { open: boole
         console.log("Starting PDF generation...");
         try {
             const selectedMeasurements = measurements.filter(m => m.selected && m.toolKey !== 'c7pl' && m.toolKey !== 'csvl' && !m?.measurement?.isCalibration);
-            if (selectedMeasurements.length === 0) {
-                alert("No measurements selected for the report.");
+            const hasContent = isDicomMode ? (threeDImplants.length > 0) : (selectedMeasurements.length > 0);
+            if (!hasContent) {
+                alert(isDicomMode ? "No implants planned for the report." : "No measurements selected for the report.");
                 setIsGenerating(false);
                 return;
             }
@@ -355,82 +359,201 @@ export function ReportDialog({ open, onOpenChange, checkedCount }: { open: boole
                 yPos += imgHeight + 10;
             }
 
-            // --- MEASUREMENT DATA TABLE ---
-            if (yPos > pageHeight - 50) {
+            // --- MEASUREMENT / PLANNING DATA TABLE ---
+            if (yPos > pageHeight - 55) {
                 doc.addPage();
                 yPos = 20;
             }
 
-            doc.setFont("helvetica", "bold");
-            doc.setTextColor(30, 41, 59);
-            doc.setFontSize(13);
-            doc.text("MEASUREMENT DATA", 15, yPos);
-            
-            // Section underline
-            doc.setDrawColor(37, 99, 235);
-            doc.setLineWidth(1);
-            doc.line(15, yPos + 2, pageWidth - 15, yPos + 2);
-            
-            yPos += 8;
+            if (isDicomMode) {
+                doc.setFont("helvetica", "bold");
+                doc.setTextColor(30, 41, 59);
+                doc.setFontSize(13);
+                doc.text("SURGICAL PLANNING (IMPLANTS)", 15, yPos);
+                
+                // Section underline
+                doc.setDrawColor(37, 99, 235);
+                doc.setLineWidth(1);
+                doc.line(15, yPos + 2, pageWidth - 15, yPos + 2);
+                
+                yPos += 8;
 
-            const tableRows = selectedMeasurements.map((m, idx) => {
-                let displayResult = m.result;
-                if (typeof displayResult === 'number') displayResult = displayResult.toFixed(1);
-
-                const level = (m as any).level || (m as any).measurement?.level || "—";
-                const comments = (m as any).comments || (m as any).measurement?.comments || "";
-                const levelAndComments = comments ? `${level} (${comments})` : level;
-
-                return [
+                const screwImplants = threeDImplants.filter(i => i.type === 'screw');
+                const tableRows = screwImplants.map((imp, idx) => [
                     String(idx + 1),
-                    (m.toolKey || "Unknown").toUpperCase(),
-                    levelAndComments,
-                    String(displayResult || "N/A")
+                    "Pedicle Screw",
+                    `${imp.level ?? '—'} ${imp.side === 'L' ? 'Left' : imp.side === 'R' ? 'Right' : ''}`.trim() || '—',
+                    `${imp.properties.diameter} mm × ${imp.properties.length} mm`,
+                    "Titanium / Standard"
+                ]);
+
+                autoTable(doc, {
+                    startY: yPos,
+                    head: [['#', 'Implant Type', 'Spinal Level & Side', 'Dimensions', 'Material & Trajectory']],
+                    body: tableRows.length > 0 ? tableRows : [["—", "No implants placed", "—", "—", "—"]],
+                    theme: 'grid',
+                    pageBreak: 'auto',
+                    rowPageBreak: 'auto',
+                    styles: {
+                        fontSize: 9,
+                        cellPadding: 5,
+                        textColor: [71, 85, 105],
+                        lineColor: [210, 215, 225],
+                        lineWidth: 0.5,
+                        halign: 'left',
+                        valign: 'middle',
+                        font: 'helvetica'
+                    },
+                    headStyles: {
+                        fillColor: [37, 99, 235],
+                        textColor: [255, 255, 255],
+                        fontStyle: 'bold',
+                        fontSize: 10,
+                        cellPadding: 6,
+                        halign: 'center',
+                        valign: 'middle',
+                        lineWidth: 0.5,
+                        lineColor: [25, 80, 200]
+                    },
+                    alternateRowStyles: {
+                        fillColor: [248, 250, 252]
+                    },
+                    columnStyles: {
+                        0: { cellWidth: 14, halign: 'center', fontStyle: 'bold' },
+                        1: { cellWidth: 38, halign: 'left' },
+                        2: { cellWidth: 45, halign: 'left' },
+                        3: { cellWidth: 40, halign: 'center' },
+                        4: { cellWidth: 43, halign: 'left' }
+                    },
+                    margin: { left: 15, right: 15, bottom: 20 }
+                });
+
+                yPos = (doc as any).lastAutoTable?.finalY ? (doc as any).lastAutoTable.finalY + 12 : yPos + 12;
+
+                if (yPos > pageHeight - 45) {
+                    doc.addPage();
+                    yPos = 20;
+                }
+
+                // Additional Properties
+                doc.setFont("helvetica", "bold");
+                doc.setTextColor(30, 41, 59);
+                doc.setFontSize(13);
+                doc.text("ADDITIONAL PROPERTIES", 15, yPos);
+                doc.line(15, yPos + 2, pageWidth - 15, yPos + 2);
+                yPos += 8;
+
+                const propRows = [
+                    ["Rod Planning", "Not planned (Phase 2)"],
+                    ["Cage Planning", "N/A for 3D CT"]
                 ];
-            });
 
-            autoTable(doc, {
-                startY: yPos,
-                head: [['#', 'Metric', 'Level / Comments', 'Patient Value']],
-                body: tableRows,
-                theme: 'grid',
-                pageBreak: 'auto',
-                rowPageBreak: 'auto',
-                styles: {
-                    fontSize: 9,
-                    cellPadding: 5,
-                    textColor: [71, 85, 105],
-                    lineColor: [210, 215, 225],
-                    lineWidth: 0.5,
-                    halign: 'left',
-                    valign: 'middle',
-                    font: 'helvetica',
-                    overflow: 'linebreak'
-                },
-                headStyles: {
-                    fillColor: [37, 99, 235],
-                    textColor: [255, 255, 255],
-                    fontStyle: 'bold',
-                    fontSize: 10,
-                    cellPadding: 6,
-                    halign: 'center',
-                    valign: 'middle',
-                    lineWidth: 0.5,
-                    lineColor: [25, 80, 200]
-                },
-                alternateRowStyles: {
-                    fillColor: [248, 250, 252]
-                },
-                columnStyles: {
-                    0: { cellWidth: 14, halign: 'center', fontStyle: 'bold' },
-                    1: { cellWidth: 38, halign: 'left' },
-                    2: { cellWidth: 85, halign: 'left' },
-                    3: { cellWidth: 26, halign: 'center' }
-                },
-                margin: { left: 15, right: 15, bottom: 20 }
-            });
+                autoTable(doc, {
+                    startY: yPos,
+                    head: [['Planning Component', 'Status / Properties']],
+                    body: propRows,
+                    theme: 'grid',
+                    styles: {
+                        fontSize: 9,
+                        cellPadding: 5,
+                        textColor: [71, 85, 105],
+                        lineColor: [210, 215, 225],
+                        lineWidth: 0.5,
+                        halign: 'left',
+                        valign: 'middle',
+                        font: 'helvetica'
+                    },
+                    headStyles: {
+                        fillColor: [37, 99, 235],
+                        textColor: [255, 255, 255],
+                        fontStyle: 'bold',
+                        fontSize: 10,
+                        cellPadding: 6,
+                        halign: 'center',
+                        valign: 'middle',
+                        lineWidth: 0.5,
+                        lineColor: [25, 80, 200]
+                    },
+                    columnStyles: {
+                        0: { cellWidth: 60, fontStyle: 'bold' },
+                        1: { cellWidth: 120 }
+                    },
+                    margin: { left: 15, right: 15, bottom: 20 }
+                });
 
-            yPos = (doc as any).lastAutoTable?.finalY ? (doc as any).lastAutoTable.finalY + 10 : yPos;
+                yPos = (doc as any).lastAutoTable?.finalY ? (doc as any).lastAutoTable.finalY + 10 : yPos;
+            } else {
+                doc.setFont("helvetica", "bold");
+                doc.setTextColor(30, 41, 59);
+                doc.setFontSize(13);
+                doc.text("MEASUREMENT DATA", 15, yPos);
+                
+                // Section underline
+                doc.setDrawColor(37, 99, 235);
+                doc.setLineWidth(1);
+                doc.line(15, yPos + 2, pageWidth - 15, yPos + 2);
+                
+                yPos += 8;
+
+                const tableRows = selectedMeasurements.map((m, idx) => {
+                    let displayResult = m.result;
+                    if (typeof displayResult === 'number') displayResult = displayResult.toFixed(1);
+
+                    const level = (m as any).level || (m as any).measurement?.level || "—";
+                    const comments = (m as any).comments || (m as any).measurement?.comments || "";
+                    const levelAndComments = comments ? `${level} (${comments})` : level;
+
+                    return [
+                        String(idx + 1),
+                        (m.toolKey || "Unknown").toUpperCase(),
+                        levelAndComments,
+                        String(displayResult || "N/A")
+                    ];
+                });
+
+                autoTable(doc, {
+                    startY: yPos,
+                    head: [['#', 'Metric', 'Level / Comments', 'Patient Value']],
+                    body: tableRows,
+                    theme: 'grid',
+                    pageBreak: 'auto',
+                    rowPageBreak: 'auto',
+                    styles: {
+                        fontSize: 9,
+                        cellPadding: 5,
+                        textColor: [71, 85, 105],
+                        lineColor: [210, 215, 225],
+                        lineWidth: 0.5,
+                        halign: 'left',
+                        valign: 'middle',
+                        font: 'helvetica',
+                        overflow: 'linebreak'
+                    },
+                    headStyles: {
+                        fillColor: [37, 99, 235],
+                        textColor: [255, 255, 255],
+                        fontStyle: 'bold',
+                        fontSize: 10,
+                        cellPadding: 6,
+                        halign: 'center',
+                        valign: 'middle',
+                        lineWidth: 0.5,
+                        lineColor: [25, 80, 200]
+                    },
+                    alternateRowStyles: {
+                        fillColor: [248, 250, 252]
+                    },
+                    columnStyles: {
+                        0: { cellWidth: 14, halign: 'center', fontStyle: 'bold' },
+                        1: { cellWidth: 38, halign: 'left' },
+                        2: { cellWidth: 85, halign: 'left' },
+                        3: { cellWidth: 26, halign: 'center' }
+                    },
+                    margin: { left: 15, right: 15, bottom: 20 }
+                });
+
+                yPos = (doc as any).lastAutoTable?.finalY ? (doc as any).lastAutoTable.finalY + 10 : yPos;
+            }
 
             // --- FOOTER ON ALL PAGES ---
             const pageCount = doc.getNumberOfPages();
@@ -503,10 +626,14 @@ export function ReportDialog({ open, onOpenChange, checkedCount }: { open: boole
                         Generate PDF Report
                     </DialogTitle>
                     <DialogDescription className={isDark ? 'text-[#9CA3AF]/80' : 'text-slate-600'}>
-                        You have <strong className="text-[#FF453A]">{checkedCount}</strong> measurements ready for clinical documentation.
+                        {isDicomMode ? (
+                            <>You have <strong className="text-[#FF453A]">{threeDImplants.filter(i => i.type === 'screw').length}</strong> implants ready for clinical documentation.</>
+                        ) : (
+                            <>You have <strong className="text-[#FF453A]">{checkedCount}</strong> measurements ready for clinical documentation.</>
+                        )}
                     </DialogDescription>
                 </DialogHeader>
-
+ 
                 <div className="py-6 space-y-4">
                     <div className={cn(
                         "p-4 rounded-lg border",
@@ -522,10 +649,14 @@ export function ReportDialog({ open, onOpenChange, checkedCount }: { open: boole
                             <li>• Professional Radiology Template (A4)</li>
                             <li>• Patient: {activePatient?.name || "Quick Analysis"}</li>
                             <li>• Surgeon: {user?.name}</li>
-                            <li>• Measured Parameters: {checkedCount} tool(s)</li>
+                            {isDicomMode ? (
+                                <li>• Planned Implants: {threeDImplants.filter(i => i.type === 'screw').length} screw(s)</li>
+                            ) : (
+                                <li>• Measured Parameters: {checkedCount} tool(s)</li>
+                            )}
                         </ul>
                     </div>
-
+ 
                     <div className="flex items-center space-x-2">
                         <input
                             type="checkbox"
@@ -547,7 +678,7 @@ export function ReportDialog({ open, onOpenChange, checkedCount }: { open: boole
                         </label>
                     </div>
                 </div>
-
+ 
                 <DialogFooter className="gap-2 sm:gap-0">
                     <Button variant="ghost" onClick={() => onOpenChange(false)} className={cn(
                         "transition-all",
@@ -557,7 +688,7 @@ export function ReportDialog({ open, onOpenChange, checkedCount }: { open: boole
                     )}>Cancel</Button>
                     <Button
                         onClick={handleExportPDF}
-                        disabled={isGenerating || checkedCount === 0}
+                        disabled={isGenerating || (isDicomMode ? threeDImplants.length === 0 : checkedCount === 0)}
                         className="bg-[#FF453A] hover:bg-[#e03d33] text-white gap-2 shadow-[0_1px_2px_rgba(0,0,0,.04),0_8px_24px_rgba(0,0,0,.08)] font-bold"
                     >
                         {isGenerating ? (

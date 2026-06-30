@@ -27,6 +27,8 @@ import {
     Trash2,
     Activity,
     Target,
+    Pencil,
+    ChevronUp,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -828,6 +830,210 @@ function CaseSummary({ isOpen, onOpenChange, onCreatePatient }: { isOpen: boolea
     );
 }
 
+const PropRow = ({ label, value }: { label: string; value: React.ReactNode }) => (
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '4px 0' }}>
+        <span style={{ fontSize: 13, color: 'var(--text-3)' }}>{label}</span>
+        <span style={{ fontSize: 13, color: 'var(--text)', fontWeight: 600 }}>{value}</span>
+    </div>
+);
+
+const SectionLabel = ({ children }: { children: React.ReactNode }) => (
+    <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 6 }}>
+        {children}
+    </div>
+);
+
+function DicomCurrentPlan() {
+    const {
+        threeDImplants,
+        dicom3D,
+        setSelectedDicomImplant,
+        removeThreeDImplant,
+        setDicom3DMode,
+    } = useAppStore();
+
+    const selectedScrew = threeDImplants.find(
+        i => i.id === dicom3D.selectedImplantId && i.type === 'screw'
+    );
+    const screwImplants = threeDImplants.filter(i => i.type === 'screw');
+
+    const clearPlan = () => {
+        const ids = useAppStore.getState().threeDImplants.map(i => i.id);
+        ids.forEach(id => removeThreeDImplant(id));
+        setSelectedDicomImplant(null);
+        setDicom3DMode('view');
+    };
+
+    const sortedLevels = useMemo(() => {
+        if (screwImplants.length === 0) return '—';
+        const levels = Array.from(new Set(screwImplants.map(i => i.level)));
+        if (levels.length === 1) return levels[0];
+        return `${levels[0]} – ${levels[levels.length - 1]}`;
+    }, [screwImplants]);
+
+    return (
+        <CollapseSection title="Current Plan" defaultOpen>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                {/* ── Instrumentation summary ────────────────────────── */}
+                <div style={{ borderBottom: '1px solid var(--border-2)', paddingBottom: 10 }}>
+                    <SectionLabel>Instrumentation</SectionLabel>
+
+                    {screwImplants.length === 0 ? (
+                        <div style={{ fontSize: 12, fontStyle: 'italic', color: 'var(--text-3)', padding: '4px 0' }}>
+                            No implants placed.
+                        </div>
+                    ) : (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 3, marginBottom: 6 }}>
+                            {screwImplants.map(imp => (
+                                <div
+                                    key={imp.id}
+                                    onClick={() => setSelectedDicomImplant(
+                                        dicom3D.selectedImplantId === imp.id ? null : imp.id
+                                    )}
+                                    style={{
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        padding: '4px 6px',
+                                        borderRadius: 6,
+                                        cursor: 'pointer',
+                                        fontSize: 12,
+                                        background: dicom3D.selectedImplantId === imp.id ? 'var(--surface-3)' : 'transparent',
+                                        transition: 'background .15s',
+                                    }}
+                                    onMouseEnter={(e) => {
+                                        if (dicom3D.selectedImplantId !== imp.id) {
+                                            e.currentTarget.style.background = 'var(--surface-2)';
+                                        }
+                                    }}
+                                    onMouseLeave={(e) => {
+                                        if (dicom3D.selectedImplantId !== imp.id) {
+                                            e.currentTarget.style.background = 'transparent';
+                                        }
+                                    }}
+                                >
+                                    <div
+                                        style={{
+                                            width: 7,
+                                            height: 7,
+                                            borderRadius: '50%',
+                                            backgroundColor: imp.properties.color ?? '#22d3ee',
+                                            marginRight: 8,
+                                            flexShrink: 0,
+                                        }}
+                                    />
+                                    <span style={{ color: 'var(--text)' }}>Screw</span>
+                                    <span style={{ marginLeft: 'auto', fontFamily: 'monospace', color: 'var(--text-3)', fontSize: 11 }}>
+                                        {imp.level} {imp.side}
+                                    </span>
+                                    <button
+                                        onClick={e => {
+                                            e.stopPropagation();
+                                            removeThreeDImplant(imp.id);
+                                            if (dicom3D.selectedImplantId === imp.id) setSelectedDicomImplant(null);
+                                        }}
+                                        style={{
+                                            marginLeft: 8,
+                                            background: 'none',
+                                            border: 'none',
+                                            cursor: 'pointer',
+                                            color: 'var(--text-3)',
+                                            fontSize: 14,
+                                            lineHeight: 1,
+                                        }}
+                                        onMouseEnter={(e) => (e.currentTarget.style.color = 'var(--val-bad)')}
+                                        onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--text-3)')}
+                                    >
+                                        ×
+                                    </button>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 5, marginTop: 6 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', fontSize: 12 }}>
+                            <div style={{ width: 7, height: 7, borderRadius: '50%', backgroundColor: '#22d3ee', marginRight: 8 }} />
+                            <span style={{ color: 'var(--text-2)' }}>Screw</span>
+                            <span style={{ marginLeft: 'auto', color: 'var(--text-3)', fontSize: 11 }}>{sortedLevels}</span>
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', fontSize: 12 }}>
+                            <div style={{ width: 7, height: 7, borderRadius: '50%', backgroundColor: 'rgba(52, 211, 153, 0.3)', marginRight: 8 }} />
+                            <span style={{ color: 'var(--text-3)' }}>Rod</span>
+                            <span style={{ marginLeft: 'auto', color: 'var(--text-3)', opacity: 0.5, fontSize: 11 }}>Not planned</span>
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', fontSize: 12 }}>
+                            <div style={{ width: 7, height: 7, borderRadius: '50%', backgroundColor: 'rgba(156, 163, 175, 0.15)', marginRight: 8 }} />
+                            <span style={{ color: 'var(--text-3)', opacity: 0.6 }}>Cage</span>
+                            <span style={{ marginLeft: 'auto', color: 'var(--text-3)', opacity: 0.4, fontSize: 11 }}>N/A for 3D CT</span>
+                        </div>
+                    </div>
+                </div>
+
+                {/* ── Screw properties card ──────────────────────────── */}
+                <div style={{ borderBottom: '1px solid var(--border-2)', paddingBottom: 10 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+                        <SectionLabel>Screw Properties</SectionLabel>
+                        <Pencil className="h-3.5 w-3.5" style={{ color: 'var(--text-3)', opacity: 0.6 }} />
+                    </div>
+
+                    {selectedScrew ? (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+                            <PropRow label="Screw Type" value="Pedicle Screw" />
+                            <PropRow label="Diameter" value={`${selectedScrew.properties.diameter} mm`} />
+                            <PropRow label="Length" value={`${selectedScrew.properties.length} mm`} />
+                            <PropRow label="Material" value="Titanium" />
+                            <PropRow label="Levels" value={selectedScrew.level} />
+                            <PropRow label="Side" value={selectedScrew.side === 'L' ? 'Left' : 'Right'} />
+                            <PropRow label="Trajectory" value="Standard" />
+                        </div>
+                    ) : (
+                        <div style={{ fontSize: 12, fontStyle: 'italic', color: 'var(--text-3)', textAlign: 'center', padding: '8px 0' }}>
+                            {screwImplants.length > 0 ? 'Select a screw to view properties' : 'No screws placed yet'}
+                        </div>
+                    )}
+                </div>
+
+                {/* ── Rod properties card (disabled) ───────────────────── */}
+                <div style={{ borderBottom: '1px solid var(--border-2)', paddingBottom: 10 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+                        <SectionLabel>Rod Properties</SectionLabel>
+                        <Pencil className="h-3.5 w-3.5" style={{ color: 'var(--text-3)', opacity: 0.2 }} />
+                    </div>
+                    <div style={{ fontSize: 11, fontStyle: 'italic', color: 'var(--text-3)', opacity: 0.5, textAlign: 'center', padding: '2px 0' }}>
+                        Rod planning — Phase 2
+                    </div>
+                </div>
+
+                {/* ── Clear Plan button ──────────────────────────────── */}
+                <div style={{ paddingTop: 4 }}>
+                    <Button
+                        variant="outline"
+                        onClick={clearPlan}
+                        disabled={threeDImplants.length === 0}
+                        style={{
+                            width: '100%',
+                            borderColor: threeDImplants.length > 0 ? 'rgba(239, 68, 68, 0.3)' : 'var(--border-2)',
+                            color: threeDImplants.length > 0 ? '#f87171' : 'var(--text-3)',
+                            background: 'transparent',
+                            height: 36,
+                            borderRadius: 8,
+                            fontSize: 12.5,
+                            fontWeight: 600,
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            gap: 8,
+                        }}
+                    >
+                        <Trash2 className="h-4 w-4" />
+                        Clear Plan
+                    </Button>
+                </div>
+            </div>
+        </CollapseSection>
+    );
+}
+
 /* ── Main RightSidebar component ────────────────────────────── */
 const RightSidebar = () => {
     const { resolvedTheme } = useTheme();
@@ -861,6 +1067,10 @@ const RightSidebar = () => {
         addContext,
         setActivePatient,
         updateContextState,
+        threeDImplants,
+        removeThreeDImplant,
+        setSelectedDicomImplant,
+        setDicom3DMode,
     } = useAppStore();
 
     const isRightSidebarOpen = storeIsRightSidebarOpen &&
@@ -1251,87 +1461,93 @@ const RightSidebar = () => {
                                 </CollapseSection>
                             )}
 
-                            {/* Current measurements (hidden in Compare Mode) */}
-                            {!isComparisonMode && (
-                                <CollapseSection title="Current Measurements" badge={filteredMeasurements.length || undefined} defaultOpen>
-                                    {filteredMeasurements.length === 0 ? (
-                                        <div style={{ textAlign: 'center', padding: '32px 16px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
-                                            <div style={{ fontSize: 24, opacity: 0.5 }}>✏️</div>
-                                            <div style={{ fontWeight: 600, fontSize: 13, color: 'var(--text)' }}>No measurements yet</div>
-                                            <div style={{ fontSize: 11, color: 'var(--text-3)' }}>Add measurements to see results here.</div>
-                                        </div>
-                                    ) : (
-                                        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-                                            {groupMeasurementsByCategory(filteredMeasurements).map((group) => (
-                                                <div key={group.label} className="mgroup" style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                                                    <div className="mgroup-name" style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '.05em' }}>
-                                                        {group.label}
-                                                    </div>
-                                                    {group.items.map((m: any) => {
-                                                        const displayName = TOOL_DISPLAY_NAMES[m.toolKey] || m.toolKey.toUpperCase();
-                                                        const displayValue = formatValue(m, activePixelToMm, shouldConvert(m));
-                                                        return (
-                                                            <MeasurementCard
-                                                                key={m.id}
-                                                                label={displayName}
-                                                                value={displayValue}
-                                                                range={NORMAL_RANGES[m.toolKey] || ''}
-                                                                toolKey={m.toolKey}
-                                                                checked={m.selected || false}
-                                                                onCheckedChange={() => toggleMeasurementSelection(m.id)}
-                                                                onDelete={() => m.isImplant ? deleteImplant(m.id) : deleteMeasurement(m.id)}
-                                                                setMeasurements={setMeasurements}
-                                                                m={m}
-                                                                pixelToMm={activePixelToMm}
-                                                                shouldConvert={shouldConvert(m)}
-                                                            />
-                                                        );
-                                                    })}
+                            {isDicomMode ? (
+                                <DicomCurrentPlan />
+                            ) : (
+                                <>
+                                    {/* Current measurements (hidden in Compare Mode) */}
+                                    {!isComparisonMode && (
+                                        <CollapseSection title="Current Measurements" badge={filteredMeasurements.length || undefined} defaultOpen>
+                                            {filteredMeasurements.length === 0 ? (
+                                                <div style={{ textAlign: 'center', padding: '32px 16px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
+                                                    <div style={{ fontSize: 24, opacity: 0.5 }}>✏️</div>
+                                                    <div style={{ fontWeight: 600, fontSize: 13, color: 'var(--text)' }}>No measurements yet</div>
+                                                    <div style={{ fontSize: 11, color: 'var(--text-3)' }}>Add measurements to see results here.</div>
                                                 </div>
-                                            ))}
-                                        </div>
+                                            ) : (
+                                                <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                                                    {groupMeasurementsByCategory(filteredMeasurements).map((group) => (
+                                                        <div key={group.label} className="mgroup" style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                                                            <div className="mgroup-name" style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '.05em' }}>
+                                                                {group.label}
+                                                            </div>
+                                                            {group.items.map((m: any) => {
+                                                                const displayName = TOOL_DISPLAY_NAMES[m.toolKey] || m.toolKey.toUpperCase();
+                                                                const displayValue = formatValue(m, activePixelToMm, shouldConvert(m));
+                                                                return (
+                                                                    <MeasurementCard
+                                                                        key={m.id}
+                                                                        label={displayName}
+                                                                        value={displayValue}
+                                                                        range={NORMAL_RANGES[m.toolKey] || ''}
+                                                                        toolKey={m.toolKey}
+                                                                        checked={m.selected || false}
+                                                                        onCheckedChange={() => toggleMeasurementSelection(m.id)}
+                                                                        onDelete={() => m.isImplant ? deleteImplant(m.id) : deleteMeasurement(m.id)}
+                                                                        setMeasurements={setMeasurements}
+                                                                        m={m}
+                                                                        pixelToMm={activePixelToMm}
+                                                                        shouldConvert={shouldConvert(m)}
+                                                                    />
+                                                                );
+                                                            })}
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            )}
+                                        </CollapseSection>
                                     )}
-                                </CollapseSection>
-                            )}
 
-                            {/* Reference Lines section */}
-                            <CollapseSection title="Reference Lines" defaultOpen>
-                                {refLineMeasurements.length === 0 ? (
-                                    <div style={{ padding: '8px 0', color: 'var(--text-3)', fontSize: 12, fontStyle: 'italic' }}>
-                                        No reference lines placed yet.
-                                    </div>
-                                ) : (
-                                    refLineMeasurements.map((m: any) => {
-                                        const formatted = formatResultWithCalibration(m.result, activePixelToMm, shouldConvert(m));
-                                        const displayName = m.toolKey === 'c7pl' ? 'C7PL' : m.toolKey === 'csvl' ? 'CSVL' : (TOOL_DISPLAY_NAMES[m.toolKey] || m.toolKey.toUpperCase());
-                                        const displayValue = formatted
-                                            ? formatted.replace(/\n/g, ' | ')
-                                            : (m.result ?? 'Active');
-                                        return (
-                                            <div key={m.id} className="mrow" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 0' }}>
-                                                <span className="ml" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                                                    <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#10b981', flexShrink: 0 }} />
-                                                    <span style={{ fontSize: 13, color: 'var(--text)' }}>{displayName}</span>
-                                                </span>
-                                                <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                                                    <span className="mv good" style={{ fontSize: 13, color: '#10b981', fontWeight: 600 }}>{displayValue}</span>
-                                                    <Button
-                                                        variant="ghost"
-                                                        size="icon"
-                                                        className="h-5 w-5"
-                                                        onClick={() => deleteMeasurement(m.id)}
-                                                        style={{ color: 'var(--text-3)', opacity: 0.6 }}
-                                                        onMouseEnter={(e) => (e.currentTarget.style.color = 'var(--val-bad)')}
-                                                        onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--text-3)')}
-                                                    >
-                                                        <Trash2 className="h-3 w-3" />
-                                                    </Button>
-                                                </span>
+                                    {/* Reference Lines section */}
+                                    <CollapseSection title="Reference Lines" defaultOpen>
+                                        {refLineMeasurements.length === 0 ? (
+                                            <div style={{ padding: '8px 0', color: 'var(--text-3)', fontSize: 12, fontStyle: 'italic' }}>
+                                                No reference lines placed yet.
                                             </div>
-                                        );
-                                    })
-                                )}
-                            </CollapseSection>
+                                        ) : (
+                                            refLineMeasurements.map((m: any) => {
+                                                const formatted = formatResultWithCalibration(m.result, activePixelToMm, shouldConvert(m));
+                                                const displayName = m.toolKey === 'c7pl' ? 'C7PL' : m.toolKey === 'csvl' ? 'CSVL' : (TOOL_DISPLAY_NAMES[m.toolKey] || m.toolKey.toUpperCase());
+                                                const displayValue = formatted
+                                                    ? formatted.replace(/\n/g, ' | ')
+                                                    : (m.result ?? 'Active');
+                                                return (
+                                                    <div key={m.id} className="mrow" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 0' }}>
+                                                        <span className="ml" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                                            <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#10b981', flexShrink: 0 }} />
+                                                            <span style={{ fontSize: 13, color: 'var(--text)' }}>{displayName}</span>
+                                                        </span>
+                                                        <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                                            <span className="mv good" style={{ fontSize: 13, color: '#10b981', fontWeight: 600 }}>{displayValue}</span>
+                                                            <Button
+                                                                variant="ghost"
+                                                                size="icon"
+                                                                className="h-5 w-5"
+                                                                onClick={() => deleteMeasurement(m.id)}
+                                                                style={{ color: 'var(--text-3)', opacity: 0.6 }}
+                                                                onMouseEnter={(e) => (e.currentTarget.style.color = 'var(--val-bad)')}
+                                                                onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--text-3)')}
+                                                            >
+                                                                <Trash2 className="h-3 w-3" />
+                                                            </Button>
+                                                        </span>
+                                                    </div>
+                                                );
+                                            })
+                                        )}
+                                    </CollapseSection>
+                                </>
+                            )}
 
                     {/* Spacer for fixed footer */}
                     <div style={{ height: 40 }} />

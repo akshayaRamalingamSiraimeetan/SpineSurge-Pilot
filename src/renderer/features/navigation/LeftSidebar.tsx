@@ -20,10 +20,11 @@
  * The app nav rail is rendered separately in MainLayout (DashboardSidebar / TopMenuBar).
  */
 import { useState, useMemo } from 'react';
-import { Scale } from 'lucide-react';
+import { Scale, Box, Layers, HelpCircle } from 'lucide-react';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { useAppStore } from '@/lib/store/index';
 import { useLocation } from 'react-router-dom';
+import { cn } from '@/lib/utils';
 
 /* ── Planning sub-tab ──────────────────────────────────────── */
 type PlanningTab = 'target' | 'simulation';
@@ -390,9 +391,300 @@ function RefLineRow({ refLine, active, onClick }: { refLine: RefLineDef; active:
   );
 }
 
+const SPINAL_LEVELS = [
+  'C1', 'C2', 'C3', 'C4', 'C5', 'C6', 'C7',
+  'T1', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'T8', 'T9', 'T10', 'T11', 'T12',
+  'L1', 'L2', 'L3', 'L4', 'L5',
+  'S1', 'S2',
+];
+
+const ScrewIcon = ({ className }: { className?: string }) => (
+  <svg className={className} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+    <line x1="3" y1="13" x2="13" y2="3" />
+    <line x1="10" y1="3" x2="13" y2="3" />
+    <line x1="13" y1="6" x2="13" y2="3" />
+  </svg>
+);
+
+const RodIcon = ({ className }: { className?: string }) => (
+  <svg className={className} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+    <path d="M3 8 C5 5, 11 11, 13 8" />
+  </svg>
+);
+
+const CageIcon = ({ className }: { className?: string }) => (
+  <svg className={className} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+    <rect x="3" y="5" width="10" height="6" rx="1" />
+    <line x1="6" y1="5" x2="6" y2="11" />
+    <line x1="10" y1="5" x2="10" y2="11" />
+  </svg>
+);
+
+const DicomLeftSidebar = () => {
+  const {
+    dicom3D,
+    setDicom3DRenderMode,
+    setDicom3DIsoThreshold,
+    setDicom3DVolumeThreshold,
+    setDicom3DMode,
+    setScrewConfig,
+  } = useAppStore();
+
+  const isSegMode = dicom3D.renderMode === 'segmentation';
+  const currentThreshold = isSegMode ? dicom3D.isoThreshold : dicom3D.volumeThreshold;
+
+  const setThreshold = (v: number) => {
+    if (isSegMode) setDicom3DIsoThreshold(v);
+    else setDicom3DVolumeThreshold(v);
+  };
+
+  const toggleScrew = () =>
+    setDicom3DMode(dicom3D.interactionMode === 'place_screw' ? 'view' : 'place_screw');
+
+  const thresholdPct = ((currentThreshold + 1024) / (3071 + 1024)) * 100;
+
+  return (
+    <div
+      style={{
+        width: 272,
+        flexShrink: 0,
+        background: 'var(--surface)',
+        borderRight: '1px solid var(--border)',
+        display: 'flex',
+        flexDirection: 'column',
+        height: '100%',
+        overflowY: 'auto',
+      }}
+      className="p-4 space-y-6"
+    >
+      {/* ── Tools ─────────────────────────────────────────────── */}
+      <div>
+        <p className="text-[10px] font-bold tracking-[0.15em] uppercase text-white/25 mb-3">
+          Tools
+        </p>
+        <div className="flex flex-col gap-2">
+          {/* Volume Rendering */}
+          <button
+            onClick={() => setDicom3DRenderMode('volume')}
+            className={cn(
+              'flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-semibold transition-all duration-200 border',
+              !isSegMode
+                ? 'bg-primary/10 text-primary border-primary/20'
+                : 'text-white/40 hover:text-white/70 hover:bg-white/5 border-transparent',
+            )}
+          >
+            <Box className="w-4 h-4 flex-shrink-0" />
+            Volume Rendering
+          </button>
+
+          {/* Segmentation */}
+          <button
+            onClick={() => setDicom3DRenderMode('segmentation')}
+            className={cn(
+              'flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-semibold transition-all duration-200 border',
+              isSegMode
+                ? 'bg-primary/10 text-primary border-primary/20'
+                : 'text-white/40 hover:text-white/70 hover:bg-white/5 border-transparent',
+            )}
+          >
+            <Layers className="w-4 h-4 flex-shrink-0" />
+            Segmentation
+          </button>
+        </div>
+      </div>
+
+      {/* ── HU Threshold ──────────────────────────────────────── */}
+      <div>
+        <div className="flex items-center gap-1.5 mb-3">
+          <p className="text-[10px] font-bold tracking-[0.15em] uppercase text-white/25">
+            HU Threshold
+          </p>
+          <HelpCircle className="w-3.5 h-3.5 text-white/20" />
+        </div>
+
+        <div className="flex justify-between text-[9px] font-mono text-white/30 mb-2">
+          <span>-1024 HU</span>
+          <span>3071 HU</span>
+        </div>
+
+        {/* Gradient histogram background */}
+        <div
+          className="h-14 rounded-lg mb-3 relative overflow-hidden border border-white/[0.06]"
+          style={{
+            background: `linear-gradient(to right,
+              #000 0%, #111 10%, #1c1c1c 20%,
+              #333 30%, #555 45%, #777 60%,
+              #aaa 75%, #d8d8d8 90%, #fff 100%)`,
+          }}
+        >
+          {/* Threshold marker */}
+          <div
+            className="absolute top-0 bottom-0 w-0.5 bg-primary shadow-[0_0_6px_hsl(var(--primary)/0.8)]"
+            style={{ left: `${thresholdPct}%` }}
+          />
+          {/* Mask representing below-threshold region */}
+          <div
+            className="absolute top-0 left-0 bottom-0 bg-black/45"
+            style={{ width: `${thresholdPct}%` }}
+          />
+        </div>
+
+        <input
+          id="dicom-sidebar-hu-threshold-slider"
+          type="range"
+          min={-1024}
+          max={3071}
+          step={10}
+          value={currentThreshold}
+          onChange={e => setThreshold(parseInt(e.target.value))}
+          className="w-full h-1.5 rounded-full cursor-pointer"
+          style={{ accentColor: 'hsl(var(--primary))' }}
+        />
+
+        <div className="flex justify-between items-center mt-2">
+          <span className="text-[10px] text-white/30">
+            {isSegMode ? 'Seg. Threshold' : 'Vis. Threshold'}
+          </span>
+          <span className="text-[10px] font-mono font-bold text-primary">
+            {currentThreshold} HU
+          </span>
+        </div>
+      </div>
+
+      {/* ── Instrumentation ───────────────────────────────────── */}
+      <div>
+        <p className="text-[10px] font-bold tracking-[0.15em] uppercase text-white/25 mb-3">
+          Instrumentation
+        </p>
+        <div className="flex flex-col gap-2">
+          {/* Screw */}
+          <button
+            id="dicom-sidebar-tool-screw"
+            onClick={toggleScrew}
+            className={cn(
+              'flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-semibold transition-all duration-200 border text-left',
+              dicom3D.interactionMode === 'place_screw'
+                ? 'bg-cyan-500/10 text-cyan-400 border-cyan-500/25'
+                : 'text-white/50 hover:text-white/80 hover:bg-white/5 border-transparent',
+            )}
+          >
+            <div className={cn(
+              'w-2 h-2 rounded-full flex-shrink-0 transition-colors',
+              dicom3D.interactionMode === 'place_screw' ? 'bg-cyan-400' : 'bg-cyan-400/40',
+            )} />
+            <ScrewIcon className="w-3.5 h-3.5 flex-shrink-0" />
+            Screw
+            {dicom3D.interactionMode === 'place_screw' && (
+              <span className="ml-auto text-[9px] text-cyan-400/70 animate-pulse">Active</span>
+            )}
+          </button>
+
+          {/* Rod */}
+          <div className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs text-white/20 border border-transparent select-none cursor-not-allowed">
+            <div className="w-2 h-2 rounded-full bg-emerald-400/30 flex-shrink-0" />
+            <RodIcon className="w-3.5 h-3.5 flex-shrink-0" />
+            Rod
+            <span className="ml-auto text-[9px] text-white/15">Phase 2</span>
+          </div>
+
+          {/* Cage */}
+          <div className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs text-white/15 border border-transparent select-none cursor-not-allowed">
+            <div className="w-2 h-2 rounded-full bg-gray-400/15 flex-shrink-0" />
+            <CageIcon className="w-3.5 h-3.5 flex-shrink-0" />
+            Cage
+            <span className="ml-auto text-[9px] text-white/15">N/A</span>
+          </div>
+        </div>
+      </div>
+
+      {/* ── Screw configuration form ──────────────────────────── */}
+      {dicom3D.interactionMode === 'place_screw' && (
+        <div className="p-3 bg-cyan-950/5 border border-cyan-500/10 rounded-xl space-y-3">
+          <p className="text-[9px] font-bold tracking-[0.15em] uppercase text-cyan-400/50">
+            Screw Settings
+          </p>
+
+          <div>
+            <label htmlFor="screw-level-sidebar" className="text-[9px] text-white/30 mb-1 block">
+              Level
+            </label>
+            <select
+              id="screw-level-sidebar"
+              value={dicom3D.screwLevel}
+              onChange={e => setScrewConfig({ screwLevel: e.target.value })}
+              className="w-full bg-white/5 border border-white/10 rounded-lg px-2 py-1.5 text-xs text-white/70 focus:outline-none focus:border-cyan-500/50 appearance-none cursor-pointer"
+            >
+              {SPINAL_LEVELS.map(l => (
+                <option key={l} value={l} className="bg-[#0f0f11]">{l}</option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="text-[9px] text-white/30 mb-1 block">Side</label>
+            <div className="flex gap-1.5">
+              {(['L', 'R'] as const).map(s => (
+                <button
+                  key={s}
+                  onClick={() => setScrewConfig({ screwSide: s })}
+                  className={cn(
+                    'flex-1 py-1.5 text-xs font-semibold rounded-lg transition-all border',
+                    dicom3D.screwSide === s
+                      ? 'bg-cyan-500/20 text-cyan-400 border-cyan-500/30'
+                      : 'text-white/30 border-white/10 hover:border-white/25 hover:text-white/50',
+                  )}
+                >
+                  {s === 'L' ? 'Left' : 'Right'}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <label htmlFor="screw-diameter-sidebar" className="text-[9px] text-white/30 mb-1 block">
+              Diameter (mm)
+            </label>
+            <input
+              id="screw-diameter-sidebar"
+              type="number"
+              min={3.0}
+              max={9.0}
+              step={0.5}
+              value={dicom3D.screwDiameter}
+              onChange={e => setScrewConfig({ screwDiameter: parseFloat(e.target.value) })}
+              className="w-full bg-white/5 border border-white/10 rounded-lg px-2 py-1.5 text-xs text-white/70 focus:outline-none focus:border-cyan-500/50"
+            />
+          </div>
+
+          <div>
+            <label htmlFor="screw-length-sidebar" className="text-[9px] text-white/30 mb-1 block">
+              Length (mm)
+            </label>
+            <input
+              id="screw-length-sidebar"
+              type="number"
+              min={10}
+              max={80}
+              step={5}
+              value={dicom3D.screwLength}
+              onChange={e => setScrewConfig({ screwLength: parseInt(e.target.value) })}
+              className="w-full bg-white/5 border border-white/10 rounded-lg px-2 py-1.5 text-xs text-white/70 focus:outline-none focus:border-cyan-500/50"
+            />
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
 /* ── Main LeftSidebar ────────────────────────────────────────── */
 const LeftSidebar = () => {
-  const { activeTool, setActiveTool, measurements, canvas } = useAppStore();
+  const { activeTool, setActiveTool, measurements, canvas, isDicomMode } = useAppStore();
+  
+  if (isDicomMode) {
+    return <DicomLeftSidebar />;
+  }
+
   const location = useLocation();
   const queryParams = useMemo(() => new URLSearchParams(location.search), [location.search]);
   const isPlanningMode = queryParams.get('tab') === 'planning';
