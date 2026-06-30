@@ -132,10 +132,10 @@ export default function ReportBuilderWorkspace() {
                                             </div>
                                         ) : (
                                             previewImages.length > 0 && (
-                                                <div className="w-full grid grid-cols-1 md:grid-cols-2 gap-4 rounded-lg overflow-hidden border p-4" style={{ borderColor: 'var(--border)' }}>
-                                                    {previewImages.map((src, i) => (
+                                                <div className="w-full grid grid-cols-1 gap-4 rounded-lg overflow-hidden border p-4" style={{ borderColor: 'var(--border)' }}>
+                                                    {previewImages.slice(0, 1).map((src, i) => (
                                                         <div key={i} className="flex justify-center items-center bg-black/10 rounded-md p-2">
-                                                            <img src={src} alt={`Planning Image ${i+1}`} className="max-w-full max-h-[400px] object-contain shadow-md" />
+                                                            <img src={src} alt="Planning Image" className="max-w-full max-h-[400px] object-contain shadow-md" />
                                                         </div>
                                                     ))}
                                                 </div>
