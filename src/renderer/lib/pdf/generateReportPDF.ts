@@ -24,15 +24,23 @@ export async function generateReportPDF(options: GeneratePDFOptions = {}): Promi
         token
     } = state;
 
+    const ctxState = activeContextId ? contextStates.find((s) => s.contextId === activeContextId) : undefined;
+    const reportConfig = ctxState?.reportConfig;
+    const isSingleReportMode = reportConfig?.reportType === 'single';
+    const effectiveComparisonMode = isComparisonMode && !isSingleReportMode;
+    
+    const hasPlanningData = (state.implants && state.implants.length > 0) || 
+                            (threeDImplants && threeDImplants.length > 0) || 
+                            (state.pedicleSimulations && state.pedicleSimulations.length > 0);
+
     let measurements = storeMeasurements;
-    if (isComparisonMode && activeCanvasSide) {
+    if (effectiveComparisonMode && activeCanvasSide) {
         measurements = comparison[activeCanvasSide].measurements;
     }
 
     const activePatient = patients.find(p => p.id === activePatientId);
-    const selectedMeasurements = measurements.filter(m => m.selected && m.toolKey !== 'c7pl' && m.toolKey !== 'csvl' && !m?.measurement?.isCalibration);
+    const selectedMeasurements = effectiveComparisonMode ? comparison.left.measurements : measurements.filter(m => m.selected && m.toolKey !== 'c7pl' && m.toolKey !== 'csvl' && !m?.measurement?.isCalibration);
     const hasContent = isDicomMode ? (threeDImplants.length > 0) : (selectedMeasurements.length > 0);
-    
     if (!hasContent) {
         throw new Error(isDicomMode ? "No implants planned for the report." : "No measurements selected for the report.");
     }
@@ -105,7 +113,7 @@ export async function generateReportPDF(options: GeneratePDFOptions = {}): Promi
     doc.text(`REF: ${refNo}`, rightX, rightStartY, { align: 'right' });
     doc.text(`PLAN DATE: ${new Date().toLocaleDateString()}`, rightX, rightStartY + 6, { align: 'right' });
 
-    if (isComparisonMode) {
+    if (effectiveComparisonMode) {
         const findScanDate = (url: string | null) => {
             if (!url) return null;
             for (const p of patients) {
@@ -212,7 +220,7 @@ export async function generateReportPDF(options: GeneratePDFOptions = {}): Promi
     const maxImageWidth = pageWidth - (imageMargin * 2);
     const allCanvases = Array.from(document.querySelectorAll('canvas')).filter(c => c.width > 300);
 
-    if (isComparisonMode && allCanvases.length >= 2) {
+    if (effectiveComparisonMode && allCanvases.length >= 2) {
         const gap = 5;
         const imgWidth = (maxImageWidth - gap) / 2;
         const cLeft = allCanvases.find(c => c.getAttribute('data-side') === 'left') || allCanvases[0];
@@ -271,7 +279,7 @@ export async function generateReportPDF(options: GeneratePDFOptions = {}): Promi
     // --- MEASUREMENT / PLANNING DATA TABLE ---
     if (yPos > pageHeight - 55) { doc.addPage(); yPos = 20; }
 
-    if (isDicomMode) {
+    if (hasPlanningData && isDicomMode) {
         doc.setFont("helvetica", "bold");
         doc.setTextColor(30, 41, 59);
         doc.setFontSize(13);
@@ -330,7 +338,11 @@ export async function generateReportPDF(options: GeneratePDFOptions = {}): Promi
             columnStyles: { 0: { cellWidth: 60, fontStyle: 'bold' }, 1: { cellWidth: 120 } },
             margin: { left: 15, right: 15, bottom: 20 }
         });
-    } else {
+    }
+
+    // MEASUREMENT DATA (Outside hasPlanningData block)
+    if (!isDicomMode && selectedMeasurements.length > 0) {
+        if (yPos > pageHeight - 45) { doc.addPage(); yPos = 20; }
         doc.setFont("helvetica", "bold");
         doc.setTextColor(30, 41, 59);
         doc.setFontSize(13);
@@ -340,37 +352,87 @@ export async function generateReportPDF(options: GeneratePDFOptions = {}): Promi
         doc.line(15, yPos + 2, pageWidth - 15, yPos + 2);
         yPos += 8;
 
-        const tableRows = selectedMeasurements.map((m, idx) => {
-            let displayResult = m.result;
-            if (typeof displayResult === 'number') displayResult = displayResult.toFixed(1);
-            const level = (m as any).level || (m as any).measurement?.level || "—";
-            const comments = (m as any).comments || (m as any).measurement?.comments || "";
-            const levelAndComments = comments ? `${level} (${comments})` : level;
+        if (effectiveComparisonMode) {
+            const tableRows = selectedMeasurements.map((mA) => {
+                const mB = comparison.right.measurements.find(m => m.toolKey === mA.toolKey);
+                const valA = typeof mA.result === 'string' ? mA.result.split('\n')[0] : '—';
+                const valB = mB && typeof mB.result === 'string' ? mB.result.split('\n')[0] : '—';
+                let diffStr = '—';
+                if (valA !== '—' && valB !== '—') {
+                    const extractNum = (s: string) => {
+                        const match = s.match(/-?\d+(\.\d+)?/);
+                        return match ? parseFloat(match[0]) : NaN;
+                    };
+                    const numA = extractNum(valA);
+                    const numB = extractNum(valB);
+                    if (!isNaN(numA) && !isNaN(numB)) {
+                        const diff = (numB - numA).toFixed(1);
+                        diffStr = (parseFloat(diff) > 0 ? '+' : '') + diff + (valA.includes('°') ? '°' : ' px');
+                    }
+                }
+                return [
+                    (mA.toolKey || "Unknown").toUpperCase(),
+                    valA,
+                    valB,
+                    diffStr
+                ];
+            });
 
-            return [
-                String(idx + 1),
-                (m.toolKey || "Unknown").toUpperCase(),
-                levelAndComments,
-                String(displayResult || "N/A")
-            ];
-        });
+            autoTable(doc, {
+                startY: yPos,
+                head: [['Parameter', 'Image A', 'Image B', 'Difference']],
+                body: tableRows,
+                theme: 'grid',
+                styles: { fontSize: 9, cellPadding: 5, textColor: [71, 85, 105], lineColor: [210, 215, 225], lineWidth: 0.5, font: 'helvetica' },
+                headStyles: { fillColor: [255, 69, 58], textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 10, cellPadding: 6, halign: 'center', valign: 'middle' },
+                alternateRowStyles: { fillColor: [248, 250, 252] },
+                columnStyles: {
+                    0: { cellWidth: 45, fontStyle: 'bold' },
+                    1: { cellWidth: 45, halign: 'center' },
+                    2: { cellWidth: 45, halign: 'center' },
+                    3: { cellWidth: 45, halign: 'center' }
+                },
+                margin: { left: 15, right: 15, bottom: 20 },
+                willDrawCell: function(data) {
+                    if (data.section === 'body' && data.column.index === 3) {
+                        const text = data.cell.text[0] || '';
+                        if (text.startsWith('+')) doc.setTextColor(52, 199, 89);
+                        else if (text.startsWith('-')) doc.setTextColor(255, 69, 58);
+                    }
+                }
+            });
+        } else {
+            const tableRows = selectedMeasurements.map((m, idx) => {
+                let displayResult = m.result;
+                if (typeof displayResult === 'number') displayResult = displayResult.toFixed(1);
+                const level = (m as any).level || (m as any).measurement?.level || "—";
+                const comments = (m as any).comments || (m as any).measurement?.comments || "";
+                const levelAndComments = comments ? `${level} (${comments})` : level;
+                return [
+                    String(idx + 1),
+                    (m.toolKey || "Unknown").toUpperCase(),
+                    levelAndComments,
+                    String(displayResult || "N/A")
+                ];
+            });
 
-        autoTable(doc, {
-            startY: yPos,
-            head: [['#', 'Metric', 'Level / Comments', 'Patient Value']],
-            body: tableRows,
-            theme: 'grid',
-            styles: { fontSize: 9, cellPadding: 5, textColor: [71, 85, 105], lineColor: [210, 215, 225], lineWidth: 0.5, font: 'helvetica', overflow: 'linebreak' },
-            headStyles: { fillColor: [255, 69, 58], textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 10, cellPadding: 6, halign: 'center', valign: 'middle' },
-            alternateRowStyles: { fillColor: [248, 250, 252] },
-            columnStyles: {
-                0: { cellWidth: 14, halign: 'center', fontStyle: 'bold' },
-                1: { cellWidth: 38 },
-                2: { cellWidth: 85 },
-                3: { cellWidth: 26, halign: 'center' }
-            },
-            margin: { left: 15, right: 15, bottom: 20 }
-        });
+            autoTable(doc, {
+                startY: yPos,
+                head: [['#', 'Metric', 'Level / Comments', 'Patient Value']],
+                body: tableRows,
+                theme: 'grid',
+                styles: { fontSize: 9, cellPadding: 5, textColor: [71, 85, 105], lineColor: [210, 215, 225], lineWidth: 0.5, font: 'helvetica', overflow: 'linebreak' },
+                headStyles: { fillColor: [255, 69, 58], textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 10, cellPadding: 6, halign: 'center', valign: 'middle' },
+                alternateRowStyles: { fillColor: [248, 250, 252] },
+                columnStyles: {
+                    0: { cellWidth: 14, halign: 'center', fontStyle: 'bold' },
+                    1: { cellWidth: 38 },
+                    2: { cellWidth: 85 },
+                    3: { cellWidth: 26, halign: 'center' }
+                },
+                margin: { left: 15, right: 15, bottom: 20 }
+            });
+        }
     }
 
     // --- FOOTER ON ALL PAGES ---
@@ -399,19 +461,22 @@ export async function generateReportPDF(options: GeneratePDFOptions = {}): Promi
 
     if (activePatient) {
         const currentImage = state.currentImage;
-        let targetVisit = null;
+        let targetVisit: any = null;
+        let targetStudyId: string | null = null;
         if (currentImage) {
             const targetStudy = activePatient.studies.find(s => s.scans.some(scan => scan.imageUrl === currentImage));
             if (targetStudy) {
+                targetStudyId = targetStudy.id;
                 targetVisit = activePatient.visits.find(v => v.id === targetStudy.visitId) || activePatient.visits[0];
             }
         }
         if (!targetVisit && activePatient.visits.length > 0) {
             targetVisit = activePatient.visits[0];
+            targetStudyId = activePatient.studies.find(s => s.visitId === targetVisit?.id)?.id || null;
         }
         if (targetVisit) {
             const blob = doc.output('blob');
-            await api.uploadReport(targetVisit.id, blob, `Report - ${new Date().toLocaleDateString()}`, token);
+            await api.uploadReport(targetVisit.id, targetStudyId, blob, `Report - ${new Date().toLocaleDateString()}`, token);
         }
     }
 

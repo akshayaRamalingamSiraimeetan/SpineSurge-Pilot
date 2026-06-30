@@ -11,7 +11,7 @@ import { FileText, Loader2, ExternalLink } from "lucide-react";
 import { api } from "@/lib/api";
 import { useAppStore } from "@/lib/store/index";
 
-export function ReportsListDialog({ visitId }: { visitId: string }) {
+export function ReportsListDialog({ studyId }: { studyId: string }) {
     const [open, setOpen] = useState(false);
     const [reports, setReports] = useState<any[]>([]);
     const [loading, setLoading] = useState(false);
@@ -21,12 +21,12 @@ export function ReportsListDialog({ visitId }: { visitId: string }) {
     useEffect(() => {
         if (open) {
             setLoading(true);
-            api.getReports(visitId, token)
+            api.getStudyReports(studyId, token)
                 .then(setReports)
                 .catch(err => console.error(err))
                 .finally(() => setLoading(false));
         }
-    }, [open, visitId, token]);
+    }, [open, studyId, token]);
 
     return (
         <>
@@ -53,7 +53,9 @@ export function ReportsListDialog({ visitId }: { visitId: string }) {
                             reports.map((report) => (
                                 <div key={report.id} className="flex items-center justify-between p-3 bg-secondary/50 rounded-xl border border-border hover:bg-secondary transition-colors group">
                                     <div className="flex flex-col">
-                                        <span className="text-sm font-bold text-foreground">{report.title || "Report"}</span>
+                                        <span className="text-sm font-bold text-foreground">
+                                            {report.title || `Report v${report.version || 1}`}
+                                        </span>
                                         <span className="text-[10px] text-muted-foreground opacity-70 font-mono tracking-tight">{report.created_at}</span>
                                     </div>
                                     <div className="flex gap-2">

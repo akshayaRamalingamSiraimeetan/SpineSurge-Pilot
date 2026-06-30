@@ -66,6 +66,7 @@ export interface ReportSectionConfig {
 
 export interface ReportConfig {
     sections: ReportSectionConfig[];
+    reportType?: 'single' | 'comparison';
     compareStudyId?: string; // which study to compare against
 }
 

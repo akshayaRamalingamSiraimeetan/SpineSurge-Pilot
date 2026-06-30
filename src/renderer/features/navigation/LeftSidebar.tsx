@@ -29,6 +29,7 @@ import { cn } from '@/lib/utils';
 import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea/dnd';
 import { GripVertical, Eye, EyeOff, LayoutTemplate } from 'lucide-react';
 import { getDefaultReportConfig } from '../report/defaultConfig';
+import { useTheme } from '@/components/theme-provider';
 
 /* ── Planning sub-tab ──────────────────────────────────────── */
 type PlanningTab = 'target' | 'simulation';
@@ -1123,7 +1124,9 @@ const NormalLeftSidebarContent = () => {
 
 /* ── Report LeftSidebar ─────────────────────────────────────── */
 const ReportLeftSidebar = () => {
-  const { activeContextId, contextStates, updateContextState } = useAppStore();
+  const { activeContextId, contextStates, updateContextState, isComparisonMode } = useAppStore();
+  const { resolvedTheme } = useTheme();
+  const isDark = resolvedTheme === "dark";
   
   const activeState = contextStates.find((s) => s.contextId === activeContextId);
   const reportConfig = activeState?.reportConfig;
@@ -1179,6 +1182,43 @@ const ReportLeftSidebar = () => {
         </div>
       </div>
       
+      {isComparisonMode && (
+        <div style={{ padding: '0 16px 16px' }}>
+          <div className={cn(
+              "flex flex-col gap-2 p-3 rounded-lg border",
+              isDark ? "bg-[#141416]/80 border-white/10" : "bg-white/80 border-black/10"
+          )}>
+              <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-3)' }}>REPORT TYPE</span>
+              <button
+                  onClick={() => {
+                      if (activeContextId) updateContextState(activeContextId, { reportConfig: { ...reportConfig, reportType: 'single' } as any });
+                  }}
+                  className={cn(
+                      "px-3 py-1.5 text-xs font-medium rounded-md transition-all text-left",
+                      reportConfig?.reportType === 'single' 
+                          ? "bg-[#FF453A] text-white shadow-sm" 
+                          : "text-muted-foreground hover:bg-black/5 dark:hover:bg-white/5"
+                  )}
+              >
+                  Current Study Only
+              </button>
+              <button
+                  onClick={() => {
+                      if (activeContextId) updateContextState(activeContextId, { reportConfig: { ...reportConfig, reportType: 'comparison' } as any });
+                  }}
+                  className={cn(
+                      "px-3 py-1.5 text-xs font-medium rounded-md transition-all text-left",
+                      reportConfig?.reportType !== 'single' 
+                          ? "bg-[#FF453A] text-white shadow-sm" 
+                          : "text-muted-foreground hover:bg-black/5 dark:hover:bg-white/5"
+                  )}
+              >
+                  Comparison Report
+              </button>
+          </div>
+        </div>
+      )}
+
       <ScrollArea style={{ flex: 1 }}>
         <div style={{ padding: '0 16px 20px' }}>
           <DragDropContext onDragEnd={handleDragEnd}>

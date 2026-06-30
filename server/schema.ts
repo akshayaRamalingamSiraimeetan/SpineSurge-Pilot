@@ -102,6 +102,8 @@ export const implants = pgTable('implants', {
 export const reports = pgTable('reports', {
     id: text('id').primaryKey(),
     visitId: text('visit_id').notNull().references(() => visits.id, { onDelete: 'cascade' }),
+    studyId: text('study_id').references(() => studies.id, { onDelete: 'cascade' }),
+    version: integer('version').default(1),
     filePath: text('file_path').notNull(),
     title: text('title'),
     createdAt: text('created_at'),

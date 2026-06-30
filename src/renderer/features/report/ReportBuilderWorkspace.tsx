@@ -7,11 +7,14 @@ import { useTheme } from '@/components/theme-provider';
 export default function ReportBuilderWorkspace() {
     const { resolvedTheme } = useTheme();
     const isDark = resolvedTheme === "dark";
-    const { activeContextId, contextStates, updateContextState, patients, activePatientId, user, measurements, implants } = useAppStore();
+    const { activeContextId, contextStates, updateContextState, patients, activePatientId, user, measurements, implants, threeDImplants, pedicleSimulations, isComparisonMode, comparison } = useAppStore();
 
     const activeState = contextStates.find((s) => s.contextId === activeContextId);
     const reportConfig = activeState?.reportConfig;
     const activePatient = patients.find(p => p.id === activePatientId);
+    const hasPlanningData = (implants && implants.length > 0) || (threeDImplants && threeDImplants.length > 0) || (pedicleSimulations && pedicleSimulations.length > 0);
+    const isSingleReportMode = reportConfig?.reportType === 'single';
+    const effectiveComparisonMode = isComparisonMode && !isSingleReportMode;
     
     // Canvas preview capture
     const [previewImages, setPreviewImages] = useState<string[]>([]);
@@ -46,11 +49,11 @@ export default function ReportBuilderWorkspace() {
 
     return (
         <div className={cn(
-            "w-full h-full overflow-y-auto p-8",
+            "w-full h-full overflow-y-auto p-8 flex flex-col items-center gap-6",
             isDark ? "bg-[#0A0A0B]" : "bg-gray-100"
         )}>
             <div className={cn(
-                "max-w-[210mm] min-h-[297mm] mx-auto p-[20mm] shadow-xl rounded-sm transition-all",
+                "w-full max-w-[210mm] min-h-[297mm] p-[20mm] shadow-xl rounded-sm transition-all shrink-0",
                 isDark ? "bg-[#141416] text-[#F5F5F7]" : "bg-white text-slate-900"
             )}>
                 {/* Header (matches PDF output loosely) */}
@@ -70,8 +73,14 @@ export default function ReportBuilderWorkspace() {
                     {sortedSections.map((section) => {
                         // Conditional rendering based on data availability
                         if (section.type === 'images' && previewImages.length === 0) return null;
-                        if (section.type === 'measurement_table' && measurements.length === 0) return null;
-                        if (section.type === 'surgical_plan' && implants.length === 0) return null;
+                        if (section.type === 'measurement_table') {
+                            if (effectiveComparisonMode) {
+                                if (comparison.left.measurements.length === 0 && comparison.right.measurements.length === 0) return null;
+                            } else {
+                                if (measurements.length === 0) return null;
+                            }
+                        }
+                        if (section.type === 'surgical_plan' && !hasPlanningData) return null;
 
                         return (
                             <section key={section.id} className="space-y-4">
@@ -96,14 +105,43 @@ export default function ReportBuilderWorkspace() {
                                     </div>
                                 )}
 
-                                {section.type === 'images' && previewImages.length > 0 && (
-                                    <div className="w-full grid grid-cols-1 md:grid-cols-2 gap-4 rounded-lg overflow-hidden border p-4" style={{ borderColor: 'var(--border)' }}>
-                                        {previewImages.map((src, i) => (
-                                            <div key={i} className="flex justify-center items-center bg-black/10 rounded-md p-2">
-                                                <img src={src} alt={`Planning Image ${i+1}`} className="max-w-full max-h-[400px] object-contain shadow-md" />
+                                {section.type === 'images' && (
+                                    <>
+                                        {effectiveComparisonMode ? (
+                                            <div className="flex gap-4 w-full">
+                                                <div className="flex-1 space-y-2">
+                                                    <div className="text-center font-semibold text-xs opacity-70 uppercase">Image A (Pre-Op)</div>
+                                                    {previewImages.length > 0 && (
+                                                        <div className="w-full flex justify-center items-center bg-black/10 rounded-md p-2 border" style={{ borderColor: 'var(--border)' }}>
+                                                            <img src={previewImages[0]} alt="Image A" className="max-w-full max-h-[400px] object-contain shadow-md" />
+                                                        </div>
+                                                    )}
+                                                </div>
+                                                <div className="flex-1 space-y-2">
+                                                    <div className="text-center font-semibold text-xs opacity-70 uppercase">Image B (Post-Op)</div>
+                                                    {previewImages.length > 1 ? (
+                                                        <div className="w-full flex justify-center items-center bg-black/10 rounded-md p-2 border" style={{ borderColor: 'var(--border)' }}>
+                                                            <img src={previewImages[1]} alt="Image B" className="max-w-full max-h-[400px] object-contain shadow-md" />
+                                                        </div>
+                                                    ) : (
+                                                        <div className="w-full h-full flex justify-center items-center bg-black/5 rounded-md p-2 border border-dashed opacity-50" style={{ borderColor: 'var(--border)' }}>
+                                                            No Comparison Image
+                                                        </div>
+                                                    )}
+                                                </div>
                                             </div>
-                                        ))}
-                                    </div>
+                                        ) : (
+                                            previewImages.length > 0 && (
+                                                <div className="w-full grid grid-cols-1 md:grid-cols-2 gap-4 rounded-lg overflow-hidden border p-4" style={{ borderColor: 'var(--border)' }}>
+                                                    {previewImages.map((src, i) => (
+                                                        <div key={i} className="flex justify-center items-center bg-black/10 rounded-md p-2">
+                                                            <img src={src} alt={`Planning Image ${i+1}`} className="max-w-full max-h-[400px] object-contain shadow-md" />
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            )
+                                        )}
+                                    </>
                                 )}
 
                                 {section.type === 'measurement_table' && (
@@ -112,18 +150,50 @@ export default function ReportBuilderWorkspace() {
                                             <thead className="text-xs uppercase" style={{ backgroundColor: 'var(--surface-2)' }}>
                                                 <tr>
                                                     <th className="px-4 py-3 font-semibold">Parameter</th>
-                                                    <th className="px-4 py-3 font-semibold">Value</th>
+                                                    <th className="px-4 py-3 font-semibold">{effectiveComparisonMode ? 'Image A' : 'Value'}</th>
+                                                    {effectiveComparisonMode && <th className="px-4 py-3 font-semibold">Image B</th>}
+                                                    {effectiveComparisonMode && <th className="px-4 py-3 font-semibold">Difference</th>}
                                                 </tr>
                                             </thead>
                                             <tbody>
-                                                {measurements.map(m => (
-                                                    <tr key={m.id} className="border-t" style={{ borderColor: 'var(--border)' }}>
-                                                        <td className="px-4 py-3 opacity-80">{m.toolKey.toUpperCase()}</td>
-                                                        <td className="px-4 py-3 font-medium">
-                                                            {typeof m.result === 'string' ? m.result.split('\n')[0] : '—'}
-                                                        </td>
-                                                    </tr>
-                                                ))}
+                                                {effectiveComparisonMode ? (
+                                                    // Map Image A measurements
+                                                    comparison.left.measurements.map((mA) => {
+                                                        const mB = comparison.right.measurements.find(m => m.toolKey === mA.toolKey);
+                                                        const valA = typeof mA.result === 'string' ? mA.result.split('\n')[0] : '—';
+                                                        const valB = mB && typeof mB.result === 'string' ? mB.result.split('\n')[0] : '—';
+                                                        let diffStr = '—';
+                                                        if (valA !== '—' && valB !== '—') {
+                                                            const extractNum = (s: string) => {
+                                                                const match = s.match(/-?\d+(\.\d+)?/);
+                                                                return match ? parseFloat(match[0]) : NaN;
+                                                            };
+                                                            const numA = extractNum(valA);
+                                                            const numB = extractNum(valB);
+                                                            if (!isNaN(numA) && !isNaN(numB)) {
+                                                                const diff = (numB - numA).toFixed(1);
+                                                                diffStr = (parseFloat(diff) > 0 ? '+' : '') + diff + (valA.includes('°') ? '°' : ' px');
+                                                            }
+                                                        }
+                                                        return (
+                                                            <tr key={mA.id} className="border-t" style={{ borderColor: 'var(--border)' }}>
+                                                                <td className="px-4 py-3 opacity-80">{mA.toolKey.toUpperCase()}</td>
+                                                                <td className="px-4 py-3 font-medium">{valA}</td>
+                                                                <td className="px-4 py-3 font-medium">{valB}</td>
+                                                                <td className="px-4 py-3 font-medium" style={{ color: diffStr.startsWith('+') ? '#34C759' : diffStr.startsWith('-') ? '#FF453A' : 'inherit' }}>{diffStr}</td>
+                                                            </tr>
+                                                        );
+                                                    })
+                                                ) : (
+                                                    measurements.map(m => (
+                                                        <tr key={m.id} className="border-t" style={{ borderColor: 'var(--border)' }}>
+                                                            <td className="px-4 py-3 opacity-80">{m.toolKey.toUpperCase()}</td>
+                                                            <td className="px-4 py-3 font-medium">
+                                                                {typeof m.result === 'string' ? m.result.split('\n')[0] : '—'}
+                                                            </td>
+                                                        </tr>
+                                                    ))
+                                                )}
                                             </tbody>
                                         </table>
                                     </div>

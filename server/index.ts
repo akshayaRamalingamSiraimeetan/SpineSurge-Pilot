@@ -550,16 +550,27 @@ app.post('/api/contexts', async (req, res) => {
 // --- Reports ---
 
 app.post('/api/reports', upload.single('file'), async (req, res) => {
-    const { id, visitId, title } = req.body;
+    const { id, visitId, studyId, title } = req.body;
     const file = req.file;
     if (!file) return res.status(400).json({ error: 'No file uploaded' });
 
     try {
+        let version = 1;
+        if (studyId) {
+            const existing = await db.query.reports.findMany({
+                where: eq(schema.reports.studyId, studyId),
+                orderBy: (reports, { desc }) => [desc(reports.version)]
+            });
+            if (existing.length > 0 && existing[0].version != null) {
+                version = existing[0].version + 1;
+            }
+        }
+
         const relativePath = path.basename(file.path);
         await db.insert(schema.reports).values({
-            id, visitId, filePath: relativePath, title, createdAt: new Date().toISOString().split('T')[0]
+            id, visitId, studyId, version, filePath: relativePath, title, createdAt: new Date().toISOString()
         });
-        res.json({ success: true });
+        res.json({ success: true, version });
     } catch (e: any) {
         res.status(500).json({ error: e.message });
     }
@@ -569,6 +580,23 @@ app.get('/api/reports/:visitId', async (req, res) => {
     try {
         const reports = await db.query.reports.findMany({
             where: eq(schema.reports.visitId, req.params.visitId)
+        });
+        const baseUrl = `${req.protocol}://${req.get('host')}`;
+        const mapped = reports.map(r => ({
+            ...r,
+            url: toAbsoluteUrl(r.filePath, baseUrl)
+        }));
+        res.json(mapped);
+    } catch (e: any) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+app.get('/api/reports/study/:studyId', async (req, res) => {
+    try {
+        const reports = await db.query.reports.findMany({
+            where: eq(schema.reports.studyId, req.params.studyId),
+            orderBy: (reports, { desc }) => [desc(reports.version)]
         });
         const baseUrl = `${req.protocol}://${req.get('host')}`;
         const mapped = reports.map(r => ({

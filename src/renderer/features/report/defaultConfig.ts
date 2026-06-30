@@ -10,10 +10,18 @@ export const DEFAULT_REPORT_SECTIONS: ReportSectionConfig[] = [
         description: "Demographics, diagnosis, and case overview",
     },
     {
+        id: "notes",
+        type: "notes",
+        enabled: true,
+        order: 1,
+        title: "Clinical Notes",
+        description: "Additional observations and surgical instructions",
+    },
+    {
         id: "images",
         type: "images",
         enabled: true,
-        order: 1,
+        order: 2,
         title: "Planning Images",
         description: "Pre-operative and Post-operative visualizations",
     },
@@ -21,7 +29,7 @@ export const DEFAULT_REPORT_SECTIONS: ReportSectionConfig[] = [
         id: "measurement_table",
         type: "measurement_table",
         enabled: true,
-        order: 2,
+        order: 3,
         title: "Measurement Data",
         description: "Detailed parameters and tool measurements",
     },
@@ -29,17 +37,9 @@ export const DEFAULT_REPORT_SECTIONS: ReportSectionConfig[] = [
         id: "surgical_plan",
         type: "surgical_plan",
         enabled: true,
-        order: 3,
+        order: 4,
         title: "Surgical Planning",
         description: "Implant sizes, trajectories, and placement details",
-    },
-    {
-        id: "notes",
-        type: "notes",
-        enabled: true,
-        order: 4,
-        title: "Clinical Notes",
-        description: "Additional observations and surgical instructions",
     }
 ];
 

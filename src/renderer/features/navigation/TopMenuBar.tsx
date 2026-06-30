@@ -162,6 +162,11 @@ const TopMenuBar = () => {
         if (key === 'compare') {
             setComparisonMode(true);
             navigate('/compare');
+        } else if (key === 'report') {
+            // Keep isComparisonMode as-is so users can generate Comparison Reports
+            const searchParams = new URLSearchParams(location.search);
+            searchParams.set('tab', key);
+            navigate(`/workspace?${searchParams.toString()}`);
         } else {
             if (isComparisonMode) setComparisonMode(false);
             const searchParams = new URLSearchParams(location.search);

@@ -22,6 +22,7 @@ const MainPage = () => {
         activeContextId,
         activePatientId,
         isDicomMode,
+        isComparisonMode,
         dicomSeries,
         contexts,
         patients,
@@ -175,7 +176,7 @@ const MainPage = () => {
     }, [location.pathname, navigate]);
 
     // ── Render Decision ──────────────────────────────────────────────────────
-    const hasActiveContent = !!currentImage || !!activeContextId || isDicomMode;
+    const hasActiveContent = !!currentImage || !!activeContextId || isDicomMode || isComparisonMode;
     const isReportTab = new URLSearchParams(location.search).get('tab') === 'report';
     const renderBranch = isDicomMode ? 'DICOMViewer' : hasActiveContent ? 'CanvasWorkspace' : 'EmptyState';
 
@@ -202,7 +203,14 @@ const MainPage = () => {
             ) : hasActiveContent ? (
                 <>
                     <div className={cn("w-full h-full transition-opacity", isReportTab ? "opacity-0 absolute inset-0 pointer-events-none z-[-1]" : "")}>
-                        <CanvasWorkspace />
+                        {isComparisonMode ? (
+                            <div className="flex w-full h-full">
+                                <CanvasWorkspace side="left" />
+                                <CanvasWorkspace side="right" />
+                            </div>
+                        ) : (
+                            <CanvasWorkspace />
+                        )}
                     </div>
                     {isReportTab && (
                         <div className="w-full h-full">

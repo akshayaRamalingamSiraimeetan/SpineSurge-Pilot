@@ -89,12 +89,10 @@ function parseVisitDate(dateStr?: string): Date | null {
 
 function StudyCard({
     study,
-    visitId,
     patientId,
     onOpenWorkspace,
 }: {
     study: Study;
-    visitId: string;
     patientId: string;
     onOpenWorkspace: (study: Study) => void;
 }) {
@@ -168,7 +166,7 @@ function StudyCard({
                     <ExternalLink className="mr-1.5 h-3.5 w-3.5" />
                     Open Workspace
                 </Button>
-                <ReportsListDialog visitId={visitId} />
+                <ReportsListDialog studyId={study.id} />
                 <DropdownMenu>
                     <DropdownMenuTrigger asChild>
                         <Button variant="ghost" size="icon" className="h-8 w-8 text-[#9CA3AF] hover:text-[#F5F5F7]">
@@ -620,7 +618,6 @@ const PatientCasesPage = () => {
                                                                 <StudyCard
                                                                     key={study.id}
                                                                     study={study}
-                                                                    visitId={study.visitId || ''}
                                                                     patientId={activePatient.id}
                                                                     onOpenWorkspace={handleStudyClick}
                                                                 />

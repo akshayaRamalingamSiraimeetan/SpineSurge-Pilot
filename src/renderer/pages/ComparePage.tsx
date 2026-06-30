@@ -298,10 +298,14 @@ const ComparePage = () => {
         setActivePatient,
         setActiveContextId,
         setComparisonImage,
+        setComparisonMeasurements,
+        setComparisonImplants,
         currentImage,
         contextStates,
         activeContextId,
         comparison,
+        measurements,
+        implants
     } = useAppStore();
 
     // Resolve workspace image — mirrors CanvasWorkspace priority logic
@@ -314,15 +318,17 @@ const ComparePage = () => {
         return null;
     }, [currentImage, activeContextId, contextStates]);
 
-    // Auto-load left image from workspace (only when a workspace image exists)
+    // Auto-load left image and data from workspace (only when a workspace image exists)
     const leftLoaded = useRef(false);
     useEffect(() => {
         if (leftLoaded.current) return;
         if (workspaceImage && !comparison.left.image) {
             setComparisonImage("left", workspaceImage);
+            setComparisonMeasurements("left", measurements);
+            setComparisonImplants("left", implants);
             leftLoaded.current = true;
         }
-    }, [workspaceImage, comparison.left.image, setComparisonImage]);
+    }, [workspaceImage, comparison.left.image, setComparisonImage, setComparisonMeasurements, setComparisonImplants, measurements, implants]);
 
     // Deep Linking Support
     useEffect(() => {

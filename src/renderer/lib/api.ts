@@ -119,10 +119,11 @@ export const api = {
         return response.json();
     },
 
-    async uploadReport(visitId: string, file: Blob, title: string, token?: string | null) {
+    async uploadReport(visitId: string, studyId: string | null, file: Blob, title: string, token?: string | null) {
         const formData = new FormData();
         formData.append('file', file);
         formData.append('visitId', visitId);
+        if (studyId) formData.append('studyId', studyId);
         formData.append('title', title);
         formData.append('id', `rep-${Date.now()}`);
 
@@ -137,6 +138,14 @@ export const api = {
 
     async getReports(visitId: string, token?: string | null) {
         const response = await fetch(`${API_BASE}/api/reports/${visitId}`, {
+            headers: { ...authHeader(token ?? null) },
+        });
+        if (!response.ok) throw new Error('Failed to fetch reports');
+        return response.json();
+    },
+
+    async getStudyReports(studyId: string, token?: string | null) {
+        const response = await fetch(`${API_BASE}/api/reports/study/${studyId}`, {
             headers: { ...authHeader(token ?? null) },
         });
         if (!response.ok) throw new Error('Failed to fetch reports');
