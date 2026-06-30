@@ -232,6 +232,7 @@ const PatientCasesPage = () => {
     const processedPatients = useMemo(() => {
         return [...patients]
             .filter(p => !isQuickAnalysisPatient(p.id))
+            .filter(p => (p.studies && p.studies.length > 0) || p.id === activePatientId)
             .filter(p => (showArchived ? p.isArchived : !p.isArchived))
             .filter(p =>
                 (p.name || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
