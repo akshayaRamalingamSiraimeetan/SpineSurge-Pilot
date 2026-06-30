@@ -185,7 +185,11 @@ const CanvasWorkspace = ({ side }: CanvasWorkspaceProps) => {
 
     const setMeasurements = (measurements: Measurement[]) => {
         const currentImplants = managerRef.current?.current?.data.implants || storeImplants;
+        const previousCount = storeMeasurements.length;
         syncStoreWithCanvas(measurements, currentImplants);
+        if (activeTool && measurements.length > previousCount) {
+            setActiveTool(null);
+        }
     };
 
     const isInteractive = !isComparisonMode || (activeCanvasSide === side);
