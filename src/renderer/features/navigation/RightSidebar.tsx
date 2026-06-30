@@ -641,8 +641,20 @@ function CollapseSection({ title, badge, defaultOpen = true, open: controlledOpe
 }
 
 /* ── Case summary (data from store only, no hardcoded values) ─── */
-function CaseSummary({ isOpen, onOpenChange, onCreatePatient }: { isOpen: boolean; onOpenChange: (open: boolean) => void; onCreatePatient: () => void }) {
-    const { activePatientId, patients, activeContextId, contexts, updatePatient, updateVisit } = useAppStore();
+function CaseSummary({ isOpen, onOpenChange }: { isOpen: boolean; onOpenChange: (open: boolean) => void }) {
+    const {
+        activePatientId,
+        patients,
+        activeContextId,
+        contexts,
+        updatePatient,
+        updateVisit,
+        addPatient,
+        addVisit,
+        addStudy,
+        addContext,
+        setActivePatient
+    } = useAppStore();
 
     const patient = useMemo(() => {
         if (!activePatientId) return null;
@@ -672,6 +684,85 @@ function CaseSummary({ isOpen, onOpenChange, onCreatePatient }: { isOpen: boolea
         setEditValue(val);
     };
 
+    const ensurePatientAndStartEdit = async (field?: string, val?: string) => {
+        let currentPatientId = activePatientId;
+        let currentContextId = activeContextId;
+        
+        if (!currentPatientId) {
+            const patientId = `PAT-${Date.now().toString().slice(-6)}`;
+            const visitId = Date.now().toString();
+            const studyId = `std-${Date.now()}`;
+            const contextId = `ctx-${Date.now()}`;
+
+            const newPatient: any = {
+                id: patientId,
+                name: '',
+                age: 0,
+                gender: 'M',
+                dob: `${new Date().getFullYear()}-01-01`,
+                lastVisit: format(new Date(), 'MMM dd, yyyy'),
+                visits: [],
+                studies: [],
+                sex: '',
+                contact: ''
+            };
+
+            const newVisit: any = {
+                id: visitId,
+                visitNumber: '#0001',
+                date: format(new Date(), 'MMMM dd, yyyy'),
+                time: format(new Date(), 'hh:mm a'),
+                diagnosis: 'New Diagnosis',
+                comments: '',
+                height: '',
+                weight: '',
+                consultants: 'Dr. Muthuraman (SRIHER)',
+                scanCount: 0,
+                scans: [],
+                studies: []
+            };
+
+            const newStudy = {
+                id: studyId,
+                patientId: patientId,
+                visitId: visitId,
+                modality: 'X-Ray',
+                source: 'Import',
+                acquisitionDate: format(new Date(), 'yyyy-MM-dd')
+            };
+
+            const newContext = {
+                id: contextId,
+                patientId: patientId,
+                visitId: visitId,
+                studyIds: [studyId],
+                mode: 'view' as const,
+                name: `Study - ${format(new Date(), 'MMM dd, yyyy')}`,
+                lastModified: new Date().toISOString()
+            };
+
+            await addPatient(newPatient);
+            await addVisit(patientId, newVisit);
+            await addStudy(newStudy);
+            await addContext(newContext);
+            await setActivePatient(patientId, contextId);
+            
+            currentPatientId = patientId;
+            currentContextId = contextId;
+        }
+
+        if (field !== undefined) {
+            let initialVal = val;
+            if (!activePatientId) {
+                if (field === 'name') initialVal = '';
+                else if (field === 'age') initialVal = '';
+                else if (field === 'sex') initialVal = 'M';
+                else initialVal = '';
+            }
+            startEdit(field, initialVal || '');
+        }
+    };
+
     const handleSave = async (field: string) => {
         if (!patient) return;
         try {
@@ -689,10 +780,16 @@ function CaseSummary({ isOpen, onOpenChange, onCreatePatient }: { isOpen: boolea
             } else if (field === 'height') {
                 if (visit) {
                     await updateVisit(patient.id, visit.id, { ...visit, height: editValue });
+                } else if (patient) {
+                    const newVisit = { id: Date.now().toString(), visitNumber: '#0001', date: format(new Date(), 'MMMM dd, yyyy'), time: format(new Date(), 'hh:mm a'), diagnosis: 'New Diagnosis', comments: '', height: editValue, weight: '', consultants: '', scanCount: 0, scans: [], studies: [] };
+                    await updateVisit(patient.id, newVisit.id, newVisit);
                 }
             } else if (field === 'weight') {
                 if (visit) {
                     await updateVisit(patient.id, visit.id, { ...visit, weight: editValue });
+                } else if (patient) {
+                    const newVisit = { id: Date.now().toString(), visitNumber: '#0001', date: format(new Date(), 'MMMM dd, yyyy'), time: format(new Date(), 'hh:mm a'), diagnosis: 'New Diagnosis', comments: '', height: '', weight: editValue, consultants: '', scanCount: 0, scans: [], studies: [] };
+                    await updateVisit(patient.id, newVisit.id, newVisit);
                 }
             }
         } catch (err) {
@@ -712,12 +809,12 @@ function CaseSummary({ isOpen, onOpenChange, onCreatePatient }: { isOpen: boolea
     };
 
     const rows = [
-        { key: 'name', label: 'Patient Name', value: patient?.name || '', icon: '👤', displayVal: activePatientId ? (patient?.name || '—') : '' },
-        { key: 'mrn', label: 'MRN', value: patient?.contact || '', icon: '🆔', displayVal: activePatientId ? (patient?.contact || '—') : '' },
-        { key: 'age', label: 'Age', value: patient?.age ? String(patient.age) : '', icon: '📅', displayVal: activePatientId ? (patient?.age ? `${patient.age} yrs` : '—') : '' },
-        { key: 'sex', label: 'Sex', value: patient?.gender || 'M', icon: '⚥', displayVal: activePatientId ? (patient?.gender === 'M' ? 'Male' : patient?.gender === 'F' ? 'Female' : patient?.gender || '—') : '' },
-        { key: 'height', label: 'Height', value: visit?.height || '', icon: '📏', displayVal: activePatientId ? (visit?.height ? `${visit.height} cm` : '—') : '' },
-        { key: 'weight', label: 'Weight', value: visit?.weight || '', icon: '⚖️', displayVal: activePatientId ? (visit?.weight ? `${visit.weight} kg` : '—') : '' },
+        { key: 'name', label: 'Patient Name', value: patient?.name || '', displayVal: activePatientId ? (patient?.name || '—') : '' },
+        { key: 'mrn', label: 'MRN', value: patient?.contact || '', displayVal: activePatientId ? (patient?.contact || '—') : '' },
+        { key: 'age', label: 'Age', value: patient?.age ? String(patient.age) : '', displayVal: activePatientId ? (patient?.age ? `${patient.age} yrs` : '—') : '' },
+        { key: 'sex', label: 'Sex', value: patient?.gender || 'M', displayVal: activePatientId ? (patient?.gender === 'M' ? 'Male' : patient?.gender === 'F' ? 'Female' : patient?.gender || '—') : '' },
+        { key: 'height', label: 'Height', value: visit?.height || '', displayVal: activePatientId ? (visit?.height ? `${visit.height} cm` : '—') : '' },
+        { key: 'weight', label: 'Weight', value: visit?.weight || '', displayVal: activePatientId ? (visit?.weight ? `${visit.weight} kg` : '—') : '' },
     ];
 
     return (
@@ -730,7 +827,6 @@ function CaseSummary({ isOpen, onOpenChange, onCreatePatient }: { isOpen: boolea
                 {rows.map((row) => (
                     <div key={row.key} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 13, minHeight: 28 }}>
                         <span style={{ color: 'var(--text-2)', display: 'flex', alignItems: 'center', gap: 8 }}>
-                            <span style={{ fontSize: 14, opacity: 0.7 }}>{row.icon}</span>
                             {row.label}
                         </span>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -777,24 +873,17 @@ function CaseSummary({ isOpen, onOpenChange, onCreatePatient }: { isOpen: boolea
                                     />
                                 )
                             ) : (
-                                <>
-                                    <span style={{ color: 'var(--text)', fontWeight: 500 }}>{row.displayVal}</span>
-                                    {(!activePatientId || ((row.key !== 'height' && row.key !== 'weight') || visit)) && (
-                                        <span
-                                            onClick={() => {
-                                                if (!activePatientId) {
-                                                    onCreatePatient();
-                                                } else {
-                                                    startEdit(row.key, row.value);
-                                                }
-                                            }}
-                                            style={{ cursor: 'pointer', color: 'var(--text-3)', fontSize: 12 }}
-                                            title="Edit"
-                                        >
-                                            ✎
-                                        </span>
-                                    )}
-                                </>
+                                <div
+                                    style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}
+                                    onClick={() => ensurePatientAndStartEdit(row.key, row.value)}
+                                >
+                                    <span style={{ color: 'var(--text)', fontWeight: 500 }}>
+                                        {row.displayVal || (activePatientId ? '—' : '')}
+                                    </span>
+                                    <span style={{ color: 'var(--text-3)', fontSize: 12 }} title="Edit">
+                                        ✎
+                                    </span>
+                                </div>
                             )}
                         </div>
                     </div>
@@ -1156,128 +1245,7 @@ const RightSidebar = () => {
     }, [activeContextId, updateContextState, storeSetMeasurements]);
 
     const [isReportOpen, setIsReportOpen] = useState(false);
-    const [createPatientOpen, setCreatePatientOpen] = useState(false);
-    const [newPatientData, setNewPatientData] = useState({
-        name: '',
-        id: '',
-        age: '',
-        gender: 'M',
-        dob: '',
-        sex: '',
-        contact: '',
-        height: '',
-        weight: '',
-        diagnosis: '',
-        comments: ''
-    });
 
-    const handleAgeChange = (age: string) => {
-        setNewPatientData(prev => {
-            const updates: any = { ...prev, age };
-            if (age && !isNaN(parseInt(age))) {
-                const birthYear = new Date().getFullYear() - parseInt(age);
-                updates.dob = `${birthYear}-01-01`;
-            }
-            return updates;
-        });
-    };
-
-    const handleDOBChange = (dob: string) => {
-        setNewPatientData(prev => {
-            const updates: any = { ...prev, dob };
-            if (dob) {
-                const birthDate = new Date(dob);
-                const age = new Date().getFullYear() - birthDate.getFullYear();
-                updates.age = age.toString();
-            }
-            return updates;
-        });
-    };
-
-    const handleCreatePatientSubmit = async (e: React.FormEvent) => {
-        e.preventDefault();
-        if (!newPatientData.name || !newPatientData.age) return;
-
-        const patientId = newPatientData.id || `PAT-${Date.now().toString().slice(-6)}`;
-        const visitId = Date.now().toString();
-        const studyId = `std-${Date.now()}`;
-        const contextId = `ctx-${Date.now()}`;
-
-        const birthYear = new Date().getFullYear() - (parseInt(newPatientData.age) || 0);
-        const dobVal = newPatientData.dob || `${birthYear}-01-01`;
-
-        const newPatient: any = {
-            id: patientId,
-            name: newPatientData.name,
-            age: parseInt(newPatientData.age) || 0,
-            gender: newPatientData.gender as 'M' | 'F' | 'O',
-            dob: dobVal,
-            lastVisit: format(new Date(), 'MMM dd, yyyy'),
-            visits: [],
-            studies: [],
-            sex: newPatientData.sex,
-            contact: newPatientData.contact
-        };
-
-        const newVisit: any = {
-            id: visitId,
-            visitNumber: '#0001',
-            date: format(new Date(), 'MMMM dd, yyyy'),
-            time: format(new Date(), 'hh:mm a'),
-            diagnosis: newPatientData.diagnosis || 'New Diagnosis',
-            comments: newPatientData.comments,
-            height: newPatientData.height ? `${newPatientData.height} cm` : '',
-            weight: newPatientData.weight ? `${newPatientData.weight} kg` : '',
-            consultants: 'Dr. Muthuraman (SRIHER)',
-            scanCount: 0,
-            scans: [],
-            studies: []
-        };
-
-        const newStudy = {
-            id: studyId,
-            patientId: patientId,
-            visitId: visitId,
-            modality: 'X-Ray',
-            source: 'Import',
-            acquisitionDate: format(new Date(), 'yyyy-MM-dd')
-        };
-
-        const newContext = {
-            id: contextId,
-            patientId: patientId,
-            visitId: visitId,
-            studyIds: [studyId],
-            mode: 'view' as const,
-            name: `Study - ${format(new Date(), 'MMM dd, yyyy')}`,
-            lastModified: new Date().toISOString()
-        };
-
-        const workspaceState = useAppStore.getState();
-        const isFirstContextFromUntitled = !workspaceState.activePatientId;
-        const { measurements, implants, currentImage } = workspaceState;
-
-        try {
-            await addPatient(newPatient);
-            await addVisit(patientId, newVisit);
-            await addStudy(newStudy);
-            await addContext(newContext);
-            await setActivePatient(patientId, contextId);
-            if (isFirstContextFromUntitled) {
-                await updateContextState(contextId, {
-                    measurements,
-                    implants,
-                    ...(currentImage ? { currentImage } : {}),
-                });
-            }
-            setCreatePatientOpen(false);
-            setNewPatientData({
-                name: '', id: '', age: '', gender: 'M', dob: '', sex: '', contact: '', height: '', weight: '', diagnosis: '', comments: ''
-            });
-        } catch (err) {
-            console.error('Failed to create patient from workspace', err);
-        }
-    };
 
     // Resizable panel
     const [panelWidth, setPanelWidth] = useState(320);
@@ -1322,7 +1290,7 @@ const RightSidebar = () => {
     }, [patient]);
 
     const [bannerDismissed, setBannerDismissed] = useState(false);
-    const [caseSummaryOpen, setCaseSummaryOpen] = useState(true);
+    const [caseSummaryOpen, setCaseSummaryOpen] = useState(false);
 
     useEffect(() => {
         if (!activePatientId) {
@@ -1414,7 +1382,6 @@ const RightSidebar = () => {
                                         ✕
                                     </button>
                                     <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
-                                        <span style={{ color: 'var(--val-bad)', fontWeight: 'bold' }}>⚠️</span>
                                         <div>
                                             <div style={{ fontWeight: 700, fontSize: 13, color: 'var(--text)', marginBottom: 2 }}>
                                                 Patient information missing
@@ -1427,7 +1394,6 @@ const RightSidebar = () => {
                                                 size="sm"
                                                 onClick={() => {
                                                     setCaseSummaryOpen(true);
-                                                    setCreatePatientOpen(true);
                                                 }}
                                                 style={{
                                                     fontSize: 11,
@@ -1446,7 +1412,7 @@ const RightSidebar = () => {
                             )}
 
                             {/* Case Summary */}
-                            <CaseSummary isOpen={caseSummaryOpen} onOpenChange={setCaseSummaryOpen} onCreatePatient={() => setCreatePatientOpen(true)} />
+                            <CaseSummary isOpen={caseSummaryOpen} onOpenChange={setCaseSummaryOpen} />
 
                             {/* Measurement Comparison (only visible in compare mode) */}
                             {isComparisonMode && comparison?.left && comparison?.right && (
@@ -1566,132 +1532,7 @@ const RightSidebar = () => {
                 checkedCount={selectedCount}
             />
 
-            <Dialog open={createPatientOpen} onOpenChange={setCreatePatientOpen}>
-                <DialogContent className={cn(
-                    "sm:max-w-[425px] p-6 rounded-xl shadow-2xl border",
-                    isDark
-                        ? '!bg-[#141416] !text-[#F5F5F7] !border-[#242427]'
-                        : '!bg-white !text-slate-900 !border-gray-300'
-                )}>
-                    <DialogHeader>
-                        <DialogTitle className="text-xl font-bold">Create New Patient Case</DialogTitle>
-                        <DialogDescription className={isDark ? 'text-[#9CA3AF]/80' : 'text-slate-600'}>
-                            Enter patient and visit details to start.
-                        </DialogDescription>
-                    </DialogHeader>
-                    <form onSubmit={handleCreatePatientSubmit} className="space-y-4 py-4">
-                        <div className="grid grid-cols-4 items-center gap-4">
-                            <Label htmlFor="new-name" className="text-right text-xs font-bold text-slate-500 uppercase dark:text-[#9CA3AF]/60">Name</Label>
-                            <Input
-                                id="new-name"
-                                value={newPatientData.name}
-                                onChange={e => setNewPatientData({ ...newPatientData, name: e.target.value })}
-                                className="col-span-3 h-10 rounded-xl"
-                                required
-                            />
-                        </div>
-                        <div className="grid grid-cols-4 items-center gap-4">
-                            <Label htmlFor="new-id" className="text-right text-xs font-bold text-slate-500 uppercase dark:text-[#9CA3AF]/60">ID</Label>
-                            <Input
-                                id="new-id"
-                                value={newPatientData.id}
-                                onChange={e => setNewPatientData({ ...newPatientData, id: e.target.value })}
-                                placeholder="Auto-generated if empty"
-                                className="col-span-3 h-10 rounded-xl"
-                            />
-                        </div>
-                        <div className="grid grid-cols-4 items-center gap-4">
-                            <Label htmlFor="new-age" className="text-right text-xs font-bold text-slate-500 uppercase dark:text-[#9CA3AF]/60">Age</Label>
-                            <Input
-                                id="new-age"
-                                type="number"
-                                value={newPatientData.age}
-                                onChange={e => handleAgeChange(e.target.value)}
-                                className="col-span-3 h-10 rounded-xl"
-                                required
-                            />
-                        </div>
-                        <div className="grid grid-cols-4 items-center gap-4">
-                            <Label htmlFor="new-gender" className="text-right text-xs font-bold text-slate-500 uppercase dark:text-[#9CA3AF]/60">Sex</Label>
-                            <select
-                                id="new-gender"
-                                value={newPatientData.gender}
-                                onChange={e => setNewPatientData({ ...newPatientData, gender: e.target.value })}
-                                className={cn(
-                                    "col-span-3 border rounded-xl h-10 px-3 text-sm outline-none font-bold",
-                                    isDark ? "bg-[#0A0A0B]/70 border-[#242427] text-[#F5F5F7]" : "bg-gray-100 border-gray-300 text-slate-900"
-                                )}
-                            >
-                                <option value="M">Male</option>
-                                <option value="F">Female</option>
-                                <option value="O">Other</option>
-                            </select>
-                        </div>
-                        <div className="grid grid-cols-4 items-center gap-4">
-                            <Label htmlFor="new-dob" className="text-right text-xs font-bold text-slate-500 uppercase dark:text-[#9CA3AF]/60">DOB</Label>
-                            <Input
-                                id="new-dob"
-                                type="date"
-                                value={newPatientData.dob}
-                                onChange={e => handleDOBChange(e.target.value)}
-                                className="col-span-3 h-10 rounded-xl"
-                            />
-                        </div>
-                        <div className="grid grid-cols-4 items-center gap-4">
-                            <Label htmlFor="new-contact" className="text-right text-xs font-bold text-slate-500 uppercase dark:text-[#9CA3AF]/60">Contact</Label>
-                            <Input
-                                id="new-contact"
-                                value={newPatientData.contact}
-                                onChange={e => setNewPatientData({ ...newPatientData, contact: e.target.value })}
-                                className="col-span-3 h-10 rounded-xl"
-                            />
-                        </div>
-                        <div className="grid grid-cols-4 items-center gap-4">
-                            <Label htmlFor="new-height" className="text-right text-xs font-bold text-slate-500 uppercase dark:text-[#9CA3AF]/60">Height (cm)</Label>
-                            <Input
-                                id="new-height"
-                                type="number"
-                                value={newPatientData.height}
-                                onChange={e => setNewPatientData({ ...newPatientData, height: e.target.value })}
-                                className="col-span-3 h-10 rounded-xl"
-                            />
-                        </div>
-                        <div className="grid grid-cols-4 items-center gap-4">
-                            <Label htmlFor="new-weight" className="text-right text-xs font-bold text-slate-500 uppercase dark:text-[#9CA3AF]/60">Weight (kg)</Label>
-                            <Input
-                                id="new-weight"
-                                type="number"
-                                value={newPatientData.weight}
-                                onChange={e => setNewPatientData({ ...newPatientData, weight: e.target.value })}
-                                className="col-span-3 h-10 rounded-xl"
-                            />
-                        </div>
-                        <div className="grid grid-cols-4 items-center gap-4">
-                            <Label htmlFor="new-diagnosis" className="text-right text-xs font-bold text-slate-500 uppercase dark:text-[#9CA3AF]/60">Diagnosis</Label>
-                            <Input
-                                id="new-diagnosis"
-                                value={newPatientData.diagnosis}
-                                onChange={e => setNewPatientData({ ...newPatientData, diagnosis: e.target.value })}
-                                className="col-span-3 h-10 rounded-xl"
-                            />
-                        </div>
-                        <div className="grid grid-cols-4 items-center gap-4">
-                            <Label htmlFor="new-comments" className="text-right text-xs font-bold text-slate-500 uppercase dark:text-[#9CA3AF]/60">Notes</Label>
-                            <Input
-                                id="new-comments"
-                                value={newPatientData.comments}
-                                onChange={e => setNewPatientData({ ...newPatientData, comments: e.target.value })}
-                                className="col-span-3 h-10 rounded-xl"
-                            />
-                        </div>
-                        <DialogFooter className="pt-4">
-                            <Button type="submit" className="w-full bg-[#FF453A] hover:bg-[#e03d33] h-11 text-white font-bold rounded-xl shadow-[0_1px_2px_rgba(0,0,0,.04),0_8px_24px_rgba(0,0,0,.08)]">
-                                Create Patient Case
-                            </Button>
-                        </DialogFooter>
-                    </form>
-                </DialogContent>
-            </Dialog>
+
         </div>
     );
 };
