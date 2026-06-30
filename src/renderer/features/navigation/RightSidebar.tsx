@@ -1073,9 +1073,7 @@ const RightSidebar = () => {
         setDicom3DMode,
     } = useAppStore();
 
-    const isRightSidebarOpen = storeIsRightSidebarOpen &&
-        (!isDicomMode || dicom3D.activeView === 'all') &&
-        !activeDialog;
+    const isRightSidebarOpen = storeIsRightSidebarOpen;
 
     const activeContextState = useMemo(
         () =>
@@ -1147,13 +1145,7 @@ const RightSidebar = () => {
         );
     }, [measurements]);
 
-    // Auto-open when first measurement added
-    const prevCountRef = useRef(combinedItems.length);
-    useEffect(() => {
-        const cur = combinedItems.length;
-        if (prevCountRef.current === 0 && cur > 0) toggleRightSidebar(true);
-        prevCountRef.current = cur;
-    }, [combinedItems.length, toggleRightSidebar]);
+
 
     const setMeasurements = useCallback((nextMeasurements: any[]) => {
         if (activeContextId) {
@@ -1368,6 +1360,18 @@ const RightSidebar = () => {
 
             {isRightSidebarOpen && (
                 <>
+                    {/* Collapse button when open */}
+                    <div style={{ position: 'absolute', left: 0, top: '50%', transform: 'translateX(-50%) translateY(-50%)', zIndex: 61 }}>
+                        <Button
+                            variant="secondary"
+                            size="icon"
+                            style={{ width: 22, height: 40, borderRadius: '6px 0 0 6px', border: '1px solid var(--border)', borderRight: 'none', background: 'var(--surface-2)' }}
+                            onClick={() => toggleRightSidebar(false)}
+                        >
+                            <ChevronRight className="h-4 w-4" />
+                        </Button>
+                    </div>
+
                     {/* Resize handle */}
                     <div
                         style={{ position: 'absolute', left: -3, top: 0, bottom: 0, width: 6, cursor: 'ew-resize', zIndex: 50 }}

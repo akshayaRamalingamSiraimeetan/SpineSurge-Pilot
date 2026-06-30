@@ -20,9 +20,10 @@
  * The app nav rail is rendered separately in MainLayout (DashboardSidebar / TopMenuBar).
  */
 import { useState, useMemo } from 'react';
-import { Scale, Box, Layers, HelpCircle } from 'lucide-react';
+import { Scale, Box, Layers, HelpCircle, ChevronLeft, ChevronRight } from 'lucide-react';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { useAppStore } from '@/lib/store/index';
+import { Button } from '@/components/ui/button';
 import { useLocation } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 
@@ -446,10 +447,7 @@ const DicomLeftSidebar = () => {
   return (
     <div
       style={{
-        width: 272,
-        flexShrink: 0,
-        background: 'var(--surface)',
-        borderRight: '1px solid var(--border)',
+        width: '100%',
         display: 'flex',
         flexDirection: 'column',
         height: '100%',
@@ -677,33 +675,20 @@ const DicomLeftSidebar = () => {
   );
 };
 
-/* ── Main LeftSidebar ────────────────────────────────────────── */
-const LeftSidebar = () => {
-  const { activeTool, setActiveTool, measurements, canvas, isDicomMode } = useAppStore();
-  
-  if (isDicomMode) {
-    return <DicomLeftSidebar />;
-  }
-
+/* ── Normal LeftSidebar Content ────────────────────────────────── */
+const NormalLeftSidebarContent = () => {
+  const { activeTool, setActiveTool, measurements, canvas } = useAppStore();
   const location = useLocation();
   const queryParams = useMemo(() => new URLSearchParams(location.search), [location.search]);
   const isPlanningMode = queryParams.get('tab') === 'planning';
 
   const [activeTab, setActiveTab] = useState<TabKey>('alignment');
   const [plane, setPlane] = useState<Plane>('coronal');
-
-  /* ── Planning sub-tabs ──────────────────────────────────── */
   const [planningTab, setPlanningTab] = useState<PlanningTab>('target');
-
-  /** Target values keyed by measurement id — purely local, session-lived. */
   const [targetValues, setTargetValues] = useState<Record<string, string>>({});
   const setTarget = (id: string, val: string) =>
     setTargetValues((prev) => ({ ...prev, [id]: val }));
 
-  /**
-   * Measurements that are checked (selected) in Current Measurements panel
-   * and are not calibration markers or reference lines.
-   */
   const REF_LINE_KEYS = new Set(['c7pl', 'csvl']);
   const checkedMeasurements = useMemo(() =>
     measurements.filter(
@@ -714,9 +699,6 @@ const LeftSidebar = () => {
     ),
     [measurements],
   );
-
-  const pixelToMm = canvas?.pixelToMm ?? null;
-  void pixelToMm; // reserved for future calibration-aware display
 
   const currentTabKey = isPlanningMode ? 'planning' : activeTab;
   const tab = TABS.find((t) => t.key === currentTabKey)!;
@@ -734,10 +716,7 @@ const LeftSidebar = () => {
   return (
     <div
       style={{
-        width: 272,
-        flexShrink: 0,
-        background: 'var(--surface)',
-        borderRight: '1px solid var(--border)',
+        width: '100%',
         display: 'flex',
         flexDirection: 'column',
         height: '100%',
@@ -788,8 +767,6 @@ const LeftSidebar = () => {
                     fontSize: 11.5,
                     fontWeight: 700,
                     transition: 'all .14s',
-                    whiteSpace: 'nowrap',
-                    lineHeight: 1.2,
                   }}
                 >
                   <span style={{
@@ -1136,6 +1113,62 @@ const LeftSidebar = () => {
           </div>
         )}
       </ScrollArea>
+    </div>
+  );
+};
+
+/* ── Main LeftSidebar ────────────────────────────────────────── */
+const LeftSidebar = () => {
+  const { isDicomMode, isLeftSidebarOpen, toggleLeftSidebar } = useAppStore();
+
+  return (
+    <div
+      style={{
+        background: 'var(--surface)',
+        borderRight: isLeftSidebarOpen ? '1px solid var(--border)' : 'none',
+        display: 'flex',
+        flexDirection: 'column',
+        width: isLeftSidebarOpen ? '272px' : '0px',
+        overflow: 'hidden',
+        transition: 'width .3s',
+        position: 'relative',
+        height: '100%',
+        flexShrink: 0,
+      }}
+    >
+      {/* Reveal button when closed */}
+      {!isLeftSidebarOpen && (
+        <div style={{ position: 'fixed', left: 0, top: '50%', transform: 'translateY(-50%)', zIndex: 61 }}>
+          <Button
+            variant="secondary"
+            size="icon"
+            style={{ width: 22, height: 40, borderRadius: '0 6px 6px 0', border: '1px solid var(--border)' }}
+            onClick={() => toggleLeftSidebar(true)}
+          >
+            <ChevronRight className="h-4 w-4" />
+          </Button>
+        </div>
+      )}
+
+      {isLeftSidebarOpen && (
+        <>
+          {/* Collapse button when open */}
+          <div style={{ position: 'absolute', right: 0, top: '50%', transform: 'translateX(50%) translateY(-50%)', zIndex: 61 }}>
+            <Button
+              variant="secondary"
+              size="icon"
+              style={{ width: 22, height: 40, borderRadius: '0 6px 6px 0', border: '1px solid var(--border)', borderLeft: 'none', background: 'var(--surface-2)' }}
+              onClick={() => toggleLeftSidebar(false)}
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </Button>
+          </div>
+
+          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', height: '100%', width: '100%' }}>
+            {isDicomMode ? <DicomLeftSidebar /> : <NormalLeftSidebarContent />}
+          </div>
+        </>
+      )}
     </div>
   );
 };

@@ -333,11 +333,10 @@ const ComparePage = () => {
         if (cId) setActiveContextId(cId);
     }, [location.search, setActivePatient, setActiveContextId]);
 
-    // Ensure comparison mode & sidebar
+    // Ensure comparison mode
     useEffect(() => {
         setComparisonMode(true);
-        toggleRightSidebar(true);
-    }, [setComparisonMode, toggleRightSidebar]);
+    }, [setComparisonMode]);
 
     const handleClose = () => {
         setComparisonMode(false);
