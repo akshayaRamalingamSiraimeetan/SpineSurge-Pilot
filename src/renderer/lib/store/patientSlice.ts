@@ -10,6 +10,12 @@ export interface PatientSlice {
     contexts: Context[];
     contextStates: ContextState[];
     activeContextId: string | null;
+    
+    // Autosave state
+    syncStatus: 'synced' | 'unsynced' | 'saving' | 'error';
+    hasUnsyncedChanges: boolean;
+    setSyncStatus: (status: 'synced' | 'unsynced' | 'saving' | 'error') => void;
+    setHasUnsyncedChanges: (has: boolean) => void;
 
     initializeStore: () => Promise<void>;
     setActivePatient: (patientId: string, initialContextId?: string | null) => Promise<void>;
@@ -24,7 +30,7 @@ export interface PatientSlice {
     updateStudy: (patientId: string, studyId: string, updates: Partial<Pick<Study, 'name' | 'status' | 'modality' | 'source' | 'acquisitionDate' | 'visitId'>>) => Promise<void>;
     addScan: (patientId: string, studyId: string, scanMetadata: Omit<Scan, 'imageUrl'>, file: File) => Promise<void>;
     addContext: (context: Context) => Promise<void>;
-    updateContextState: (contextId: string, updates: Partial<ContextState>) => Promise<void>;
+    updateContextState: (contextId: string, updates: Partial<ContextState>) => Promise<boolean>;
     setActiveContextId: (contextId: string | null) => void;
     resetWorkspace: () => void;
 }
@@ -36,6 +42,11 @@ export const createPatientSlice: StateCreator<AppState, [], [], PatientSlice> = 
     contexts: [],
     contextStates: [],
     activeContextId: null,
+    syncStatus: 'synced',
+    hasUnsyncedChanges: false,
+    
+    setSyncStatus: (status) => set({ syncStatus: status }),
+    setHasUnsyncedChanges: (has) => set({ hasUnsyncedChanges: has }),
 
     initializeStore: async () => {
         try {
@@ -372,10 +383,12 @@ export const createPatientSlice: StateCreator<AppState, [], [], PatientSlice> = 
 
     updateContextState: async (contextId: string, updates: Partial<ContextState>) => {
         const token = get().token;
+        let payloadToSave: any = null;
+
         set((state: AppState) => {
             const context = state.contexts.find((c: Context) => c.id === contextId);
             if (!context) {
-                console.warn(`[updateContextState] EARLY RETURN — context ${contextId} not found in state.contexts (count=${state.contexts.length})`);
+                console.warn(`[updateContextState] EARLY RETURN — context ${contextId} not found`);
                 return state;
             }
 
@@ -394,10 +407,8 @@ export const createPatientSlice: StateCreator<AppState, [], [], PatientSlice> = 
             } : {};
 
             if (stateForServer) {
-                // Always include the current canvas image so it survives page reload
                 const currentImage = updates.currentImage ?? state.currentImage ?? stateForServer.currentImage ?? null;
-
-                const payload = {
+                payloadToSave = {
                     ...context,
                     state: {
                         measurements:       stateForServer.measurements,
@@ -409,14 +420,20 @@ export const createPatientSlice: StateCreator<AppState, [], [], PatientSlice> = 
                         currentImage,
                     },
                 };
-                console.log(`[updateContextState] SAVING contextId=${contextId} measurements=${stateForServer.measurements.length} annotations=${Array.isArray(stateForServer.annotations) ? stateForServer.annotations.length : 0} currentImage=${currentImage}`);
-
-                api.saveContext(payload, token)
-                    .then(() => console.log(`[updateContextState] SAVE OK contextId=${contextId}`))
-                    .catch(e => console.error(`[updateContextState] SAVE FAILED contextId=${contextId}`, e));
             }
             return { contextStates: updatedStates, ...storeMirror };
         });
+
+        if (payloadToSave) {
+            try {
+                await api.saveContext(payloadToSave, token);
+                return true;
+            } catch (e) {
+                console.error(`[updateContextState] SAVE FAILED contextId=${contextId}`, e);
+                return false;
+            }
+        }
+        return true;
     },
 
     setActiveContextId: (contextId) => set((state) => {

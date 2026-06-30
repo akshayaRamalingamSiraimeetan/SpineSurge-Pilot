@@ -9,8 +9,10 @@ import { DICOMViewer } from "@/features/dicom/DICOMViewer";
 import { useEffect, useMemo } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { API_BASE } from "@/lib/api";
+import { useAutosave } from "@/hooks/useAutosave";
 
 const MainPage = () => {
+    useAutosave();
     const navigate = useNavigate();
     const location = useLocation();
     const {

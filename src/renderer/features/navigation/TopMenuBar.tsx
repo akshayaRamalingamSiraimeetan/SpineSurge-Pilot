@@ -27,9 +27,20 @@ import {
     Target,
     FileText,
     MoreVertical,
+    Cloud,
+    CloudOff,
+    Loader2
 } from "lucide-react";
 import { ImportDialog } from "@/features/import-export/ImportDialog";
 import { Button } from "@/components/ui/button";
+import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
+} from "@/components/ui/dialog";
 import { useTheme } from "@/components/theme-provider";
 import {
     DropdownMenu,
@@ -87,11 +98,14 @@ const TopMenuBar = () => {
         setDicomCroppingActive,
         triggerFocusCrop,
         setActiveDialog,
+        syncStatus,
+        hasUnsyncedChanges,
     } = useAppStore();
 
     const [profileOpen, setProfileOpen]   = useState(false);
     const [settingsOpen, setSettingsOpen] = useState(false);
     const [reportOpen, setReportOpen]     = useState(false);
+    const [closeAttemptRoute, setCloseAttemptRoute] = useState<string | null>(null);
     const queryParams = useMemo(() => new URLSearchParams(location.search), [location.search]);
     const wsTab = (queryParams.get('tab') as WsTab) || 'assessment';
 
@@ -156,16 +170,50 @@ const TopMenuBar = () => {
     };
 
     /* ── Other navigation ────────────────────────────────────── */
+    const handleCloseWorkspace = async (targetRoute: string) => {
+        if (!hasUnsyncedChanges) {
+            setComparisonMode(false);
+            navigate(targetRoute);
+            return;
+        }
+
+        const state = useAppStore.getState();
+        if (state.activeContextId) {
+            state.setSyncStatus('saving');
+            const success = await state.updateContextState(state.activeContextId, {
+                measurements: state.measurements,
+                implants: state.implants,
+                threeDImplants: state.threeDImplants,
+                pedicleSimulations: state.pedicleSimulations,
+                currentImage: state.currentImage,
+            });
+
+            if (success) {
+                state.setHasUnsyncedChanges(false);
+                state.setSyncStatus('synced');
+                setComparisonMode(false);
+                navigate(targetRoute);
+            } else {
+                state.setSyncStatus('error');
+                setCloseAttemptRoute(targetRoute);
+            }
+        } else {
+            setComparisonMode(false);
+            navigate(targetRoute);
+        }
+    };
+
     const handleCompareToggle = () => {
         if (location.pathname === '/patients') { setComparisonMode(true); navigate('/compare'); return; }
         const next = !isComparisonMode;
         setComparisonMode(next);
-        navigate(next ? '/compare' : '/dashboard');
+        if (!next) handleCloseWorkspace('/dashboard');
+        else navigate('/compare');
     };
 
     const handlePatientsToggle = () => {
-        if (location.pathname === '/patients') navigate(lastMainRouteRef.current);
-        else navigate('/patients');
+        if (location.pathname === '/patients') handleCloseWorkspace(lastMainRouteRef.current);
+        else handleCloseWorkspace('/patients');
     };
 
     /* ── Share handler (unchanged logic) ─────────────────────── */
@@ -214,7 +262,7 @@ const TopMenuBar = () => {
         >
             {/* ── [S] Logo placeholder ─────────────────────────── */}
             <div
-                onClick={() => { setComparisonMode(false); navigate('/dashboard'); }}
+                onClick={() => handleCloseWorkspace('/dashboard')}
                 style={{
                     width: 54, height: 54, flexShrink: 0,
                     display: 'grid', placeItems: 'center',
@@ -244,7 +292,7 @@ const TopMenuBar = () => {
                 {isWorkspaceRoute && (
                     <>
                         <button
-                            onClick={() => navigate('/dashboard')}
+                            onClick={() => handleCloseWorkspace('/dashboard')}
                             style={{
                                 display: 'grid', placeItems: 'center',
                                 width: 26, height: 26, borderRadius: 6,
@@ -323,7 +371,17 @@ const TopMenuBar = () => {
             )}
 
             {/* ── Right actions ─────────────────────────────────── */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '0 14px', flexShrink: 0 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, paddingRight: 12 }}>
+                
+                {/* Sync Indicator */}
+                {isWorkspaceRoute && (
+                    <div className="flex items-center gap-1.5 mr-2 text-xs font-medium text-muted-foreground bg-muted/30 px-2 py-1 rounded-md">
+                        {syncStatus === 'synced' && <><Cloud className="w-3.5 h-3.5" /> Saved</>}
+                        {syncStatus === 'unsynced' && <><CloudOff className="w-3.5 h-3.5" /> Unsynced changes</>}
+                        {syncStatus === 'saving' && <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Saving...</>}
+                        {syncStatus === 'error' && <><CloudOff className="w-3.5 h-3.5 text-red-500" /> Sync error</>}
+                    </div>
+                )}
 
                 {/* DICOM layout controls */}
                 {isDicomMode && (
@@ -474,10 +532,32 @@ const TopMenuBar = () => {
             </div>
 
             {/* Dialogs */}
-            <ProfileDialog open={profileOpen} onOpenChange={(v) => { setProfileOpen(v); setActiveDialog(v ? 'profile' : null); }} />
-            <SettingsDialog open={settingsOpen} onOpenChange={(v) => { setSettingsOpen(v); setActiveDialog(v ? 'settings' : null); }} />
+            <ProfileDialog open={profileOpen} onOpenChange={setProfileOpen} />
+            <SettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} />
             <ReportDialog open={reportOpen} onOpenChange={(v) => { setReportOpen(v); setActiveDialog(v ? 'report' : null); }} checkedCount={measurements.filter((m) => m.selected).length} />
+            <ImportDialog />
             <ShareDialog />
+
+            {closeAttemptRoute && (
+                <Dialog open={true} onOpenChange={(open) => { if (!open) setCloseAttemptRoute(null); }}>
+                    <DialogContent className="sm:max-w-md">
+                        <DialogHeader>
+                            <DialogTitle>Sync Failed</DialogTitle>
+                            <DialogDescription>
+                                Changes could not be synced.
+                            </DialogDescription>
+                        </DialogHeader>
+                        <DialogFooter className="gap-2 sm:justify-start">
+                            <Button variant="outline" onClick={() => setCloseAttemptRoute(null)}>Keep Editing</Button>
+                            <Button onClick={() => {
+                                const route = closeAttemptRoute;
+                                setCloseAttemptRoute(null);
+                                handleCloseWorkspace(route);
+                            }}>Retry</Button>
+                        </DialogFooter>
+                    </DialogContent>
+                </Dialog>
+            )}
         </div>
     );
 };

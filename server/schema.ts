@@ -1,4 +1,4 @@
-import { pgTable, text, integer, real, boolean, primaryKey, timestamp, jsonb, uuid } from 'drizzle-orm/pg-core';
+import { pgTable, text, integer, real, boolean, primaryKey, timestamp, jsonb, uuid, bigint } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
 
 export const patients = pgTable('patients', {
@@ -85,7 +85,7 @@ export const measurements = pgTable('measurements', {
     points: text('points'),
     result: text('result'),
     metadata: text('metadata'),
-    timestamp: integer('timestamp'),
+    timestamp: bigint('timestamp', { mode: 'number' }),
 });
 
 export const implants = pgTable('implants', {
@@ -96,7 +96,7 @@ export const implants = pgTable('implants', {
     position: text('position'),
     angle: real('angle'),
     properties: text('properties'),
-    timestamp: integer('timestamp'),
+    timestamp: bigint('timestamp', { mode: 'number' }),
 });
 
 export const reports = pgTable('reports', {
