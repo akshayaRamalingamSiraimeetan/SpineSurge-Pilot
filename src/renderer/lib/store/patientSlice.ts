@@ -121,6 +121,7 @@ export const createPatientSlice: StateCreator<AppState, [], [], PatientSlice> = 
                 pedicleSimulations: c.pedicleSimulations || [],
                 annotations:        c.annotations        || [],
                 toolState:          c.toolState          || {},
+                reportConfig:       c.toolState?.reportConfig,
                 currentImage:       c.currentImage,
             }));
 
@@ -368,6 +369,7 @@ export const createPatientSlice: StateCreator<AppState, [], [], PatientSlice> = 
                         implants,
                         annotations:  [],
                         toolState:    {},
+                        reportConfig: undefined,
                         ...(currentImage ? { currentImage } : {}),
                     },
                 ],
@@ -413,7 +415,10 @@ export const createPatientSlice: StateCreator<AppState, [], [], PatientSlice> = 
                     state: {
                         measurements:       stateForServer.measurements,
                         annotations:        stateForServer.annotations,
-                        toolState:          stateForServer.toolState,
+                        toolState:          {
+                            ...stateForServer.toolState,
+                            ...(stateForServer.reportConfig ? { reportConfig: stateForServer.reportConfig } : {})
+                        },
                         implants:           stateForServer.implants           || [],
                         threeDImplants:     stateForServer.threeDImplants     || [],
                         pedicleSimulations: stateForServer.pedicleSimulations || [],

@@ -26,6 +26,9 @@ import { useAppStore } from '@/lib/store/index';
 import { Button } from '@/components/ui/button';
 import { useLocation } from 'react-router-dom';
 import { cn } from '@/lib/utils';
+import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea/dnd';
+import { GripVertical, Eye, EyeOff, LayoutTemplate } from 'lucide-react';
+import { getDefaultReportConfig } from '../report/defaultConfig';
 
 /* ── Planning sub-tab ──────────────────────────────────────── */
 type PlanningTab = 'target' | 'simulation';
@@ -1117,9 +1120,127 @@ const NormalLeftSidebarContent = () => {
   );
 };
 
+
+/* ── Report LeftSidebar ─────────────────────────────────────── */
+const ReportLeftSidebar = () => {
+  const { activeContextId, contextStates, updateContextState } = useAppStore();
+  
+  const activeState = contextStates.find((s) => s.contextId === activeContextId);
+  const reportConfig = activeState?.reportConfig;
+
+  if (!reportConfig) return null;
+
+  const handleDragEnd = (result: DropResult) => {
+    if (!result.destination || !activeContextId) return;
+
+    const items = Array.from(reportConfig.sections);
+    const [reorderedItem] = items.splice(result.source.index, 1);
+    items.splice(result.destination.index, 0, reorderedItem);
+
+    const updatedItems = items.map((item, index) => ({
+      ...item,
+      order: index
+    }));
+
+    updateContextState(activeContextId, {
+      reportConfig: {
+        ...reportConfig,
+        sections: updatedItems
+      }
+    });
+  };
+
+  const toggleSection = (sectionId: string) => {
+    if (!activeContextId) return;
+    const updatedSections = reportConfig.sections.map(s => 
+      s.id === sectionId ? { ...s, enabled: !s.enabled } : s
+    );
+    updateContextState(activeContextId, {
+      reportConfig: {
+        ...reportConfig,
+        sections: updatedSections
+      }
+    });
+  };
+
+  const sortedSections = [...reportConfig.sections].sort((a, b) => a.order - b.order);
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+      {/* Header */}
+      <div style={{ padding: '20px 20px 16px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <div style={{ width: 32, height: 32, borderRadius: 8, background: 'linear-gradient(135deg, var(--val-good) 0%, #10b981 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff' }}>
+            <LayoutTemplate size={18} />
+          </div>
+          <span style={{ fontSize: '15px', fontWeight: 600, color: 'var(--text-1)' }}>
+            Report Sections
+          </span>
+        </div>
+      </div>
+      
+      <ScrollArea style={{ flex: 1 }}>
+        <div style={{ padding: '0 16px 20px' }}>
+          <DragDropContext onDragEnd={handleDragEnd}>
+            <Droppable droppableId="report-sections-sidebar">
+              {(provided) => (
+                <div 
+                  {...provided.droppableProps}
+                  ref={provided.innerRef}
+                  className="space-y-2"
+                >
+                  {sortedSections.map((section, index) => (
+                    <Draggable key={section.id} draggableId={section.id} index={index}>
+                      {(provided, snapshot) => (
+                        <div
+                          ref={provided.innerRef}
+                          {...provided.draggableProps}
+                          className={cn(
+                            "flex items-center gap-3 p-3 rounded-lg border transition-all",
+                            snapshot.isDragging ? "shadow-lg bg-accent/50 border-blue-500 z-50" : "bg-card border-border",
+                            !section.enabled && "opacity-50"
+                          )}
+                        >
+                          <div 
+                            {...provided.dragHandleProps}
+                            className="cursor-grab active:cursor-grabbing text-muted-foreground hover:text-foreground"
+                          >
+                            <GripVertical size={16} />
+                          </div>
+                          
+                          <span className="flex-1 text-sm font-medium leading-none">
+                            {section.title}
+                          </span>
+                          
+                          <button 
+                            onClick={() => toggleSection(section.id)}
+                            className={cn(
+                              "p-1.5 rounded-md transition-colors",
+                              section.enabled ? "text-blue-500 hover:bg-blue-500/10" : "text-muted-foreground hover:bg-muted"
+                            )}
+                          >
+                            {section.enabled ? <Eye size={16} /> : <EyeOff size={16} />}
+                          </button>
+                        </div>
+                      )}
+                    </Draggable>
+                  ))}
+                  {provided.placeholder}
+                </div>
+              )}
+            </Droppable>
+          </DragDropContext>
+        </div>
+      </ScrollArea>
+    </div>
+  );
+};
+
 /* ── Main LeftSidebar ────────────────────────────────────────── */
 const LeftSidebar = () => {
   const { isDicomMode, isLeftSidebarOpen, toggleLeftSidebar } = useAppStore();
+  const location = useLocation();
+  const isReportTab = new URLSearchParams(location.search).get('tab') === 'report';
 
   return (
     <div
@@ -1165,7 +1286,7 @@ const LeftSidebar = () => {
           </div>
 
           <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', height: '100%', width: '100%' }}>
-            {isDicomMode ? <DicomLeftSidebar /> : <NormalLeftSidebarContent />}
+            {isReportTab ? <ReportLeftSidebar /> : isDicomMode ? <DicomLeftSidebar /> : <NormalLeftSidebarContent />}
           </div>
         </>
       )}

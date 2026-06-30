@@ -58,6 +58,8 @@ import { ReportDialog } from "./ReportDialog";
 import { ShareDialog } from "./ShareDialog";
 import { useAppStore, getStudyDisplayName } from "@/lib/store/index";
 import { cn } from "@/lib/utils";
+import { generateReportPDF } from "@/lib/pdf/generateReportPDF";
+import { Eye } from "lucide-react";
 
 /* ── Workspace mode tabs ─────────────────────────────────────── */
 type WsTab = 'assessment' | 'planning' | 'compare' | 'report';
@@ -165,7 +167,6 @@ const TopMenuBar = () => {
             const searchParams = new URLSearchParams(location.search);
             searchParams.set('tab', key);
             navigate(`/workspace?${searchParams.toString()}`);
-            if (key === 'report') { setReportOpen(true); setActiveDialog('report'); }
         }
     };
 
@@ -429,11 +430,48 @@ const TopMenuBar = () => {
                     </Button>
                 )}
 
-                {/* Export */}
-                <Button variant="ghost" size="icon" className={cn(iconBtn)} title="Export Report"
-                    onClick={() => { setReportOpen(true); setActiveDialog('report'); }}>
-                    <Download className="h-3.5 w-3.5" />
-                </Button>
+                {/* PDF Actions (Report Tab Only) */}
+                {wsTab === 'report' ? (
+                    <div className="flex items-center gap-2 mr-2">
+                        <Button 
+                            variant="secondary" 
+                            size="sm" 
+                            className="h-8 text-xs bg-white/10 hover:bg-white/20 border-white/5"
+                            onClick={async () => {
+                                try {
+                                    const url = await generateReportPDF({ previewOnly: true });
+                                    if (url) window.open(url, '_blank');
+                                } catch (e: any) {
+                                    alert(e.message || "Failed to preview PDF");
+                                }
+                            }}
+                        >
+                            <Eye className="w-3.5 h-3.5 mr-1.5" />
+                            Preview PDF
+                        </Button>
+                        <Button 
+                            size="sm" 
+                            className="h-8 text-xs text-white shadow-sm hover:brightness-110 transition-all border-none"
+                            style={{ backgroundColor: '#FF453A' }}
+                            onClick={async () => {
+                                try {
+                                    await generateReportPDF();
+                                } catch (e: any) {
+                                    alert(e.message || "Failed to export PDF");
+                                }
+                            }}
+                        >
+                            <Download className="w-3.5 h-3.5 mr-1.5" />
+                            Export PDF
+                        </Button>
+                    </div>
+                ) : (
+                    /* Legacy Export */
+                    <Button variant="ghost" size="icon" className={cn(iconBtn)} title="Export Report"
+                        onClick={() => handleWsTab('report')}>
+                        <FileText className="h-3.5 w-3.5" />
+                    </Button>
+                )}
 
                 {/* Cases (non-workspace only) */}
                 {!isWorkspaceRoute && (

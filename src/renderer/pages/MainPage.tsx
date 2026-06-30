@@ -5,6 +5,8 @@ import { ImportDialog } from "@/features/import-export/ImportDialog";
 import { useAppStore } from "@/lib/store/index";
 import CanvasWorkspace from "@/features/canvas/CanvasWorkspace";
 import { DICOMViewer } from "@/features/dicom/DICOMViewer";
+import ReportBuilderWorkspace from "@/features/report/ReportBuilderWorkspace";
+import { cn } from "@/lib/utils";
 
 import { useEffect, useMemo } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
@@ -174,6 +176,7 @@ const MainPage = () => {
 
     // ── Render Decision ──────────────────────────────────────────────────────
     const hasActiveContent = !!currentImage || !!activeContextId || isDicomMode;
+    const isReportTab = new URLSearchParams(location.search).get('tab') === 'report';
     const renderBranch = isDicomMode ? 'DICOMViewer' : hasActiveContent ? 'CanvasWorkspace' : 'EmptyState';
 
     // ── [TRACE] Single targeted log — the ONLY place that decides viewer ─────
@@ -197,7 +200,16 @@ const MainPage = () => {
             {isDicomMode ? (
                 <DICOMViewer fileList={dicomSeries} />
             ) : hasActiveContent ? (
-                <CanvasWorkspace />
+                <>
+                    <div className={cn("w-full h-full transition-opacity", isReportTab ? "opacity-0 absolute inset-0 pointer-events-none z-[-1]" : "")}>
+                        <CanvasWorkspace />
+                    </div>
+                    {isReportTab && (
+                        <div className="w-full h-full">
+                            <ReportBuilderWorkspace />
+                        </div>
+                    )}
+                </>
             ) : (
                 <div className="text-center space-y-4 bg-background/5 p-10 rounded-xl border border-white/10 backdrop-blur-sm">
                     <div className="h-24 w-24 bg-muted/20 rounded-full flex items-center justify-center mx-auto ring-4 ring-muted/10">

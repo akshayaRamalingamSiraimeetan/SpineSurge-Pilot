@@ -51,6 +51,24 @@ export interface Context {
     lastModified: string;
 }
 
+export interface ReportSectionConfig {
+    id: string;
+    type: 'patient_summary' | 'alignment_summary' | 'measurement_table' | 'compare_table' | 'surgical_plan' | 'osteotomies' | 'instrumentation' | 'images' | 'notes';
+    enabled: boolean;
+    order: number;
+    title: string;
+    description?: string;
+    // Section specific settings
+    includedCategories?: string[]; // e.g., 'Sagittal Alignment', 'Coronal Alignment'
+    decimalPlaces?: number;
+    units?: 'Mixed (° / mm)' | 'Degrees (°)' | 'Millimeters (mm)';
+}
+
+export interface ReportConfig {
+    sections: ReportSectionConfig[];
+    compareStudyId?: string; // which study to compare against
+}
+
 export interface ContextState {
     contextId: string;
     measurements: Measurement[];
@@ -60,6 +78,7 @@ export interface ContextState {
     annotations: any[];
     toolState: any;
     currentImage?: string;
+    reportConfig?: ReportConfig;
 }
 
 export interface Visit {

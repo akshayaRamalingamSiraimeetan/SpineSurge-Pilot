@@ -53,6 +53,7 @@ import {
     calculateOpenOsteotomyPrimitives,
     calculateResectionPrimitives,
 } from "@/features/measurements/planning/PlanningTools";
+import { useLocation } from 'react-router-dom';
 
 /* ── Constants ────────────────────────────────────────────────── */
 /**
@@ -1123,6 +1124,21 @@ function DicomCurrentPlan() {
     );
 }
 
+/* ── ReportRightSidebar Component ───────────────────────────── */
+const ReportRightSidebar = () => {
+    return (
+        <div style={{ padding: '16px 0', color: 'var(--text-2)' }}>
+            <h3 style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-1)', marginBottom: 12 }}>Section Properties</h3>
+            <p style={{ fontSize: 12, lineHeight: 1.5, opacity: 0.8 }}>
+                Select a section from the Left Sidebar to configure its properties here.
+            </p>
+            <div style={{ marginTop: 24, padding: 16, background: 'var(--surface-2)', borderRadius: 8, border: '1px dashed var(--border)' }}>
+                <p style={{ fontSize: 12, textAlign: 'center', opacity: 0.6 }}>No section selected</p>
+            </div>
+        </div>
+    );
+};
+
 /* ── Main RightSidebar component ────────────────────────────── */
 const RightSidebar = () => {
     const { resolvedTheme } = useTheme();
@@ -1161,6 +1177,9 @@ const RightSidebar = () => {
         setSelectedDicomImplant,
         setDicom3DMode,
     } = useAppStore();
+
+    const location = useLocation();
+    const isReportTab = new URLSearchParams(location.search).get('tab') === 'report';
 
     const isRightSidebarOpen = storeIsRightSidebarOpen;
 
@@ -1266,16 +1285,10 @@ const RightSidebar = () => {
         };
         document.addEventListener('mousemove', onMove);
         document.addEventListener('mouseup', onUp);
-        return () => { document.removeEventListener('mousemove', onMove); document.addEventListener('mouseup', onUp); };
+        return () => { document.removeEventListener('mousemove', onMove); document.removeEventListener('mouseup', onUp); };
     }, []);
 
-    console.log("LOG 3 (Left Comparison measurements):", comparison?.left?.measurements);
-    console.log("LOG 4 (Right Comparison measurements):", comparison?.right?.measurements);
-    console.log("LOG 5 (Selected measurements stream):", measurements);
-
     const filteredMeasurements = combinedItems;
-    console.log("LOG 6 (filteredMeasurements in RightSidebar):", filteredMeasurements);
-
     const selectedCount = combinedItems.filter((m: any) => m.selected && !m.isImplant).length;
 
     // Check for missing patient details to show banner
@@ -1411,8 +1424,12 @@ const RightSidebar = () => {
                                 </div>
                             )}
 
-                            {/* Case Summary */}
-                            <CaseSummary isOpen={caseSummaryOpen} onOpenChange={setCaseSummaryOpen} />
+                            {isReportTab ? (
+                                <ReportRightSidebar />
+                            ) : (
+                                <>
+                                    {/* Case Summary */}
+                                    <CaseSummary isOpen={caseSummaryOpen} onOpenChange={setCaseSummaryOpen} />
 
                             {/* Measurement Comparison (only visible in compare mode) */}
                             {isComparisonMode && comparison?.left && comparison?.right && (
@@ -1518,6 +1535,8 @@ const RightSidebar = () => {
                                     </CollapseSection>
                                 </>
                             )}
+                        </>
+                    )}
 
                     {/* Spacer for fixed footer */}
                     <div style={{ height: 40 }} />
