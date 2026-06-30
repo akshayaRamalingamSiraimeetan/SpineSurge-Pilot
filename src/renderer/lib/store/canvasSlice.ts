@@ -52,6 +52,7 @@ export interface CanvasSlice {
     setInspectionMode: (mode: InspectionMode | null) => void;
 
     loadImage: (imageUrl: string) => void;
+    setCurrentImage: (imageUrl: string | null) => void;
     clearImage: () => void;
     setActiveTool: (toolId: string | null) => void;
     setSelection: (selection: { type: 'point' | 'label' | 'curvatureHandle' | 'implant' | 'implant-point'; measurementId: string; pointIndex?: number } | null) => void;
@@ -156,6 +157,7 @@ export const createCanvasSlice: StateCreator<AppState, [], [], CanvasSlice> = (s
             canvas: { ...state.canvas, zoom: 1, pan: { x: 0, y: 0 }, rotation: 0, brightness: 100, contrast: 100, sharpness: 0, flipX: false }
         };
     }),
+    setCurrentImage: (imageUrl: string | null) => set({ currentImage: imageUrl }),
     clearImage: () => set({ currentImage: null, isDicomMode: false, dicomSeries: [], inspectionMode: null }),
 
     setActiveTool: (toolId) => set({ activeTool: toolId }),

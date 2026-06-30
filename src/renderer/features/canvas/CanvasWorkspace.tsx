@@ -129,6 +129,12 @@ const CanvasWorkspace = ({ side }: CanvasWorkspaceProps) => {
         return null;
     }, [isComparisonMode, side, store.comparison, store.currentImage, activeContextState, activeContext, store.patients]);
 
+    useEffect(() => {
+        if (!isComparisonMode && currentImage !== store.currentImage) {
+            store.setCurrentImage(currentImage);
+        }
+    }, [currentImage, isComparisonMode, store.currentImage, store]);
+
     const storeMeasurements = useMemo(() => {
         if (isComparisonMode && side && store.comparison && store.comparison[side]) {
             return store.comparison[side].measurements;
