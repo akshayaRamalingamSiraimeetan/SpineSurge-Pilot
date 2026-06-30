@@ -22,13 +22,26 @@ import { cn } from "@/lib/utils";
 interface ImagingImportDialogProps {
     patientId: string;
     visitId?: string;
+    open?: boolean;
+    onOpenChange?: (open: boolean) => void;
 }
 
-export function ImagingImportDialog({ patientId, visitId }: ImagingImportDialogProps) {
+export function ImagingImportDialog({ patientId, visitId, open: controlledOpen, onOpenChange: controlledOnOpenChange }: ImagingImportDialogProps) {
     const addStudy = useAppStore((state: any) => state.addStudy);
     const addScan = useAppStore((state: any) => state.addScan);
     const setActiveDialog = useAppStore((state: any) => state.setActiveDialog);
-    const [open, setOpen] = useState(false);
+    const [internalOpen, setInternalOpen] = useState(false);
+    
+    const isControlled = controlledOpen !== undefined;
+    const open = isControlled ? controlledOpen : internalOpen;
+    const setOpen = (val: boolean) => {
+        if (isControlled && controlledOnOpenChange) {
+            controlledOnOpenChange(val);
+        } else {
+            setInternalOpen(val);
+        }
+        setActiveDialog(val ? 'imaging-import' : null);
+    };
     const fileInputRef = useRef<HTMLInputElement>(null);
 
     // Form State
@@ -112,15 +125,17 @@ export function ImagingImportDialog({ patientId, visitId }: ImagingImportDialogP
     };
 
     return (
-        <Dialog open={open} onOpenChange={(val) => { setOpen(val); setActiveDialog(val ? 'imaging-import' : null); }}>
-            <DialogTrigger asChild>
-                <Button size={visitId ? "sm" : "default"} className={cn(
-                    "font-bold transition-all active:scale-95 shadow-lg rounded-xl",
-                    visitId ? "h-6 text-[10px] py-0 px-2 bg-emerald-600/10 text-emerald-600 border border-emerald-600/20 hover:bg-emerald-600/20" : "bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-900/10"
-                )}>
-                    <Database className={cn(visitId ? "h-3 w-3" : "mr-2 h-4 w-4")} /> {visitId ? "Add Imaging" : "Import Imaging"}
-                </Button>
-            </DialogTrigger>
+        <Dialog open={open} onOpenChange={setOpen}>
+            {!isControlled && (
+                <DialogTrigger asChild>
+                    <Button size={visitId ? "sm" : "default"} className={cn(
+                        "font-bold transition-all active:scale-95 shadow-lg rounded-xl",
+                        visitId ? "h-6 text-[10px] py-0 px-2 bg-emerald-600/10 text-emerald-600 border border-emerald-600/20 hover:bg-emerald-600/20" : "bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-900/10"
+                    )}>
+                        <Database className={cn(visitId ? "h-3 w-3" : "mr-2 h-4 w-4")} /> {visitId ? "Add Imaging" : "Import Imaging"}
+                    </Button>
+                </DialogTrigger>
+            )}
             <DialogContent className="sm:max-w-[500px] max-h-[90vh] overflow-y-auto">
                 <DialogHeader className="border-b border-border pb-4 mb-4">
                     <DialogTitle className="text-xl font-bold tracking-tight">Import Imaging / Scans</DialogTitle>

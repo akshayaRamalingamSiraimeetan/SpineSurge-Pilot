@@ -23,7 +23,6 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { useAppStore, Study, getStudyDisplayName, STUDY_STATUSES, StudyStatus } from "@/lib/store/index";
 import { useState, useMemo, useEffect } from "react";
 import { NewPatientDialog } from "@/features/patients/NewPatientDialog";
-import { NewVisitDialog } from "@/features/patients/NewVisitDialog";
 import {
     Dialog,
     DialogContent,
@@ -214,11 +213,13 @@ const PatientCasesPage = () => {
         addContext,
         setActiveDialog,
         generateShareLink,
+        addVisit,
+        addStudy,
     } = useAppStore();
 
     const [searchQuery, setSearchQuery] = useState('');
     const [showArchived, setShowArchived] = useState(false);
-    const [expandedVisitIds, setExpandedVisitIds] = useState<Set<string>>(new Set());
+    const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
     const [studyActionDialogOpen, setStudyActionDialogOpen] = useState(false);
     const [selectedStudyForAction, setSelectedStudyForAction] = useState<Study | null>(null);
     const [timelineVisitId, setTimelineVisitId] = useState<string | undefined>(undefined);
@@ -240,22 +241,67 @@ const PatientCasesPage = () => {
             .sort((a, b) => (a.name || '').localeCompare(b.name || ''));
     }, [patients, showArchived, searchQuery]);
 
-    const sortedVisits = useMemo(() => {
-        if (!activePatient?.visits) return [];
-        return [...activePatient.visits].sort((a, b) => {
-            const da = parseVisitDate(a.date)?.getTime() ?? 0;
-            const db = parseVisitDate(b.date)?.getTime() ?? 0;
+    const groupedTimeline = useMemo(() => {
+        if (!activePatient) return [];
+        
+        const groups: Record<string, { date: string, visits: any[], studies: Study[] }> = {};
+        
+        // 1. Group visits
+        if (activePatient.visits) {
+            activePatient.visits.forEach(v => {
+                const parsed = parseVisitDate(v.date);
+                const groupKey = parsed ? format(parsed, 'MMM d, yyyy') : (v.date || 'Unknown Date');
+                
+                if (!groups[groupKey]) groups[groupKey] = { date: groupKey, visits: [], studies: [] };
+                groups[groupKey].visits.push(v);
+                if (v.studies) {
+                    v.studies.forEach(s => {
+                        if (!groups[groupKey].studies.find(ext => ext.id === s.id)) {
+                            groups[groupKey].studies.push(s);
+                        }
+                    });
+                }
+            });
+        }
+        
+        // 2. Group top-level studies
+        if (activePatient.studies) {
+            activePatient.studies.forEach(study => {
+                let dateStr = study.acquisitionDate;
+                if (!dateStr && study.visitId) {
+                    const v = activePatient.visits?.find(v => v.id === study.visitId);
+                    if (v) dateStr = v.date;
+                }
+                if (!dateStr) dateStr = 'Unknown Date';
+                
+                const parsed = parseVisitDate(dateStr);
+                const groupKey = parsed ? format(parsed, 'MMM d, yyyy') : dateStr;
+                
+                if (!groups[groupKey]) groups[groupKey] = { date: groupKey, visits: [], studies: [] };
+                if (!groups[groupKey].studies.find(ext => ext.id === study.id)) {
+                    groups[groupKey].studies.push(study);
+                }
+            });
+        }
+        
+        const sortedKeys = Object.keys(groups).sort((a, b) => {
+            if (a === 'Unknown Date') return 1;
+            if (b === 'Unknown Date') return -1;
+            const da = parseVisitDate(a)?.getTime() ?? 0;
+            const db = parseVisitDate(b)?.getTime() ?? 0;
             return db - da;
         });
+        
+        return sortedKeys.map(date => groups[date]);
     }, [activePatient]);
 
     useEffect(() => {
-        if (sortedVisits.length > 0) {
-            setExpandedVisitIds(new Set([sortedVisits[0].id]));
+        if (groupedTimeline.length > 0) {
+            setExpandedGroups(new Set([groupedTimeline[0].date]));
         } else {
-            setExpandedVisitIds(new Set());
+            setExpandedGroups(new Set());
         }
-    }, [activePatientId, sortedVisits]);
+    }, [activePatientId, groupedTimeline]);
 
     const firstSeenDate = useMemo(() => {
         if (!activePatient?.visits?.length) return activePatient?.lastVisit || null;
@@ -268,16 +314,81 @@ const PatientCasesPage = () => {
 
     const primaryDiagnosis = useMemo(() => {
         if (!activePatient?.visits?.length) return null;
-        return sortedVisits[0]?.diagnosis || activePatient.visits[0]?.diagnosis || null;
-    }, [activePatient, sortedVisits]);
+        return activePatient.visits[0]?.diagnosis || null;
+    }, [activePatient]);
 
-    const toggleVisit = (visitId: string) => {
-        setExpandedVisitIds(prev => {
+    const toggleGroup = (date: string) => {
+        setExpandedGroups(prev => {
             const next = new Set(prev);
-            if (next.has(visitId)) next.delete(visitId);
-            else next.add(visitId);
+            if (next.has(date)) next.delete(date);
+            else next.add(date);
             return next;
         });
+    };
+
+    const handleAddStudy = async () => {
+        if (!activePatient) return;
+        
+        const todayStr = format(new Date(), 'MMM dd, yyyy');
+        
+        // Find existing visit for today
+        let targetVisit = activePatient.visits?.find(v => {
+            const parsed = parseVisitDate(v.date);
+            return parsed && format(parsed, 'MMM dd, yyyy') === todayStr;
+        });
+
+        let targetVisitId = targetVisit?.id;
+
+        if (!targetVisitId) {
+            // Create a new visit automatically if none exists for today
+            const newVisitId = `visit-${Date.now()}`;
+            const newVisit = {
+                id: newVisitId,
+                visitNumber: `#${String((activePatient.visits?.length || 0) + 1).padStart(4, '0')}`,
+                date: todayStr,
+                time: format(new Date(), 'HH:mm'),
+                diagnosis: '',
+                comments: '',
+                height: '',
+                weight: '',
+                consultants: '',
+                scanCount: 0,
+                scans: [],
+                studies: [],
+            };
+            await addVisit(activePatient.id, newVisit);
+            targetVisitId = newVisitId;
+        }
+        
+        // Create an empty study
+        const studyId = `std-${Date.now()}`;
+        const newStudy: Omit<Study, 'scans'> = {
+            id: studyId,
+            patientId: activePatient.id,
+            visitId: targetVisitId,
+            modality: 'X-Ray',
+            source: 'Upload',
+            acquisitionDate: todayStr
+        };
+        await addStudy(newStudy);
+
+        // Create context for this new study
+        if (useAppStore.getState().isDicomMode) {
+            destroyCornerstone();
+        }
+        const newContext = {
+            id: `ctx-${Date.now()}`,
+            patientId: activePatient.id,
+            visitId: targetVisitId,
+            studyIds: [studyId],
+            mode: 'plan' as const,
+            name: `New Study - ${format(new Date(), 'MMM dd')}`,
+            lastModified: format(new Date(), 'yyyy-MM-dd HH:mm'),
+        };
+        await addContext(newContext);
+        
+        // Navigate to workspace
+        navigate('/workspace');
     };
 
     const handleArchiveToggle = async (patientId: string, currentArchived: boolean) => {
@@ -464,30 +575,30 @@ const PatientCasesPage = () => {
                         </div>
 
                         <div className="flex-1 overflow-y-auto px-8 py-6">
-                            <div className="relative ml-4 border-l-2 border-[#FF453A]/30 pl-8">
-                                {sortedVisits.length === 0 ? (
+                            <div className="relative ml-4 border-l-2 border-[#FF453A]/30 pl-8 pb-4">
+                                {groupedTimeline.length === 0 ? (
                                     <div className="rounded-xl border border-dashed border-[#242427] bg-[#141416]/50 py-12 text-center text-sm text-[#6B7280]">
-                                        No visits recorded. Add a visit to build the timeline.
-                                        <div className="mt-4 flex justify-center gap-2">
-                                            <NewVisitDialog patientId={activePatient.id} />
-                                        </div>
+                                        No studies recorded. Add a new study to build the timeline.
                                     </div>
                                 ) : (
-                                    sortedVisits.map((visit) => {
-                                        const expanded = expandedVisitIds.has(visit.id);
-                                        const studies = visit.studies || [];
+                                    groupedTimeline.map((group) => {
+                                        const expanded = expandedGroups.has(group.date);
+                                        const studies = group.studies;
+                                        const groupTitle = group.visits[0]?.diagnosis || group.visits[0]?.visitNumber || null;
                                         return (
-                                            <div key={visit.id} className="relative mb-6">
+                                            <div key={group.date} className="relative mb-6">
                                                 <span className="absolute -left-[41px] top-1 h-3 w-3 rounded-full border-2 border-[#FF453A] bg-[#0A0A0B]" />
                                                 <button
                                                     type="button"
-                                                    onClick={() => toggleVisit(visit.id)}
+                                                    onClick={() => toggleGroup(group.date)}
                                                     className="mb-3 flex w-full items-center justify-between text-left"
                                                 >
                                                     <div>
-                                                        <div className="text-xs font-medium text-[#FF453A]">{visit.date || '—'}</div>
                                                         <div className="text-sm font-semibold text-[#F5F5F7]">
-                                                            {visit.diagnosis || visit.visitNumber || 'Visit'}
+                                                            {group.date} {groupTitle ? `· ${groupTitle}` : ''}
+                                                        </div>
+                                                        <div className="text-xs font-medium text-[#FF453A]">
+                                                            {studies.length} stud{studies.length === 1 ? 'y' : 'ies'}
                                                         </div>
                                                     </div>
                                                     {expanded ? (
@@ -499,19 +610,16 @@ const PatientCasesPage = () => {
 
                                                 {expanded && (
                                                     <div className="space-y-3">
-                                                        <div className="text-xs text-[#6B7280]">
-                                                            {visit.date || '—'} · {visit.diagnosis || 'Visit'} · {studies.length} stud{studies.length === 1 ? 'y' : 'ies'}
-                                                        </div>
                                                         {studies.length === 0 ? (
                                                             <div className="rounded-xl border border-dashed border-[#242427] py-6 text-center text-xs text-[#6B7280]">
-                                                                No studies in this visit.
+                                                                No studies in this group.
                                                             </div>
                                                         ) : (
                                                             studies.map(study => (
                                                                 <StudyCard
                                                                     key={study.id}
                                                                     study={study}
-                                                                    visitId={visit.id}
+                                                                    visitId={study.visitId || ''}
                                                                     patientId={activePatient.id}
                                                                     onOpenWorkspace={handleStudyClick}
                                                                 />
@@ -524,38 +632,27 @@ const PatientCasesPage = () => {
                                     })
                                 )}
 
-                                {activePatient && sortedVisits.length > 0 && (
-                                    <div className="relative mt-2">
+                                {activePatient && (
+                                    <div className="relative mt-6">
                                         <span className="absolute -left-[41px] top-4 h-3 w-3 rounded-full border-2 border-[#242427] bg-[#0A0A0B]" />
                                         <div className="rounded-xl border border-dashed border-[#FF453A]/30 bg-[#FF453A]/5 p-4">
                                             <div className="mb-3 flex flex-wrap items-center gap-2">
-                                                <NewVisitDialog patientId={activePatient.id} />
-                                                <ImagingImportDialog
-                                                    patientId={activePatient.id}
-                                                    visitId={timelineVisitId ?? sortedVisits[0]?.id}
-                                                />
+                                                <Button
+                                                    onClick={handleAddStudy}
+                                                    className="h-8 gap-2 border border-[#FF453A]/30 bg-[#FF453A]/10 text-xs font-semibold text-[#FF453A] hover:bg-[#FF453A]/20"
+                                                >
+                                                    <Plus className="h-4 w-4" /> Add New Study
+                                                </Button>
                                             </div>
                                             <p className="text-xs text-[#6B7280]">
-                                                Import imaging into the selected patient timeline visit.
+                                                Add new studies and imaging to this patient's timeline.
                                             </p>
-                                            {sortedVisits.length > 1 && (
-                                                <select
-                                                    value={timelineVisitId ?? sortedVisits[0]?.id ?? ''}
-                                                    onChange={(e) => setTimelineVisitId(e.target.value)}
-                                                    className="mt-2 h-8 rounded-lg border border-[#242427] bg-[#141416] px-2 text-xs text-[#F5F5F7]"
-                                                >
-                                                    {sortedVisits.map(v => (
-                                                        <option key={v.id} value={v.id}>
-                                                            {v.date} — {v.diagnosis || v.visitNumber}
-                                                        </option>
-                                                    ))}
-                                                </select>
-                                            )}
                                         </div>
                                     </div>
                                 )}
                             </div>
                         </div>
+
                     </>
                 ) : (
                     <div className="flex flex-1 flex-col items-center justify-center text-[#6B7280]">
