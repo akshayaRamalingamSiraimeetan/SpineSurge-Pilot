@@ -4,6 +4,7 @@ import { ShieldAlert, Copy, X, FileText } from "lucide-react";
 import TopMenuBar from "@/features/navigation/TopMenuBar";
 import LeftSidebar from "@/features/navigation/LeftSidebar";
 import RightSidebar from "@/features/navigation/RightSidebar";
+import DashboardSidebar from "@/components/dashboard/DashboardSidebar";
 import BottomToolbar from "@/features/canvas/BottomToolbar";
 import { WorkspaceShell } from "@/features/navigation/WorkspaceShell";
 import { useAppStore } from "@/lib/store/index";
@@ -129,6 +130,7 @@ const MainLayout: React.FC = () => {
             <TopMenuBar />
             <InspectionBanner />
             <div className={`flex flex-1 ${bannerOffset} h-screen overflow-hidden`}>
+                <DashboardSidebar collapsible={hasImageForToolbar} />
                 <LeftSidebar />
                 <main className="flex-1 relative overflow-hidden flex flex-col" style={{ background: 'var(--bg-2)' }}>
                     {/* Grid Overlay */}
