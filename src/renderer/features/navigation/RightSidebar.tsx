@@ -570,7 +570,7 @@ const TOOL_GROUP_LABELS: Record<string, string> = {
     'po': 'Coronal Deformity',
     // Alignment
     'cobb': 'Alignment',
-    'pelvis': 'Pelvic Parameters',
+    'pelvis': 'Alignment',
     'pi_ll': 'Alignment',
     'sva': 'Alignment',
     'tk': 'Alignment',
@@ -594,7 +594,7 @@ const TOOL_GROUP_LABELS: Record<string, string> = {
 /** Group a flat list by category label, returning ordered sections */
 function groupMeasurementsByCategory(items: any[]): { label: string; items: any[] }[] {
     const groups = new Map<string, any[]>();
-    const ORDER = ['Alignment', 'Pelvic Parameters', 'Sagittal Deformity', 'Coronal Deformity', 'Morphology', 'Pathology', 'Planning', 'Implants', 'Other'];
+    const ORDER = ['Alignment', 'Sagittal Deformity', 'Coronal Deformity', 'Morphology', 'Pathology', 'Planning', 'Implants', 'Other'];
     for (const m of items) {
         const label = TOOL_GROUP_LABELS[m.toolKey] ?? 'Other';
         if (!groups.has(label)) groups.set(label, []);
@@ -690,10 +690,15 @@ function CaseSummary({ isOpen, onOpenChange }: { isOpen: boolean; onOpenChange: 
         let currentContextId = activeContextId;
         
         if (!currentPatientId) {
+            // In DICOM mode the DICOM series is the active workspace — we only need a
+            // patient/visit record to attach metadata to it. Creating a ghost study/
+            // context would trigger the DICOM auto-detection effect in MainPage and
+            // incorrectly exit DICOM mode. So we stop after creating patient + visit.
+            const appState = useAppStore.getState();
+            const isDicomActive = appState.isDicomMode;
+
             const patientId = `PAT-${Date.now().toString().slice(-6)}`;
             const visitId = Date.now().toString();
-            const studyId = `std-${Date.now()}`;
-            const contextId = `ctx-${Date.now()}`;
 
             const newPatient: any = {
                 id: patientId,
@@ -723,53 +728,61 @@ function CaseSummary({ isOpen, onOpenChange }: { isOpen: boolean; onOpenChange: 
                 studies: []
             };
 
-            const newStudy = {
-                id: studyId,
-                patientId: patientId,
-                visitId: visitId,
-                modality: 'X-Ray',
-                source: 'Import',
-                acquisitionDate: format(new Date(), 'yyyy-MM-dd'),
-                scans: [] as any[],
-            };
-
-            const newContext = {
-                id: contextId,
-                patientId: patientId,
-                visitId: visitId,
-                studyIds: [studyId],
-                mode: 'view' as const,
-                name: `Study - ${format(new Date(), 'MMM dd, yyyy')}`,
-                lastModified: new Date().toISOString()
-            };
-
             await addPatient(newPatient);
             await addVisit(patientId, newVisit);
-            await addStudy(newStudy);
-            // Snapshot the current workspace image and measurements so they transfer
-            // to the new context — this prevents losing the workspace when the user
-            // fills in patient info for an image they already imported.
-            const preExistingImage = useAppStore.getState().currentImage;
-            const preExistingMeasurements = useAppStore.getState().measurements;
-            const preExistingImplants = useAppStore.getState().implants;
-            await addContext(newContext);
-            // Persist the workspace image/measurements to the new context so they
-            // survive any subsequent page reload or context refresh.
-            if (preExistingImage) {
-                await useAppStore.getState().updateContextState(contextId, {
-                    currentImage: preExistingImage,
-                    measurements: preExistingMeasurements,
-                    implants: preExistingImplants,
-                });
+
+            if (!isDicomActive) {
+                // Non-DICOM path: create a full study + context so the workspace can
+                // be associated with a patient record and persisted properly.
+                const studyId = `std-${Date.now()}`;
+                const contextId = `ctx-${Date.now()}`;
+
+                const newStudy = {
+                    id: studyId,
+                    patientId: patientId,
+                    visitId: visitId,
+                    modality: 'X-Ray',
+                    source: 'Import',
+                    acquisitionDate: format(new Date(), 'yyyy-MM-dd'),
+                    scans: [] as any[],
+                };
+
+                const newContext = {
+                    id: contextId,
+                    patientId: patientId,
+                    visitId: visitId,
+                    studyIds: [studyId],
+                    mode: 'view' as const,
+                    name: `Study - ${format(new Date(), 'MMM dd, yyyy')}`,
+                    lastModified: new Date().toISOString()
+                };
+
+                await addStudy(newStudy);
+                // Snapshot the current workspace image and measurements so they transfer
+                // to the new context — this prevents losing the workspace when the user
+                // fills in patient info for an image they already imported.
+                const preExistingImage = useAppStore.getState().currentImage;
+                const preExistingMeasurements = useAppStore.getState().measurements;
+                const preExistingImplants = useAppStore.getState().implants;
+                await addContext(newContext);
+                // Persist the workspace image/measurements to the new context so they
+                // survive any subsequent page reload or context refresh.
+                if (preExistingImage) {
+                    await useAppStore.getState().updateContextState(contextId, {
+                        currentImage: preExistingImage,
+                        measurements: preExistingMeasurements,
+                        implants: preExistingImplants,
+                    });
+                }
+                currentContextId = contextId;
             }
             // Do NOT call setActivePatient here — it fires an async server fetch that
             // races with the updateContextState write above and can overwrite the live
             // workspace state with stale server data. addContext already set
             // activeContextId and addPatient already set activePatientId; workspace
             // state (currentImage, measurements) remains intact from the snapshot above.
-            
+
             currentPatientId = patientId;
-            currentContextId = contextId;
         }
 
         if (field !== undefined) {

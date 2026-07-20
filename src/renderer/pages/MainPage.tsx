@@ -135,14 +135,18 @@ const MainPage = () => {
                             loadDicomURLs(urls);
                         }
                     } else {
+                        // Only exit DICOM mode when switching to a real non-DICOM study.
+                        // Never exit when the context points to a study with no scans —
+                        // that is a ghost patient-info context, not a study switch.
                         if (isDicomMode) {
                             exitDicomMode();
                         }
                     }
                 } else {
-                    if (isDicomMode) {
-                        exitDicomMode();
-                    }
+                    // study is undefined or has no scans — this is a ghost context created
+                    // by the patient info flow. Do NOT exit DICOM mode; the DICOM session
+                    // is still the active workspace.
+                    // (intentionally no-op)
                 }
             }
         }
