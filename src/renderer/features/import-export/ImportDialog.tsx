@@ -33,6 +33,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { format } from "date-fns"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { API_BASE } from "@/lib/api"
+import { dcmFileToDataUrl } from "@/features/dicom/dcmToDataUrl"
 
 type ImportStep =
     | 'MODE'
@@ -127,6 +128,26 @@ export function ImportDialog({ children, targetSide, resetOnOpen, navigateOnImpo
     const handleQuickFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
         const file = event.target.files?.[0]
         if (!file) return;
+
+        // Render .dcm files to a plain PNG data URL so they open in the
+        // normal image workspace — no DICOM mode, no series loading.
+        const isDicom = file.name.toLowerCase().endsWith('.dcm') || file.type === 'application/dicom';
+        if (isDicom) {
+            try {
+                const dataUrl = await dcmFileToDataUrl(file);
+                if (isComparisonMode && importSide) {
+                    setComparisonImage(importSide, dataUrl);
+                } else {
+                    loadImage(dataUrl);
+                }
+            } catch (err) {
+                console.error('Failed to render DICOM file as image:', err);
+                alert('Could not open this DICOM file. The file may be compressed or missing pixel data.');
+            }
+            handleClose();
+            goToWorkspace();
+            return;
+        }
 
         const loadQuickImage = (imageUrl: string) => {
             if (isComparisonMode && importSide) {
@@ -256,6 +277,26 @@ export function ImportDialog({ children, targetSide, resetOnOpen, navigateOnImpo
 
     const handleFinalImport = async () => {
         if (!selectedPatient || !selectedVisit || !selectedFile) return
+
+        // Render .dcm files to a plain PNG data URL so they open in the
+        // normal image workspace — no DICOM mode, no series loading.
+        const isDicom = selectedFile.name.toLowerCase().endsWith('.dcm') || selectedFile.type === 'application/dicom';
+        if (isDicom) {
+            try {
+                const dataUrl = await dcmFileToDataUrl(selectedFile);
+                if (isComparisonMode && importSide) {
+                    setComparisonImage(importSide, dataUrl);
+                } else {
+                    loadImage(dataUrl);
+                }
+            } catch (err) {
+                console.error('Failed to render DICOM file as image:', err);
+                alert('Could not open this DICOM file. The file may be compressed or missing pixel data.');
+            }
+            handleClose();
+            goToWorkspace();
+            return;
+        }
 
         const studyId = `std-${Date.now()}`;
         const scanId = `scan-${Date.now()}`;
@@ -647,7 +688,7 @@ export function ImportDialog({ children, targetSide, resetOnOpen, navigateOnImpo
                                 className="border-2 border-dashed border-[#242427] rounded-2xl p-10 flex flex-col items-center justify-center cursor-pointer hover:border-[#FF453A]/50 hover:bg-[#FF453A]/5 transition-all text-[#9CA3AF]/50 group"
                                 onClick={() => fileInputRef.current?.click()}
                             >
-                                <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={(e) => setSelectedFile(e.target.files?.[0] || null)} />
+                                <input type="file" ref={fileInputRef} className="hidden" accept="image/*,.dcm,application/dicom" onChange={(e) => setSelectedFile(e.target.files?.[0] || null)} />
                                 {selectedFile ? (
                                     <div className="flex flex-col items-center">
                                         <div className="bg-[rgba(255,69,58,0.12)] p-3 rounded-full mb-3">
