@@ -146,6 +146,8 @@ const BottomToolbar = () => {
         activeCanvasSide,
         setActiveCanvasSide,
         comparison,
+        isRightSidebarOpen,
+        rightSidebarWidth,
     } = store;
 
     const hasMainImage = !!store.currentImage;
@@ -182,12 +184,25 @@ const BottomToolbar = () => {
     const dragging = useRef(false);
     const dragOffset = useRef({ x: 0, y: 0 });
 
-    // Default position: right side, vertically centered
+    // Compute the right offset so the toolbar sits just left of the right sidebar.
+    // When the user hasn't dragged yet (top === null), we track sidebar changes live.
+    const sidebarOffset = isRightSidebarOpen ? rightSidebarWidth + 8 : 8;
+
+    // Default position: just left of right sidebar, vertically centered
     const [pos, setPos] = useState<{ right: number; top: number | null; bottom: number | null }>({
-        right: 8,
+        right: sidebarOffset,
         top: null,
         bottom: null,
     });
+
+    // When the sidebar opens/closes or is resized, nudge the default position
+    // but only if the user hasn't manually dragged the toolbar (top === null).
+    useEffect(() => {
+        setPos((prev) => {
+            if (prev.top !== null) return prev; // user has dragged — don't override
+            return { ...prev, right: sidebarOffset };
+        });
+    }, [sidebarOffset]);
 
     // Convert right/top/bottom to absolute left/top for drag math
     const getAbsolutePos = useCallback(() => {

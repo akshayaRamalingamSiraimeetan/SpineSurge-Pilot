@@ -1176,6 +1176,7 @@ const RightSidebar = () => {
         removeThreeDImplant,
         setSelectedDicomImplant,
         setDicom3DMode,
+        setRightSidebarWidth,
     } = useAppStore();
 
     const location = useLocation();
@@ -1267,10 +1268,15 @@ const RightSidebar = () => {
 
 
     // Resizable panel
-    const [panelWidth, setPanelWidth] = useState(320);
+    const [panelWidth, setPanelWidthState] = useState(320);
     const isResizing = useRef(false);
     const resizeStartX = useRef(0);
     const resizeStartWidth = useRef(0);
+
+    const setPanelWidth = useCallback((width: number) => {
+        setPanelWidthState(width);
+        setRightSidebarWidth(width);
+    }, [setRightSidebarWidth]);
 
     useEffect(() => {
         const onMove = (e: MouseEvent) => {

@@ -40,6 +40,7 @@ export interface CanvasSlice {
     undoTrigger: number;
     redoTrigger: number;
     isRightSidebarOpen: boolean;
+    rightSidebarWidth: number;
     isLeftSidebarOpen: boolean;
     isToolbarDocked: boolean;
     isWizardVisible: boolean;
@@ -72,6 +73,7 @@ export interface CanvasSlice {
     deleteImplant: (id: string) => void;
     toggleMeasurementSelection: (id: string, selected: boolean) => void;
     toggleRightSidebar: (isOpen?: boolean) => void;
+    setRightSidebarWidth: (width: number) => void;
     toggleLeftSidebar: (isOpen?: boolean) => void;
     toggleToolbarDock: () => void;
     setToolbarDocked: (docked: boolean) => void;
@@ -138,6 +140,7 @@ export const createCanvasSlice: StateCreator<AppState, [], [], CanvasSlice> = (s
     undoTrigger: 0,
     redoTrigger: 0,
     isRightSidebarOpen: true,
+    rightSidebarWidth: 320,
     isLeftSidebarOpen: true,
     isToolbarDocked: false,
     isWizardVisible: true,
@@ -362,6 +365,7 @@ export const createCanvasSlice: StateCreator<AppState, [], [], CanvasSlice> = (s
     toggleRightSidebar: (isOpen) => set((state) => ({
         isRightSidebarOpen: isOpen !== undefined ? isOpen : !state.isRightSidebarOpen
     })),
+    setRightSidebarWidth: (width) => set({ rightSidebarWidth: width }),
     toggleLeftSidebar: (isOpen) => set((state) => ({
         isLeftSidebarOpen: isOpen !== undefined ? isOpen : !state.isLeftSidebarOpen
     })),
