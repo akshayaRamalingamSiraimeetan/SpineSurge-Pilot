@@ -1,7 +1,6 @@
-import { Button } from "@/components/ui/button";
-import { X, Search, Upload, Image as ImageIcon, ChevronRight, FolderOpen } from "lucide-react";
+import { Search, Upload, Image as ImageIcon, ChevronRight, FolderOpen } from "lucide-react";
 import { useAppStore } from "@/lib/store/index";
-import { useNavigate, useLocation } from "react-router-dom";
+import { useLocation } from "react-router-dom";
 import CanvasWorkspace from "@/features/canvas/CanvasWorkspace";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ImportDialog } from "@/features/import-export/ImportDialog";
@@ -157,7 +156,7 @@ const PanePicker = ({ side, label }: PanePickerProps) => {
                             </button>
 
                             {/* Option 2: Import local image — reuses existing ImportDialog */}
-                            <ImportDialog targetSide={side}>
+                            <ImportDialog targetSide={side} hideCloseButton>
                                 <button className={cn(card, "w-full text-left hover:border-[#FF453A]/40 hover:shadow-lg transition-all group cursor-pointer")}>
                                     <div className="flex items-center gap-3">
                                         <div className={cn(
@@ -290,7 +289,6 @@ const PanePicker = ({ side, label }: PanePickerProps) => {
    ComparePage
 ───────────────────────────────────────────────────────────────────────────── */
 const ComparePage = () => {
-    const navigate = useNavigate();
     const location = useLocation();
     const {
         setComparisonMode,
@@ -344,24 +342,9 @@ const ComparePage = () => {
         setComparisonMode(true);
     }, [setComparisonMode]);
 
-    const handleClose = () => {
-        setComparisonMode(false);
-        navigate("/dashboard");
-    };
-
     return (
         <div id="comparison-container" className="flex flex-col h-full bg-background relative">
-            {/* Exit Button */}
-            <div className="absolute top-4 right-4 z-[100]">
-                <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-8 w-8 rounded-full bg-card/80 backdrop-blur-md border border-border/50 hover:bg-destructive hover:text-destructive-foreground hover:border-destructive text-muted-foreground transition-all shadow-lg"
-                    onClick={handleClose}
-                >
-                    <X className="h-4 w-4" />
-                </Button>
-            </div>
+
 
             {/* Split Canvas Area */}
             <div className="flex-1 flex overflow-hidden relative p-2 gap-2 mt-2">
@@ -371,17 +354,22 @@ const ComparePage = () => {
                     <div className="absolute top-2 left-2 z-20 flex items-center gap-1.5 px-2 py-1 rounded-lg bg-black/60 backdrop-blur-sm">
                         <span className="text-[10px] font-bold uppercase tracking-widest text-white/70">View A</span>
                         <span className="text-[9px] text-white/40">
-                            {workspaceImage ? "· Workspace" : "· Select image"}
+                            {workspaceImage ? "· Workspace" : "· No image loaded"}
                         </span>
                     </div>
                     <CanvasWorkspace side="left" />
-                    {/*
-                        When the workspace has NO image, show the picker so the
-                        user can choose any study/file as Image A.
-                        When the workspace DOES have an image, the useEffect
-                        above auto-loads it — no picker needed.
-                    */}
-                    {!workspaceImage && <PanePicker side="left" label="View A" />}
+                    {/* Image A is always the current workspace — never manually imported.
+                        If no workspace image exists yet, show a non-interactive message. */}
+                    {!workspaceImage && (
+                        <div className="absolute inset-0 z-30 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+                            <div className="text-center px-6">
+                                <p className="text-white/60 text-sm font-semibold">No workspace image</p>
+                                <p className="text-white/30 text-xs mt-1">
+                                    Open an image in the workspace first, then return to Compare.
+                                </p>
+                            </div>
+                        </div>
+                    )}
                 </div>
 
                 {/* ── Right (View B) — always picker until image selected ── */}

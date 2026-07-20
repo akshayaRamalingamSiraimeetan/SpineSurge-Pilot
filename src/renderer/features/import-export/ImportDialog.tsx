@@ -51,9 +51,13 @@ interface ImportDialogProps {
     targetSide?: 'left' | 'right';
     resetOnOpen?: boolean;
     navigateOnImport?: boolean;
+    /** When true, hides the built-in ✕ close button from the dialog header.
+     *  Use when the dialog is embedded in a context where the close button
+     *  would be confusing (e.g. inside the Compare pane picker). */
+    hideCloseButton?: boolean;
 }
 
-export function ImportDialog({ children, targetSide, resetOnOpen, navigateOnImport }: ImportDialogProps) {
+export function ImportDialog({ children, targetSide, resetOnOpen, navigateOnImport, hideCloseButton }: ImportDialogProps) {
     const navigate = useNavigate();
     const { resolvedTheme } = useTheme();
     const isDark = resolvedTheme === "dark";
@@ -377,7 +381,8 @@ export function ImportDialog({ children, targetSide, resetOnOpen, navigateOnImpo
                 "sm:max-w-[500px] p-0 overflow-hidden border shadow-[0_25px_50px_-12px_rgba(0,0,0,0.5)]",
                 isDark
                     ? '!bg-[#141416] !text-[#F5F5F7] !border-[#242427]'
-                    : '!bg-gray-100 !text-slate-900 !border-gray-300'
+                    : '!bg-gray-100 !text-slate-900 !border-gray-300',
+                hideCloseButton && '[&>button:last-child]:hidden',
             )}>
                 {/* Header Section */}
                 <div className={cn(
