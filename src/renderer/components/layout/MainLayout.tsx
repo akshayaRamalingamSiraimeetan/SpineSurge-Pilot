@@ -1,5 +1,5 @@
 import { useState, useMemo } from "react";
-import { Outlet, useNavigate } from "react-router-dom";
+import { Outlet, useNavigate, useLocation } from "react-router-dom";
 import { ShieldAlert, Copy, X, FileText } from "lucide-react";
 import TopMenuBar from "@/features/navigation/TopMenuBar";
 import LeftSidebar from "@/features/navigation/LeftSidebar";
@@ -113,10 +113,13 @@ const InspectionBanner = () => {
 // ─── Main Layout ──────────────────────────────────────────────────────────────
 
 const MainLayout: React.FC = () => {
+    const location         = useLocation();
     const currentImage     = useAppStore((state) => state.currentImage);
     const isComparisonMode = useAppStore((state) => state.isComparisonMode);
     const comparison       = useAppStore((state) => state.comparison);
     const inspectionMode   = useAppStore((state) => state.inspectionMode);
+
+    const isReportTab = new URLSearchParams(location.search).get('tab') === 'report';
 
     const hasImageForToolbar = isComparisonMode
         ? !!(comparison?.left?.image || comparison?.right?.image)
@@ -142,7 +145,7 @@ const MainLayout: React.FC = () => {
                     <div className="ws" style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
                         <div style={{ flex: 1, minHeight: 0, position: 'relative', display: 'flex', flexDirection: 'column' }}>
                             <Outlet />
-                            {hasImageForToolbar && <BottomToolbar />}
+                            {hasImageForToolbar && !isReportTab && <BottomToolbar />}
                         </div>
                     </div>
                 </main>
