@@ -350,7 +350,7 @@ const ComparePage = () => {
             <div className="flex-1 flex overflow-hidden relative p-2 gap-2 mt-2">
 
                 {/* ── Left (View A) ───────────────────────────────────────── */}
-                <div className="flex-1 flex flex-col relative rounded-xl overflow-hidden border border-white/5">
+                <div className="flex-1 flex flex-col relative rounded-xl overflow-hidden border border-border/20">
                     <div className="absolute top-2 left-2 z-20 flex items-center gap-1.5 px-2 py-1 rounded-lg bg-black/60 backdrop-blur-sm">
                         <span className="text-[10px] font-bold uppercase tracking-widest text-white/70">View A</span>
                         <span className="text-[9px] text-white/40">
@@ -373,7 +373,7 @@ const ComparePage = () => {
                 </div>
 
                 {/* ── Right (View B) — always picker until image selected ── */}
-                <div className="flex-1 flex flex-col relative rounded-xl overflow-hidden border border-white/5">
+                <div className="flex-1 flex flex-col relative rounded-xl overflow-hidden border border-border/20">
                     <div className="absolute top-2 left-2 z-20 flex items-center gap-1.5 px-2 py-1 rounded-lg bg-black/60 backdrop-blur-sm">
                         <span className="text-[10px] font-bold uppercase tracking-widest text-white/70">View B</span>
                         <span className="text-[9px] text-white/40">· Comparison</span>

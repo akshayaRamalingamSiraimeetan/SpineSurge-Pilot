@@ -102,6 +102,7 @@ const TopMenuBar = () => {
         setActiveDialog,
         syncStatus,
         hasUnsyncedChanges,
+        contextStates,
     } = useAppStore();
 
     const [profileOpen, setProfileOpen]   = useState(false);
@@ -109,7 +110,10 @@ const TopMenuBar = () => {
     const [reportOpen, setReportOpen]     = useState(false);
     const [closeAttemptRoute, setCloseAttemptRoute] = useState<string | null>(null);
     const queryParams = useMemo(() => new URLSearchParams(location.search), [location.search]);
-    const wsTab = (queryParams.get('tab') as WsTab) || 'assessment';
+    // When on /compare the URL has no ?tab=, so default to 'compare' for that route.
+    const wsTab: WsTab = location.pathname === '/compare'
+        ? 'compare'
+        : (queryParams.get('tab') as WsTab) || 'assessment';
 
     const lastMainRouteRef = useRef('/dashboard');
     if (location.pathname === '/dashboard' || location.pathname === '/compare') {
@@ -157,9 +161,25 @@ const TopMenuBar = () => {
         ? user.name.replace(/^(Dr\.|Mr\.|Ms\.)\s+/i, '').charAt(0).toUpperCase()
         : 'U';
 
+    // Resolved workspace image — mirrors ComparePage / CanvasWorkspace priority logic.
+    // Used to guard Compare mode entry: Compare is only allowed when an image is loaded.
+    const workspaceImage = useMemo(() => {
+        if (currentImage) return currentImage;
+        if (activeContextId) {
+            const ctxState = contextStates.find((s) => s.contextId === activeContextId);
+            if (ctxState?.currentImage) return ctxState.currentImage;
+        }
+        return null;
+    }, [currentImage, activeContextId, contextStates]);
+
     /* ── Tab switching ───────────────────────────────────────── */
     const handleWsTab = (key: WsTab) => {
         if (key === 'compare') {
+            // Guard: require a workspace image before entering Compare
+            if (!workspaceImage) {
+                setActiveDialog('import');
+                return;
+            }
             setComparisonMode(true);
             navigate('/compare');
         } else if (key === 'report') {
@@ -210,8 +230,16 @@ const TopMenuBar = () => {
     };
 
     const handleCompareToggle = () => {
-        if (location.pathname === '/patients') { setComparisonMode(true); navigate('/compare'); return; }
+        if (location.pathname === '/patients') {
+            // Guard: require a workspace image before entering Compare
+            if (!workspaceImage) { setActiveDialog('import'); return; }
+            setComparisonMode(true);
+            navigate('/compare');
+            return;
+        }
         const next = !isComparisonMode;
+        // Guard: require a workspace image when entering Compare
+        if (next && !workspaceImage) { setActiveDialog('import'); return; }
         setComparisonMode(next);
         if (!next) handleCloseWorkspace('/dashboard');
         else navigate('/compare');

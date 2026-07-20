@@ -2422,7 +2422,7 @@ const CanvasWorkspace = ({ side }: CanvasWorkspaceProps) => {
             onMouseMove={handleMouseMove}
             onMouseUp={handleMouseUp}
             onMouseLeave={handleMouseUp}
-            className={`w-full h-full bg-black relative overflow-hidden group border-2 transition-all duration-300 ${isComparisonMode ? (isInteractive ? 'border-primary shadow-[inset_0_0_40px_rgba(var(--primary),0.05)]' : 'border-border opacity-70 grayscale-[0.3]') : 'border-transparent'}`}        >
+            className={`w-full h-full bg-black relative overflow-hidden group border-2 transition-all duration-300 ${isComparisonMode ? (isInteractive ? 'border-[#FF453A] shadow-[inset_0_0_40px_rgba(255,69,58,0.08)]' : 'border-border opacity-70 grayscale-[0.3]') : 'border-transparent'}`}        >
 
 
             {!currentImage && (
