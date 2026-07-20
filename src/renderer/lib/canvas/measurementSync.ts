@@ -14,6 +14,7 @@ export function syncManagerMeasurements(manager: any, measurements: Measurement[
 }
 
 export function measurementsDiffer(a: Measurement[], b: Measurement[]): boolean {
+    if (!a || !b) return a !== b;
     if (a.length !== b.length) {
         return true;
     }

@@ -9,6 +9,8 @@ export function useAutosave() {
         threeDImplants,
         pedicleSimulations,
         currentImage,
+        isComparisonMode,
+        comparison,
         updateContextState,
         setSyncStatus,
         setHasUnsyncedChanges,
@@ -21,7 +23,8 @@ export function useAutosave() {
     const attemptSave = async () => {
         const state = useAppStore.getState();
         if (!state.activeContextId) return;
-        
+
+        const { left, right } = state.comparison;
         state.setSyncStatus('saving');
         const success = await state.updateContextState(state.activeContextId, {
             measurements: state.measurements,
@@ -29,6 +32,9 @@ export function useAutosave() {
             threeDImplants: state.threeDImplants,
             pedicleSimulations: state.pedicleSimulations,
             currentImage: state.currentImage,
+            // Always write the latest comparison state so it is never lost
+            comparisonLeft:  { image: left.image,  measurements: left.measurements,  implants: left.implants  },
+            comparisonRight: { image: right.image, measurements: right.measurements, implants: right.implants },
         });
 
         if (success) {
@@ -71,5 +77,10 @@ export function useAutosave() {
         threeDImplants,
         pedicleSimulations,
         currentImage,
+        // Trigger autosave when compare measurements change
+        comparison.left.measurements,
+        comparison.right.measurements,
+        comparison.left.image,
+        comparison.right.image,
     ]);
 }

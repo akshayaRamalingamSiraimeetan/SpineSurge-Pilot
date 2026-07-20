@@ -298,6 +298,7 @@ const ComparePage = () => {
         setComparisonImage,
         setComparisonMeasurements,
         setComparisonImplants,
+        persistComparisonState,
         currentImage,
         contextStates,
         activeContextId,
@@ -316,17 +317,89 @@ const ComparePage = () => {
         return null;
     }, [currentImage, activeContextId, contextStates]);
 
-    // Auto-load left image and data from workspace (only when a workspace image exists)
+    // Resolve workspace measurements — mirrors CanvasWorkspace / resolveActiveMeasurements
+    // priority: contextState > root store. This is the correct source for Image A in Compare.
+    const workspaceMeasurements = useMemo(() => {
+        if (activeContextId) {
+            const ctxState = contextStates.find((s) => s.contextId === activeContextId);
+            if (ctxState) return ctxState.measurements ?? [];
+        }
+        return measurements;
+    }, [activeContextId, contextStates, measurements]);
+
+    const workspaceImplants = useMemo(() => {
+        if (activeContextId) {
+            const ctxState = contextStates.find((s) => s.contextId === activeContextId);
+            if (ctxState) return ctxState.implants ?? [];
+        }
+        return implants;
+    }, [activeContextId, contextStates, implants]);
+
+    // Restore persisted comparison state (from a previous Compare session) on mount.
+    // This runs once — it brings back Image B and both sides' measurements from the
+    // saved contextState so Compare looks exactly as it was left.
+    const restored = useRef(false);
+    // Track whether we loaded persisted Compare measurements for Image A so the
+    // leftLoaded effect below doesn't overwrite them with Assessment measurements.
+    const hasRestoredLeft = useRef(false);
+    useEffect(() => {
+        if (restored.current) return;
+        restored.current = true;
+        if (!activeContextId) return;
+        const ctxState = contextStates.find((s) => s.contextId === activeContextId);
+        if (ctxState?.comparisonLeft) {
+            const l = ctxState.comparisonLeft;
+            if (l.image) setComparisonImage('left', l.image);
+            if (l.measurements?.length) {
+                setComparisonMeasurements('left', l.measurements);
+                hasRestoredLeft.current = true; // persisted Compare measurements loaded
+            }
+            if (l.implants?.length) setComparisonImplants('left', l.implants);
+        }
+        if (ctxState?.comparisonRight) {
+            const r = ctxState.comparisonRight;
+            if (r.image) setComparisonImage('right', r.image);
+            if (r.measurements?.length) setComparisonMeasurements('right', r.measurements);
+            if (r.implants?.length)     setComparisonImplants('right', r.implants);
+        }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+
+    // Auto-load left image and data from workspace.
+    // Only populates Image A from Assessment on first entry; if Compare-specific
+    // measurements were already restored from persistence, do not overwrite them.
     const leftLoaded = useRef(false);
     useEffect(() => {
-        if (leftLoaded.current) return;
-        if (workspaceImage && !comparison.left.image) {
+        if (!workspaceImage) return;
+        // Always set the image if it hasn't been set yet.
+        if (!comparison.left.image) {
             setComparisonImage("left", workspaceImage);
-            setComparisonMeasurements("left", measurements);
-            setComparisonImplants("left", implants);
-            leftLoaded.current = true;
         }
-    }, [workspaceImage, comparison.left.image, setComparisonImage, setComparisonMeasurements, setComparisonImplants, measurements, implants]);
+        // Only sync Assessment measurements when no persisted Compare-specific
+        // measurements exist for Image A. Once the user has created Compare
+        // measurements, those take precedence.
+        if (!hasRestoredLeft.current) {
+            setComparisonMeasurements("left", workspaceMeasurements);
+            setComparisonImplants("left", workspaceImplants);
+        }
+        leftLoaded.current = true;
+    }, [workspaceImage, workspaceMeasurements, workspaceImplants, comparison.left.image, setComparisonImage, setComparisonMeasurements, setComparisonImplants]);
+
+    // Persist comparison state whenever either side's measurements or images change.
+    // This is what makes Compare measurements survive leaving/re-entering Compare.
+    useEffect(() => {
+        if (!activeContextId) return;
+        // Skip the very first render before any measurements have been loaded
+        if (!comparison.left.image && !comparison.right.image) return;
+        persistComparisonState();
+    }, [
+        activeContextId,
+        comparison.left.measurements,
+        comparison.right.measurements,
+        comparison.left.image,
+        comparison.right.image,
+        persistComparisonState,
+    ]);
 
     // Deep Linking Support
     useEffect(() => {

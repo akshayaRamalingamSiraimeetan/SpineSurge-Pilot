@@ -46,9 +46,12 @@ export interface ComparisonSlice {
     setComparisonImage: (side: 'left' | 'right', imageUrl: string | null) => void;
     setComparisonMeasurements: (side: 'left' | 'right', measurements: Measurement[]) => void;
     setComparisonImplants: (side: 'left' | 'right', implants: any[]) => void;
+    /** Persist current comparison.left/right state into the active context so it
+     *  survives leaving/re-entering Compare mode and page reloads. */
+    persistComparisonState: () => Promise<void>;
 }
 
-export const createComparisonSlice: StateCreator<AppState, [], [], ComparisonSlice> = (set) => ({
+export const createComparisonSlice: StateCreator<AppState, [], [], ComparisonSlice> = (set, get) => ({
     isComparisonMode: false,
     activeCanvasSide: 'left',
     comparison: {
@@ -104,4 +107,13 @@ export const createComparisonSlice: StateCreator<AppState, [], [], ComparisonSli
             }
         }
     })),
+    persistComparisonState: async () => {
+        const state = get();
+        if (!state.activeContextId) return;
+        const { left, right } = state.comparison;
+        await state.updateContextState(state.activeContextId, {
+            comparisonLeft:  { image: left.image,  measurements: left.measurements,  implants: left.implants  },
+            comparisonRight: { image: right.image, measurements: right.measurements, implants: right.implants },
+        });
+    },
 });

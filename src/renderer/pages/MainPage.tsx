@@ -101,7 +101,10 @@ const MainPage = () => {
                 if (contextState.implants) patch.implants = contextState.implants;
                 if (contextState.threeDImplants) patch.threeDImplants = contextState.threeDImplants;
                 if (contextState.pedicleSimulations) patch.pedicleSimulations = contextState.pedicleSimulations;
-                if (contextState.currentImage && !useAppStore.getState().currentImage) {
+                // Always restore the context's image when switching contexts — do not
+                // guard on !currentImage because a stale image from a previous context
+                // should be replaced by the correct one for the newly active context.
+                if (contextState.currentImage) {
                     patch.currentImage = contextState.currentImage;
                 }
                 if (Object.keys(patch).length > 0) {

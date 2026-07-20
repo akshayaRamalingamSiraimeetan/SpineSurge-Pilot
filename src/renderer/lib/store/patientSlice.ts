@@ -78,17 +78,21 @@ export const createPatientSlice: StateCreator<AppState, [], [], PatientSlice> = 
         }
 
         // Reset DICOM state immediately when switching to any patient/study.
-        // Also clear currentImage so CanvasWorkspace cannot inherit a stale DICOM
-        // URL from the previous session via Priority-2 of its currentImage useMemo.
-        // When coming out of DICOM mode, additionally clear the managers map so
-        // CanvasWorkspace always creates a fresh CanvasManager.
+        // Only clear currentImage when actually switching to a *different* patient —
+        // reloading the same patient (e.g. after addVisit/addStudy) must not erase
+        // the workspace image or measurements.
         const wasDicomMode = get().isDicomMode;
+        const previousPatientId = get().activePatientId;
+        const isSwitchingPatient = previousPatientId !== id;
+
         set({
             activePatientId: id,
             activeContextId: initialContextId,
             isDicomMode: false,
             dicomSeries: [],
-            currentImage: null,
+            // Only clear image/measurements when navigating to a different patient.
+            // Same-patient reloads (from addVisit/addStudy) preserve workspace state.
+            ...(isSwitchingPatient ? { currentImage: null } : {}),
             ...(wasDicomMode ? { managers: {} } : {}),
         });
         const token = get().token;
@@ -123,10 +127,20 @@ export const createPatientSlice: StateCreator<AppState, [], [], PatientSlice> = 
                 toolState:          c.toolState          || {},
                 reportConfig:       c.toolState?.reportConfig,
                 currentImage:       c.currentImage,
+                comparisonLeft:     c.comparisonLeft,
+                comparisonRight:    c.comparisonRight,
             }));
 
             const activeState = initialContextId
                 ? contextStates.find((s) => s.contextId === initialContextId)
+                : null;
+
+            // On same-patient reloads (initialContextId is null but we already have an
+            // active context), restore the saved image from the matching contextState so
+            // addVisit / addStudy refreshes don't lose the workspace image.
+            const fallbackContextId = !initialContextId ? get().activeContextId : null;
+            const fallbackState = fallbackContextId
+                ? contextStates.find((s) => s.contextId === fallbackContextId)
                 : null;
 
             set({
@@ -136,6 +150,10 @@ export const createPatientSlice: StateCreator<AppState, [], [], PatientSlice> = 
                     measurements: activeState.measurements ?? [],
                     implants: activeState.implants ?? [],
                     ...(activeState.currentImage ? { currentImage: activeState.currentImage } : {}),
+                } : fallbackState ? {
+                    measurements: fallbackState.measurements ?? [],
+                    implants: fallbackState.implants ?? [],
+                    ...(fallbackState.currentImage ? { currentImage: fallbackState.currentImage } : {}),
                 } : {}),
             });
         } catch (e) {
@@ -187,7 +205,15 @@ export const createPatientSlice: StateCreator<AppState, [], [], PatientSlice> = 
         const token = get().token;
         try {
             await api.saveVisit(patientId, visit, token);
-            await get().initializeStore();
+            // Update patients list in-place instead of calling initializeStore(),
+            // which would invoke setActivePatient and clear the workspace image.
+            set((state: AppState) => ({
+                patients: state.patients.map((p: Patient) =>
+                    p.id === patientId
+                        ? { ...p, visits: [...(p.visits || []), visit] }
+                        : p
+                ),
+            }));
         } catch (e) {
             console.error('Failed to add visit', e);
         }
@@ -254,7 +280,17 @@ export const createPatientSlice: StateCreator<AppState, [], [], PatientSlice> = 
             const organizationId = workspace.type === 'organization' ? workspace.orgId : null;
             const studyWithOrg   = { ...study, organizationId, status: study.status ?? 'Draft' } as Study;
             await api.saveStudy(studyWithOrg, token);
-            await get().initializeStore();
+            // Update patients list in-place instead of calling initializeStore(),
+            // which would invoke setActivePatient and clear the workspace image.
+            // Always include scans:[] so study.scans is never undefined in consumers.
+            const studyWithScans: Study = { scans: [], ...studyWithOrg };
+            set((state: AppState) => ({
+                patients: state.patients.map((p: Patient) =>
+                    p.id === study.patientId
+                        ? { ...p, studies: [...(p.studies || []), studyWithScans] }
+                        : p
+                ),
+            }));
         } catch (e) {
             console.error('Add study failed', e);
             throw e;
@@ -373,9 +409,14 @@ export const createPatientSlice: StateCreator<AppState, [], [], PatientSlice> = 
                         ...(currentImage ? { currentImage } : {}),
                     },
                 ],
-                measurements,
-                implants,
-                ...(currentImage ? { currentImage } : {}),
+                // Only overwrite root measurements/implants/image when we actually
+                // captured them from the untitled workspace. If isFirstContextFromUntitled
+                // is false the store already has the correct live values — don't touch them.
+                ...(isFirstContextFromUntitled ? {
+                    measurements,
+                    implants,
+                    ...(currentImage ? { currentImage } : {}),
+                } : {}),
             }));
         } catch (e) {
             console.error(`[addContext] FAILED id=${context.id}`, e);
@@ -423,6 +464,9 @@ export const createPatientSlice: StateCreator<AppState, [], [], PatientSlice> = 
                         threeDImplants:     stateForServer.threeDImplants     || [],
                         pedicleSimulations: stateForServer.pedicleSimulations || [],
                         currentImage,
+                        // Persist comparison side state alongside the main context
+                        ...(stateForServer.comparisonLeft  ? { comparisonLeft:  stateForServer.comparisonLeft  } : {}),
+                        ...(stateForServer.comparisonRight ? { comparisonRight: stateForServer.comparisonRight } : {}),
                     },
                 };
             }

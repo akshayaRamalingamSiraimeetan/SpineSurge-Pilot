@@ -729,7 +729,8 @@ function CaseSummary({ isOpen, onOpenChange }: { isOpen: boolean; onOpenChange: 
                 visitId: visitId,
                 modality: 'X-Ray',
                 source: 'Import',
-                acquisitionDate: format(new Date(), 'yyyy-MM-dd')
+                acquisitionDate: format(new Date(), 'yyyy-MM-dd'),
+                scans: [] as any[],
             };
 
             const newContext = {
@@ -745,8 +746,27 @@ function CaseSummary({ isOpen, onOpenChange }: { isOpen: boolean; onOpenChange: 
             await addPatient(newPatient);
             await addVisit(patientId, newVisit);
             await addStudy(newStudy);
+            // Snapshot the current workspace image and measurements so they transfer
+            // to the new context — this prevents losing the workspace when the user
+            // fills in patient info for an image they already imported.
+            const preExistingImage = useAppStore.getState().currentImage;
+            const preExistingMeasurements = useAppStore.getState().measurements;
+            const preExistingImplants = useAppStore.getState().implants;
             await addContext(newContext);
-            await setActivePatient(patientId, contextId);
+            // Persist the workspace image/measurements to the new context so they
+            // survive any subsequent page reload or context refresh.
+            if (preExistingImage) {
+                await useAppStore.getState().updateContextState(contextId, {
+                    currentImage: preExistingImage,
+                    measurements: preExistingMeasurements,
+                    implants: preExistingImplants,
+                });
+            }
+            // Do NOT call setActivePatient here — it fires an async server fetch that
+            // races with the updateContextState write above and can overwrite the live
+            // workspace state with stale server data. addContext already set
+            // activeContextId and addPatient already set activePatientId; workspace
+            // state (currentImage, measurements) remains intact from the snapshot above.
             
             currentPatientId = patientId;
             currentContextId = contextId;

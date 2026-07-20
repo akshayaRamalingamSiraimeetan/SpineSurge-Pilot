@@ -80,6 +80,10 @@ export interface ContextState {
     toolState: any;
     currentImage?: string;
     reportConfig?: ReportConfig;
+    /** Persisted comparison side state — kept with the context so Compare
+     *  measurements survive leaving/re-entering Compare mode. */
+    comparisonLeft?: { image: string | null; measurements: Measurement[]; implants: any[] };
+    comparisonRight?: { image: string | null; measurements: Measurement[]; implants: any[] };
 }
 
 export interface Visit {
