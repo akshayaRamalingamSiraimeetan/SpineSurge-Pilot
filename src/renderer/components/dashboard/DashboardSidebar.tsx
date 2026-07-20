@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { NavLink } from 'react-router-dom';
-import { Home, BookOpen, Users, FolderOpen, Settings } from 'lucide-react';
+import { Home, BookOpen, Users, FolderOpen, Settings, ChevronRight } from 'lucide-react';
 import { useAppStore } from '@/lib/store/index';
+import { Button } from '@/components/ui/button';
 import WorkspaceSwitcher from './WorkspaceSwitcher';
 
 const NAV_ITEMS = [
@@ -29,6 +30,13 @@ const DashboardSidebar = ({ collapsible = false }: DashboardSidebarProps) => {
   const activeWorkspace = useAppStore((state) => state.activeWorkspace);
   const joinedOrgs      = useAppStore((state) => state.joinedOrgs);
   const createdOrgs     = useAppStore((state) => state.createdOrgs);
+  const isLeftSidebarOpen  = useAppStore((state) => state.isLeftSidebarOpen);
+  const toggleLeftSidebar  = useAppStore((state) => state.toggleLeftSidebar);
+
+  // Show the LeftSidebar expand button here (inside the hover group) when:
+  // - collapsible mode is active (we're in the workspace layout), AND
+  // - the left tool sidebar is currently collapsed
+  const showExpandButton = collapsible && !isLeftSidebarOpen;
 
   const displayName = user?.name ?? user?.email ?? 'User';
   const avatarUrl   = user?.avatarUrl;
@@ -105,6 +113,28 @@ const DashboardSidebar = ({ collapsible = false }: DashboardSidebarProps) => {
             </span>
           </div>
         </aside>
+
+        {/* LeftSidebar expand button — rendered here so it slides with the nav aside
+            and is never obscured by it. When the aside is hidden (translated fully
+            left), this button sits at the screen's left edge (left: 64px - 64px = 0).
+            When the aside slides in on hover, the button moves to left: 64px — still
+            accessible and no longer behind the nav panel. */}
+        {showExpandButton && (
+          <div
+            className={`absolute top-1/2 -translate-y-1/2 transition-transform duration-300 z-[62] ${collapsible ? '-translate-x-full group-hover:translate-x-0' : 'translate-x-0'}`}
+            style={{ left: '64px' }}
+          >
+            <Button
+              variant="secondary"
+              size="icon"
+              style={{ width: 22, height: 40, borderRadius: '0 6px 6px 0', border: '1px solid var(--border)' }}
+              onClick={() => toggleLeftSidebar(true)}
+              title="Expand tool panel"
+            >
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+          </div>
+        )}
       </div>
 
       {/* Workspace Switcher slide-out panel */}

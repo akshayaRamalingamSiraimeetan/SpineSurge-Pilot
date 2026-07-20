@@ -20,7 +20,7 @@
  * The app nav rail is rendered separately in MainLayout (DashboardSidebar / TopMenuBar).
  */
 import { useState, useMemo } from 'react';
-import { Scale, Box, Layers, HelpCircle, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Scale, Box, Layers, HelpCircle, ChevronLeft } from 'lucide-react';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { useAppStore } from '@/lib/store/index';
 import { Button } from '@/components/ui/button';
@@ -1297,19 +1297,8 @@ const LeftSidebar = () => {
         flexShrink: 0,
       }}
     >
-      {/* Reveal button when closed */}
-      {!isLeftSidebarOpen && (
-        <div style={{ position: 'fixed', left: 0, top: '50%', transform: 'translateY(-50%)', zIndex: 61 }}>
-          <Button
-            variant="secondary"
-            size="icon"
-            style={{ width: 22, height: 40, borderRadius: '0 6px 6px 0', border: '1px solid var(--border)' }}
-            onClick={() => toggleLeftSidebar(true)}
-          >
-            <ChevronRight className="h-4 w-4" />
-          </Button>
-        </div>
-      )}
+      {/* Reveal button when closed — rendered by DashboardSidebar when collapsible,
+          so it moves with the hover nav panel and is never obscured by it. */}
 
       {isLeftSidebarOpen && (
         <>
