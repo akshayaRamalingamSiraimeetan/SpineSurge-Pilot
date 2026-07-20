@@ -57,11 +57,6 @@ const DashboardSidebar = ({ collapsible = false }: DashboardSidebarProps) => {
           <div className="absolute top-0 left-0 h-full w-4 z-40" />
         )}
         <aside className={`absolute top-0 left-0 h-full w-16 bg-[#0F0F11] border-r border-[#242427] flex flex-col items-center py-5 gap-1 transition-transform duration-300 ${collapsible ? '-translate-x-full group-hover:translate-x-0' : 'translate-x-0'}`}>
-          {/* Brand dot */}
-          <div className="mb-4 h-8 w-8 rounded-lg bg-[#FF453A] flex items-center justify-center">
-            <span className="text-white font-bold text-xs select-none">S</span>
-          </div>
-
           {/* Nav icons */}
           <nav className="flex flex-col items-center gap-1 flex-1">
             {NAV_ITEMS.map(({ icon: Icon, label, to }) => (
