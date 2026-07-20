@@ -1,16 +1,15 @@
 import { useState } from 'react';
 import { NavLink } from 'react-router-dom';
-import { Home, BookOpen, Users, FolderOpen, Settings, ChevronRight } from 'lucide-react';
+import { Home, LayoutDashboard, Users, FolderOpen, Settings, ChevronRight } from 'lucide-react';
 import { useAppStore } from '@/lib/store/index';
 import { Button } from '@/components/ui/button';
+import { ImportDialog } from '@/features/import-export/ImportDialog';
 import WorkspaceSwitcher from './WorkspaceSwitcher';
 
 const NAV_ITEMS = [
   { icon: Home,       label: 'Home',      to: '/dashboard' },
-  { icon: BookOpen,   label: 'Studies',   to: '/studies'   },
   { icon: Users,      label: 'Patients',  to: '/patients'  },
   { icon: FolderOpen, label: 'Resources', to: '/resources' },
-  { icon: Settings,   label: 'Settings',  to: '/settings'  },
 ] as const;
 
 /**
@@ -59,11 +58,44 @@ const DashboardSidebar = ({ collapsible = false }: DashboardSidebarProps) => {
         <aside className={`absolute top-0 left-0 h-full w-16 bg-[#0F0F11] border-r border-[#242427] flex flex-col items-center py-5 gap-1 transition-transform duration-300 ${collapsible ? '-translate-x-full group-hover:translate-x-0' : 'translate-x-0'}`}>
           {/* Nav icons */}
           <nav className="flex flex-col items-center gap-1 flex-1">
-            {NAV_ITEMS.map(({ icon: Icon, label, to }) => (
+            {/* Home */}
+            <NavLink
+              to="/dashboard"
+              end
+              className={({ isActive }) =>
+                [
+                  'group relative flex h-10 w-10 items-center justify-center rounded-lg transition-colors',
+                  isActive
+                    ? 'bg-[#FF453A]/15 text-[#FF453A]'
+                    : 'text-[#6B7280] hover:bg-[#242427] hover:text-[#F5F5F7]',
+                ].join(' ')
+              }
+              aria-label="Home"
+            >
+              <Home className="h-5 w-5" />
+              <span className="pointer-events-none absolute left-14 z-50 hidden whitespace-nowrap rounded-md bg-[#242427] px-2 py-1 text-xs text-[#F5F5F7] shadow-lg group-hover:block">
+                Home
+              </span>
+            </NavLink>
+
+            {/* Workspace — opens Import dialog with a fresh workspace */}
+            <ImportDialog resetOnOpen navigateOnImport hideCloseButton>
+              <div
+                className="group relative flex h-10 w-10 items-center justify-center rounded-lg transition-colors text-[#6B7280] hover:bg-[#242427] hover:text-[#F5F5F7] cursor-pointer"
+                aria-label="Workspace"
+              >
+                <LayoutDashboard className="h-5 w-5" />
+                <span className="pointer-events-none absolute left-14 z-50 hidden whitespace-nowrap rounded-md bg-[#242427] px-2 py-1 text-xs text-[#F5F5F7] shadow-lg group-hover:block">
+                  Workspace
+                </span>
+              </div>
+            </ImportDialog>
+
+            {/* Remaining nav items */}
+            {NAV_ITEMS.slice(1).map(({ icon: Icon, label, to }) => (
               <NavLink
                 key={to}
                 to={to}
-                end={to === '/dashboard'}
                 className={({ isActive }) =>
                   [
                     'group relative flex h-10 w-10 items-center justify-center rounded-lg transition-colors',
@@ -75,7 +107,6 @@ const DashboardSidebar = ({ collapsible = false }: DashboardSidebarProps) => {
                 aria-label={label}
               >
                 <Icon className="h-5 w-5" />
-                {/* Tooltip */}
                 <span className="pointer-events-none absolute left-14 z-50 hidden whitespace-nowrap rounded-md bg-[#242427] px-2 py-1 text-xs text-[#F5F5F7] shadow-lg group-hover:block">
                   {label}
                 </span>
@@ -84,7 +115,28 @@ const DashboardSidebar = ({ collapsible = false }: DashboardSidebarProps) => {
           </nav>
 
           {/* Profile avatar — click to open workspace switcher */}
-          <div className="group relative mt-auto">
+          <div className="group relative mt-auto flex flex-col items-center gap-3">
+            {/* Settings — sits directly above the avatar */}
+            <NavLink
+              to="/settings"
+              className={({ isActive }) =>
+                [
+                  'group relative flex h-10 w-10 items-center justify-center rounded-lg transition-colors',
+                  isActive
+                    ? 'bg-[#FF453A]/15 text-[#FF453A]'
+                    : 'text-[#6B7280] hover:bg-[#242427] hover:text-[#F5F5F7]',
+                ].join(' ')
+              }
+              aria-label="Settings"
+            >
+              <Settings className="h-5 w-5" />
+              <span className="pointer-events-none absolute left-14 z-50 hidden whitespace-nowrap rounded-md bg-[#242427] px-2 py-1 text-xs text-[#F5F5F7] shadow-lg group-hover:block">
+                Settings
+              </span>
+            </NavLink>
+
+            {/* Avatar */}
+            <div className="group relative">
             <button
               onClick={() => setSwitcherOpen(true)}
               aria-label="Open workspace switcher"
@@ -106,6 +158,7 @@ const DashboardSidebar = ({ collapsible = false }: DashboardSidebarProps) => {
             <span className="pointer-events-none absolute left-14 bottom-0 z-50 hidden whitespace-nowrap rounded-md bg-[#242427] px-2 py-1 text-xs text-[#F5F5F7] shadow-lg group-hover:block">
               {workspaceLabel}
             </span>
+            </div>
           </div>
         </aside>
 
