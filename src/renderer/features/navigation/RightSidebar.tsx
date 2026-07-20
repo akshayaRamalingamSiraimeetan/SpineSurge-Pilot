@@ -1128,13 +1128,74 @@ function DicomCurrentPlan() {
 const ReportRightSidebar = () => {
     return (
         <div style={{ padding: '16px 0', color: 'var(--text-2)' }}>
-            <h3 style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-1)', marginBottom: 12 }}>Section Properties</h3>
-            <p style={{ fontSize: 12, lineHeight: 1.5, opacity: 0.8 }}>
-                Select a section from the Left Sidebar to configure its properties here.
-            </p>
-            <div style={{ marginTop: 24, padding: 16, background: 'var(--surface-2)', borderRadius: 8, border: '1px dashed var(--border)' }}>
-                <p style={{ fontSize: 12, textAlign: 'center', opacity: 0.6 }}>No section selected</p>
+            <h3 style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-1)', marginBottom: 16 }}>Section Properties</h3>
+
+            {/* Font Family */}
+            <div style={{ marginBottom: 14 }}>
+                <label style={{ display: 'block', fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-3)', marginBottom: 6 }}>
+                    Font Family
+                </label>
+                <div style={{ padding: '7px 10px', background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 6, fontSize: 12, color: 'var(--text)', fontWeight: 500 }}>
+                    Helvetica
+                </div>
             </div>
+
+            {/* Font Size + Font Weight side by side */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 14 }}>
+                <div>
+                    <label style={{ display: 'block', fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-3)', marginBottom: 6 }}>
+                        Font Size
+                    </label>
+                    <div style={{ padding: '7px 10px', background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 6, fontSize: 12, color: 'var(--text)', fontWeight: 500 }}>
+                        12 pt
+                    </div>
+                </div>
+                <div>
+                    <label style={{ display: 'block', fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-3)', marginBottom: 6 }}>
+                        Font Weight
+                    </label>
+                    <div style={{ padding: '7px 10px', background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 6, fontSize: 12, color: 'var(--text)', fontWeight: 500 }}>
+                        Regular
+                    </div>
+                </div>
+            </div>
+
+            {/* Text Alignment */}
+            <div style={{ marginBottom: 14 }}>
+                <label style={{ display: 'block', fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-3)', marginBottom: 6 }}>
+                    Text Alignment
+                </label>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 4 }}>
+                    {(['Left', 'Center', 'Right', 'Justify'] as const).map((align) => (
+                        <div
+                            key={align}
+                            title={align}
+                            style={{
+                                padding: '6px 4px',
+                                background: align === 'Left' ? 'var(--accent-soft)' : 'var(--surface-2)',
+                                border: `1px solid ${align === 'Left' ? 'var(--accent)' : 'var(--border)'}`,
+                                borderRadius: 6,
+                                fontSize: 9,
+                                fontWeight: 700,
+                                textAlign: 'center',
+                                color: align === 'Left' ? 'var(--accent)' : 'var(--text-3)',
+                                textTransform: 'uppercase',
+                                letterSpacing: '0.04em',
+                            }}
+                        >
+                            {align}
+                        </div>
+                    ))}
+                </div>
+            </div>
+
+            {/* Divider */}
+            <div style={{ height: 1, background: 'var(--border)', margin: '16px 0' }} />
+
+            {/* Info note */}
+            <p style={{ fontSize: 11, lineHeight: 1.5, color: 'var(--text-3)', opacity: 0.7 }}>
+                Select a section in the left panel to apply custom formatting.
+            </p>
         </div>
     );
 };
