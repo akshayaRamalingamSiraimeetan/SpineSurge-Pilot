@@ -490,12 +490,14 @@ const TopMenuBar = () => {
                     </>
                 )}
 
-                {/* Import */}
+                {/* Import — visible on non-workspace routes only (workspace has the Home page button) */}
+                {!isWorkspaceRoute && (
                 <ImportDialog>
                     <Button variant="ghost" size="icon" className={cn(iconBtn)} title="Import Scan">
                         <Upload className="h-3.5 w-3.5" />
                     </Button>
                 </ImportDialog>
+                )}
 
                 {/* Compare (non-workspace only) */}
                 {!isWorkspaceRoute && (
