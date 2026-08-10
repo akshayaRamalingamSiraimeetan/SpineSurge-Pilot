@@ -152,6 +152,7 @@ const TopMenuBar = () => {
     const [settingsOpen, setSettingsOpen] = useState(false);
     const [reportOpen, setReportOpen]     = useState(false);
     const [closeAttemptRoute, setCloseAttemptRoute] = useState<string | null>(null);
+    const [missingInfoDialogOpen, setMissingInfoDialogOpen] = useState(false);
     const queryParams = useMemo(() => new URLSearchParams(location.search), [location.search]);
     // When on /compare the URL has no ?tab=, so default to 'compare' for that route.
     const wsTab: WsTab = location.pathname === '/compare'
@@ -198,6 +199,12 @@ const TopMenuBar = () => {
         return parts.length ? parts.join(' · ') : null;
     }, [patient]);
 
+    // Validates whether the active patient has all required fields for a report
+    const hasMissingPatientInfo = useMemo(() => {
+        if (!patient) return true;
+        return !patient.name || !patient.age || !patient.gender || (!patient.id && !patient.contact);
+    }, [patient]);
+
     const selectedCount = measurements.filter((m) => m.selected && !(m as any).isImplant).length;
 
     const userInitial = user?.name
@@ -226,6 +233,11 @@ const TopMenuBar = () => {
             setComparisonMode(true);
             navigate('/compare');
         } else if (key === 'report') {
+            // Guard: require complete patient info before opening the report
+            if (hasMissingPatientInfo) {
+                setMissingInfoDialogOpen(true);
+                return;
+            }
             // Keep isComparisonMode as-is so users can generate Comparison Reports
             const searchParams = new URLSearchParams(location.search);
             searchParams.set('tab', key);
@@ -609,6 +621,39 @@ const TopMenuBar = () => {
             <ReportDialog open={reportOpen} onOpenChange={(v) => { setReportOpen(v); setActiveDialog(v ? 'report' : null); }} checkedCount={measurements.filter((m) => m.selected).length} />
             <ImportDialog />
             <ShareDialog />
+
+            {/* Missing patient info guard dialog */}
+            <Dialog open={missingInfoDialogOpen} onOpenChange={setMissingInfoDialogOpen}>
+                <DialogContent className="sm:max-w-md">
+                    <DialogHeader>
+                        <DialogTitle style={{ color: '#FF453A' }}>Patient Information Incomplete</DialogTitle>
+                        <DialogDescription>
+                            Please complete the patient information before viewing the report.
+                            Required fields — <strong>name</strong>, <strong>age</strong>, <strong>gender</strong>, and <strong>MRN / patient ID</strong> — must be filled in.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <DialogFooter className="gap-2 sm:justify-start">
+                        <Button
+                            variant="outline"
+                            onClick={() => setMissingInfoDialogOpen(false)}
+                        >
+                            Cancel
+                        </Button>
+                        <Button
+                            style={{ background: '#FF453A', color: '#fff', borderColor: '#FF453A' }}
+                            onClick={() => {
+                                setMissingInfoDialogOpen(false);
+                                // Switch to assessment tab so the right-sidebar case-summary is accessible
+                                const searchParams = new URLSearchParams(location.search);
+                                searchParams.set('tab', 'assessment');
+                                navigate(`/workspace?${searchParams.toString()}`);
+                            }}
+                        >
+                            Go to Patient Information
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
 
             {closeAttemptRoute && (
                 <Dialog open={true} onOpenChange={(open) => { if (!open) setCloseAttemptRoute(null); }}>
