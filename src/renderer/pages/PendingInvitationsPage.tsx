@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react';
 import axios from 'axios';
+import { useNavigate } from 'react-router-dom';
 import { useAppStore } from '@/lib/store/index';
+import { ArrowLeft } from 'lucide-react';
 import {
     Card,
     CardContent,
@@ -28,6 +30,7 @@ interface Invitation {
  * Route: /pending-invitations
  */
 const PendingInvitationsPage = () => {
+    const navigate      = useNavigate();
     const token         = useAppStore((state) => state.token);
     const fetchOrgLists = useAppStore((state) => state.fetchOrgLists);
 
@@ -133,7 +136,16 @@ const PendingInvitationsPage = () => {
 
     return (
         <div className="px-8 py-12 max-w-2xl mx-auto">
-            <div className="mb-8">
+            <div className="mb-6">
+                <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => navigate('/patients')}
+                    className="h-8 px-2 text-xs text-[#9CA3AF] hover:text-[#F5F5F7] hover:bg-[#242427] mb-4 gap-1.5"
+                >
+                    <ArrowLeft className="h-3.5 w-3.5" />
+                    Back to Dashboard
+                </Button>
                 <h1 className="text-2xl font-semibold text-[#F5F5F7] tracking-tight">
                     Pending Invitations
                 </h1>
