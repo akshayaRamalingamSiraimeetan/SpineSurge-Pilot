@@ -681,7 +681,7 @@ const DicomLeftSidebar = () => {
 
 /* ── Normal LeftSidebar Content ────────────────────────────────── */
 const NormalLeftSidebarContent = () => {
-  const { activeTool, setActiveTool, measurements, canvas } = useAppStore();
+  const { activeTool, setActiveTool, measurements, canvas, vbmMode, setVbmMode } = useAppStore();
   const location = useLocation();
   const queryParams = useMemo(() => new URLSearchParams(location.search), [location.search]);
   const isPlanningMode = queryParams.get('tab') === 'planning';
@@ -1040,12 +1040,43 @@ const NormalLeftSidebarContent = () => {
                   </div>
                 )}
                 {section.tools.map((tool) => (
-                  <ToolRow
-                    key={tool.id}
-                    tool={tool}
-                    active={activeTool === tool.id}
-                    onClick={() => handleTool(tool.id)}
-                  />
+                  <div key={tool.id}>
+                    <ToolRow
+                      tool={tool}
+                      active={activeTool === tool.id}
+                      onClick={() => handleTool(tool.id)}
+                    />
+                    {tool.id === 'vbm' && activeTool === 'vbm' && (
+                      <div style={{
+                        display: 'grid',
+                        gridTemplateColumns: '1fr 1fr',
+                        gap: 0,
+                        border: '1px solid var(--border-2)',
+                        borderRadius: 8,
+                        overflow: 'hidden',
+                        margin: '2px 4px 6px',
+                      }}>
+                        {(['lateral', 'ap'] as const).map((mode) => (
+                          <button
+                            key={mode}
+                            onClick={() => setVbmMode(mode)}
+                            style={{
+                              padding: '7px 4px',
+                              fontSize: 11.5,
+                              fontWeight: 600,
+                              color: vbmMode === mode ? 'var(--accent)' : 'var(--text-2)',
+                              background: vbmMode === mode ? 'var(--accent-soft)' : 'var(--surface)',
+                              border: 'none',
+                              cursor: 'pointer',
+                              transition: 'all .14s',
+                            }}
+                          >
+                            {mode === 'lateral' ? 'Sagittal' : 'Coronal'}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 ))}
               </div>
             ))}

@@ -46,6 +46,7 @@ export interface CanvasSlice {
     isWizardVisible: boolean;
     isWizardIconVisible: boolean;
     activeDialog: string | null;
+    vbmMode: 'lateral' | 'ap';
     managers: Record<string, any>;
 
     // ── Inspection mode (admin reads another user's study) ─────────────────
@@ -82,6 +83,7 @@ export interface CanvasSlice {
     setWizardIconVisible: (visible: boolean) => void;
     toggleWizardIcon: () => void;
     setActiveDialog: (dialogId: string | null) => void;
+    setVbmMode: (mode: 'lateral' | 'ap') => void;
     setCalibration: (pixelToMm: number | null) => void;
     setCalibrationApplied: (applied: boolean) => void;
     applyCalibrationToExistingMeasurements: () => void;
@@ -146,6 +148,7 @@ export const createCanvasSlice: StateCreator<AppState, [], [], CanvasSlice> = (s
     isWizardVisible: true,
     isWizardIconVisible: true,
     activeDialog: null,
+    vbmMode: 'lateral',
     managers: {},
     inspectionMode: null,
 
@@ -378,6 +381,7 @@ export const createCanvasSlice: StateCreator<AppState, [], [], CanvasSlice> = (s
     setWizardIconVisible: (visible: boolean) => set({ isWizardIconVisible: visible }),
     toggleWizardIcon: () => set((state) => ({ isWizardIconVisible: !state.isWizardIconVisible })),
     setActiveDialog: (dialogId) => set({ activeDialog: dialogId }),
+    setVbmMode: (mode) => set({ vbmMode: mode }),
     registerManager: (side, manager) => set((state) => ({
         managers: { ...state.managers, [side]: manager }
     })),

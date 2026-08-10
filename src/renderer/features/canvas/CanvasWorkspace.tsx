@@ -13,7 +13,7 @@ import {
 } from "@/lib/canvas/GeometryUtils";
 import { MeasurementSystem } from "@/features/measurements/MeasurementSystem";
 import { calculateCobbAngle } from "@/features/measurements/quick/CobbAngle";
-import { calculateVBM, VBMMode } from "@/features/measurements/quick/VBM";
+import { calculateVBM } from "@/features/measurements/quick/VBM";
 import { calculateSpinalCurvature } from "@/features/measurements/quick/SpinalCurvatures";
 import { calculatePelvicParameters } from "@/features/measurements/quick/PelvicParams";
 import { calculatePILL } from "@/features/measurements/quick/PI_LL";
@@ -82,7 +82,9 @@ const CanvasWorkspace = ({ side }: CanvasWorkspaceProps) => {
         setWizardVisible,
         isWizardIconVisible,
         managers,
-        registerManager
+        registerManager,
+        vbmMode,
+        setVbmMode,
     } = store;
 
     const activeContext = useMemo(() =>
@@ -253,8 +255,6 @@ const CanvasWorkspace = ({ side }: CanvasWorkspaceProps) => {
     const [isCalibrationDialogOpen, setIsCalibrationDialogOpen] = useState(false);
     const [calibrationPoints, setCalibrationPoints] = useState<[Point, Point] | null>(null);
     const [calibrationMm, setCalibrationMm] = useState("");
-    const [isVBMDialogOpen, setIsVBMDialogOpen] = useState(false);
-    const [vbmMode, setVbmMode] = useState<VBMMode>('lateral');
     const mouseWorldPosRef = useRef<Point>({ x: 0, y: 0 });
     const lastWorldPosRef = useRef<Point>({ x: 0, y: 0 });
     const [isTiltDialogOpen, setIsTiltDialogOpen] = useState(false);
@@ -591,7 +591,7 @@ const CanvasWorkspace = ({ side }: CanvasWorkspaceProps) => {
         }
 
 
-        const isAnyDialogOpen = isCalibrationDialogOpen || isVBMDialogOpen || isTiltDialogOpen || isTextDialogOpen;
+        const isAnyDialogOpen = isCalibrationDialogOpen || isTiltDialogOpen || isTextDialogOpen;
 
         // UNIFIED PREVIEW DRAWING
         if (tempPoints.length > 0 && !isAnyDialogOpen) {
@@ -868,7 +868,7 @@ const CanvasWorkspace = ({ side }: CanvasWorkspaceProps) => {
         }
 
         ctx.restore(); // Final balance
-    }, [storeCanvas, getCachedImage, activeTool, tempPoints, cropRect, isDragging, mouseWorldPosRef, selection, vbmMode, tiltMode, managerReady, isCalibrationDialogOpen, isVBMDialogOpen, isTiltDialogOpen, isTextDialogOpen]);
+    }, [storeCanvas, getCachedImage, activeTool, tempPoints, cropRect, isDragging, mouseWorldPosRef, selection, vbmMode, tiltMode, managerReady, isCalibrationDialogOpen, isTiltDialogOpen, isTextDialogOpen]);
 
     useEffect(() => {
         let rafId: number;
@@ -962,7 +962,7 @@ const CanvasWorkspace = ({ side }: CanvasWorkspaceProps) => {
             return;
         }
 
-        if (!isInteractive || isVBMDialogOpen || isTiltDialogOpen || isTextDialogOpen) return;
+        if (!isInteractive || isTiltDialogOpen || isTextDialogOpen) return;
 
         if (!containerRef.current) return;
         const rect = containerRef.current.getBoundingClientRect();
@@ -1765,7 +1765,7 @@ const CanvasWorkspace = ({ side }: CanvasWorkspaceProps) => {
     const handleMouseMove = useCallback(async (e: React.MouseEvent) => {
         if (!isInteractive && !isPanning) return;
 
-        if (isCalibrationDialogOpen || isVBMDialogOpen || isTiltDialogOpen || isTextDialogOpen) {
+        if (isCalibrationDialogOpen || isTiltDialogOpen || isTextDialogOpen) {
             return;
         }
 
@@ -2074,7 +2074,7 @@ const CanvasWorkspace = ({ side }: CanvasWorkspaceProps) => {
             viewTransformRef.current.y += dy;
             lastPanPos.current = { x: e.clientX, y: e.clientY };
         }
-    }, [isInteractive, containerRef, managerRef, getWorldPos, activeTool, isDragging, cropRect, selection, setCropRect, setMeasurements, storeCanvas, tempPoints, mouseWorldPosRef, setIsPanning, lastPanPos, viewTransformRef, isCalibrationDialogOpen, isVBMDialogOpen, isTiltDialogOpen, isTextDialogOpen]);
+    }, [isInteractive, containerRef, managerRef, getWorldPos, activeTool, isDragging, cropRect, selection, setCropRect, setMeasurements, storeCanvas, tempPoints, mouseWorldPosRef, setIsPanning, lastPanPos, viewTransformRef, isCalibrationDialogOpen, isTiltDialogOpen, isTextDialogOpen]);
 
     const handleMouseUp = async () => {
         if (!isInteractive && !isPanning) return;
@@ -2156,8 +2156,6 @@ const CanvasWorkspace = ({ side }: CanvasWorkspaceProps) => {
 
     useEffect(() => {
         if (activeTool === 'vbm') {
-            setActiveDialog('vbm');
-            setIsVBMDialogOpen(true);
             setTempPoints([]);
         }
     }, [activeTool]);
@@ -2697,59 +2695,6 @@ const CanvasWorkspace = ({ side }: CanvasWorkspaceProps) => {
                 </DialogContent>
             </Dialog>
 
-            <Dialog open={isVBMDialogOpen} onOpenChange={(o) => {
-                setIsVBMDialogOpen(o);
-                setActiveDialog(o ? 'vbm' : null);
-            }}>
-                <DialogContent className={cn("sm:max-w-md", isDark ? "!bg-[#141416] !text-[#F5F5F7] !border-[#242427]" : "!bg-gray-100 !text-slate-900 !border-gray-300")}>
-                    <DialogHeader>
-                        <DialogTitle className={cn("flex items-center gap-2 font-bold", isDark ? "text-[#F5F5F7]" : "text-slate-900")}>
-                            VBM Mode Selection
-                        </DialogTitle>
-                    </DialogHeader>
-                    <div className="py-4 space-y-4">
-                        <p className={cn("text-sm font-semibold", isDark ? "text-[#9CA3AF]" : "text-slate-800")}>Select the scan plane for Vertebral Body Measurement:</p>
-                        <div className="grid grid-cols-2 gap-4">
-                            <Button
-                                variant={vbmMode === 'lateral' ? 'default' : 'outline'}
-                                onClick={() => setVbmMode('lateral')}
-                                className={cn(
-                                    "font-bold h-12 rounded-xl transition-all shadow-sm",
-                                    vbmMode === 'lateral'
-                                        ? 'bg-primary hover:bg-primary/90 text-primary-foreground ring-2 ring-primary/40'
-                                        : isDark
-                                            ? 'border-[#242427] bg-[#1B1B1E] text-[#F5F5F7] hover:bg-[#242427]'
-                                            : 'border-slate-300 bg-slate-50 text-slate-900 hover:bg-slate-100'
-                                )}
-                            >
-                                Sagittal (Lateral)
-                            </Button>
-                            <Button
-                                variant={vbmMode === 'ap' ? 'default' : 'outline'}
-                                onClick={() => setVbmMode('ap')}
-                                className={cn(
-                                    "font-bold h-12 rounded-xl transition-all shadow-sm",
-                                    vbmMode === 'ap'
-                                        ? 'bg-primary hover:bg-primary/90 text-primary-foreground ring-2 ring-primary/40'
-                                        : isDark
-                                            ? 'border-[#242427] bg-[#1B1B1E] text-[#F5F5F7] hover:bg-[#242427]'
-                                            : 'border-slate-300 bg-slate-50 text-slate-900 hover:bg-slate-100'
-                                )}
-                            >
-                                Coronal (AP)
-                            </Button>
-                        </div>
-                        <div className={cn("text-[11px] italic p-2 rounded-lg border", isDark ? 'text-[#9CA3AF] bg-[#0A0A0B] border-[#242427]' : 'text-slate-700 bg-slate-100 border-slate-200')}>
-                            {vbmMode === 'lateral'
-                                ? "Measures: Anterior/Posterior heights, Wedge angle, Endplate lengths, Body depth."
-                                : "Measures: Left/Right heights, Endplate widths, Body width."}
-                        </div>
-                    </div>
-                    <DialogFooter>
-                        <Button className="w-full bg-primary hover:bg-primary/90 text-primary-foreground font-bold h-11 rounded-xl shadow-[0_1px_2px_rgba(0,0,0,.04),0_8px_24px_rgba(0,0,0,.08)]" onClick={() => setIsVBMDialogOpen(false)}>Start Placement</Button>
-                    </DialogFooter>
-                </DialogContent>
-            </Dialog>
             <Dialog open={isTiltDialogOpen} onOpenChange={(open) => {
                 if (!open && !tiltMode) setActiveTool(null);
                 setIsTiltDialogOpen(open);
