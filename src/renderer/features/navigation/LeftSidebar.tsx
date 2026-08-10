@@ -1313,6 +1313,9 @@ const LeftSidebar = () => {
   const location = useLocation();
   const isReportTab = new URLSearchParams(location.search).get('tab') === 'report';
 
+  // Hide entirely in DICOM mode — the 3D controls live in the right sidebar
+  if (isDicomMode) return null;
+
   return (
     <div
       style={{
