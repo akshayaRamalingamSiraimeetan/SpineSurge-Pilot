@@ -18,7 +18,7 @@ export function ScreenshotDialog({ open, onOpenChange, screenshotUrl }: { open: 
             >
                 <DialogHeader>
                     <DialogTitle className="text-xl font-bold flex items-center gap-2">
-                        <Camera className="h-5 w-5 text-blue-600" />
+                        <Camera className="h-5 w-5 text-[var(--accent)]" />
                         Capture Stored
                     </DialogTitle>
                     <DialogDescription>
@@ -65,7 +65,7 @@ export function ScreenshotDialog({ open, onOpenChange, screenshotUrl }: { open: 
                         <Share2 className="h-4 w-4" />
                         Share
                     </Button>
-                    <Button className="flex-1 gap-2 bg-blue-600 hover:bg-blue-500 text-white shadow-lg shadow-blue-900/20 font-bold" onClick={() => {
+                    <Button className="flex-1 gap-2 bg-[var(--accent)] hover:bg-[var(--accent-hover)] text-white font-bold" onClick={() => {
                         // Download logic
                         const link = document.createElement('a');
                         link.href = screenshotUrl || '';

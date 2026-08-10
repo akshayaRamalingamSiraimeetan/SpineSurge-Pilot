@@ -2709,33 +2709,33 @@ const CanvasWorkspace = ({ side }: CanvasWorkspaceProps) => {
                     }
                 }}>
                     <DialogHeader>
-                        <DialogTitle className={cn("flex items-center gap-2", isDark ? 'text-blue-400' : 'text-slate-900')}>
+                        <DialogTitle className={cn("flex items-center gap-2", isDark ? 'text-[#F5F5F7]' : 'text-slate-900')}>
                             Instrumented Tilt Classification
                         </DialogTitle>
                     </DialogHeader>
                     <div className="py-4 space-y-4">
-                        <p className={cn("text-sm text-center", isDark ? 'text-slate-300' : 'text-slate-700')}>Select the type for Instrumented Tilt measurement:</p>
+                        <p className={cn("text-sm text-center", isDark ? 'text-[#A4A4AC]' : 'text-slate-700')}>Select the type for Instrumented Tilt measurement:</p>
                         <div className="flex gap-4 justify-center">
                             <Button
-                                className={cn("w-32 font-bold transition-all", pendingTiltMode === 'UIV' ? 'bg-blue-600 hover:bg-blue-700 ring-2 ring-blue-400 text-white' : isDark ? 'bg-slate-800 hover:bg-slate-700 text-white' : 'bg-gray-200 hover:bg-gray-300 text-slate-900 border border-gray-300')}
+                                className={cn("w-32 font-bold transition-all", pendingTiltMode === 'UIV' ? 'bg-[#FF453A] hover:bg-[#e03d33] ring-2 ring-[#FF453A]/40 text-white' : isDark ? 'bg-[#1A1A1D] hover:bg-[#242427] text-[#F5F5F7] border border-[#242427]' : 'bg-gray-200 hover:bg-gray-300 text-slate-900 border border-gray-300')}
                                 onClick={() => setPendingTiltMode('UIV')}
                             >
                                 UIV (Upper)
                             </Button>
                             <Button
-                                className={cn("w-32 font-bold transition-all", pendingTiltMode === 'LIV' ? 'bg-blue-600 hover:bg-blue-700 ring-2 ring-blue-400 text-white' : isDark ? 'bg-slate-800 hover:bg-slate-700 text-white' : 'bg-gray-200 hover:bg-gray-300 text-slate-900 border border-gray-300')}
+                                className={cn("w-32 font-bold transition-all", pendingTiltMode === 'LIV' ? 'bg-[#FF453A] hover:bg-[#e03d33] ring-2 ring-[#FF453A]/40 text-white' : isDark ? 'bg-[#1A1A1D] hover:bg-[#242427] text-[#F5F5F7] border border-[#242427]' : 'bg-gray-200 hover:bg-gray-300 text-slate-900 border border-gray-300')}
                                 onClick={() => setPendingTiltMode('LIV')}
                             >
                                 LIV (Lower)
                             </Button>
                         </div>
-                        <p className={cn("text-[10px] text-center", isDark ? 'text-slate-500' : 'text-slate-600')}>
+                        <p className={cn("text-[10px] text-center", isDark ? 'text-[#6C6C74]' : 'text-slate-600')}>
                             UIV: Upper Instrumented Vertebra | LIV: Lower Instrumented Vertebra
                         </p>
                     </div>
                     <DialogFooter>
                         <Button
-                            className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold"
+                            className="w-full bg-[#FF453A] hover:bg-[#e03d33] text-white font-semibold"
                             onClick={() => {
                                 setTiltMode(pendingTiltMode || 'UIV');
                                 setIsTiltDialogOpen(false);
