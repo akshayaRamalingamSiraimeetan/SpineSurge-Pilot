@@ -32,6 +32,7 @@ const ControlSlider = ({
     step = 1,
     onChange,
     onReset,
+    minimal = false,
 }: {
     icon: any;
     label: string;
@@ -41,6 +42,7 @@ const ControlSlider = ({
     step?: number;
     onChange: (val: number) => void;
     onReset: () => void;
+    minimal?: boolean;
 }) => {
     const handleScroll = (e: React.WheelEvent) => {
         e.preventDefault();
@@ -61,14 +63,20 @@ const ControlSlider = ({
             </Popover.Trigger>
             <Popover.Portal>
                 <Popover.Content
-                    className="z-[100] flex flex-col items-center gap-3 p-3 bg-card border border-border rounded-2xl shadow-2xl animate-in fade-in zoom-in duration-200"
+                    className={
+                        minimal
+                            ? "z-[100] flex flex-col items-center animate-in fade-in zoom-in duration-200 bg-transparent border-none p-0 shadow-none outline-none"
+                            : "z-[100] flex flex-col items-center gap-3 p-3 bg-card border border-border rounded-2xl shadow-2xl animate-in fade-in zoom-in duration-200"
+                    }
                     side="left"
                     sideOffset={12}
                     onWheel={handleScroll}
                 >
-                    <div className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground">
-                        {label}
-                    </div>
+                    {!minimal && (
+                        <div className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground">
+                            {label}
+                        </div>
+                    )}
                     <div className="flex flex-col items-center h-36">
                         <Slider
                             orientation="vertical"
@@ -80,9 +88,11 @@ const ControlSlider = ({
                             className="h-full"
                         />
                     </div>
-                    <div className="text-[10px] font-bold text-muted-foreground bg-secondary px-2 py-0.5 rounded-full border border-border">
-                        {value}{label === "Zoom" ? "x" : "%"}
-                    </div>
+                    {!minimal && (
+                        <div className="text-[10px] font-bold text-muted-foreground bg-secondary px-2 py-0.5 rounded-full border border-border">
+                            {value}{label === "Zoom" ? "x" : "%"}
+                        </div>
+                    )}
                 </Popover.Content>
             </Popover.Portal>
         </Popover.Root>
@@ -357,14 +367,17 @@ const BottomToolbar = () => {
                 <ControlSlider
                     icon={Sun} label="Brightness" value={canvas.brightness}
                     min={0} max={200} onChange={setBrightness} onReset={() => setBrightness(100)}
+                    minimal
                 />
                 <ControlSlider
                     icon={Contrast} label="Contrast" value={canvas.contrast}
                     min={0} max={200} onChange={setContrast} onReset={() => setContrast(100)}
+                    minimal
                 />
                 <ControlSlider
                     icon={Focus} label="Sharpness" value={canvas.sharpness}
                     min={0} max={100} onChange={setSharpness} onReset={() => setSharpness(0)}
+                    minimal
                 />
 
                 <Divider />
