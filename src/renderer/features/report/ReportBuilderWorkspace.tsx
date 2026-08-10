@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { useAppStore } from '@/lib/store/index';
 import { getDefaultReportConfig } from './defaultConfig';
 import { cn } from '@/lib/utils';
@@ -13,6 +13,42 @@ export default function ReportBuilderWorkspace() {
     const reportConfig = activeState?.reportConfig;
     const activePatient = patients.find(p => p.id === activePatientId);
     const savedPlans = activeState?.savedPlans ?? [];
+
+    // ── Study Notes controlled state ──────────────────────────────────────────
+    const [clinicalNotes, setClinicalNotes] = useState<string>(() => activeState?.toolState?.clinicalNotes ?? '');
+    const notesDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+    // Sync local notes state whenever the active context changes (e.g. navigating between studies)
+    useEffect(() => {
+        setClinicalNotes(activeState?.toolState?.clinicalNotes ?? '');
+    }, [activeContextId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+    const saveNotes = useCallback((value: string) => {
+        if (!activeContextId) return;
+        updateContextState(activeContextId, {
+            toolState: {
+                ...(activeState?.toolState ?? {}),
+                clinicalNotes: value,
+            },
+        });
+    }, [activeContextId, activeState?.toolState, updateContextState]);
+
+    const handleNotesChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+        const value = e.target.value;
+        setClinicalNotes(value);
+        // Debounce auto-save: write to store 800ms after the user stops typing
+        if (notesDebounceRef.current) clearTimeout(notesDebounceRef.current);
+        notesDebounceRef.current = setTimeout(() => saveNotes(value), 800);
+    };
+
+    const handleNotesBlur = () => {
+        // Flush any pending debounce immediately on blur so the value is always saved
+        if (notesDebounceRef.current) {
+            clearTimeout(notesDebounceRef.current);
+            notesDebounceRef.current = null;
+        }
+        saveNotes(clinicalNotes);
+    };
     const savedComparisons = activeState?.savedComparisons ?? [];
     const hasPlanningData = (implants && implants.length > 0) || (threeDImplants && threeDImplants.length > 0) || (pedicleSimulations && pedicleSimulations.length > 0);
     const isSingleReportMode = reportConfig?.reportType === 'single';
@@ -243,17 +279,9 @@ export default function ReportBuilderWorkspace() {
                                             "focus:border-[#FF453A]"
                                         )}
                                         placeholder="Add clinical notes..."
-                                        defaultValue={activeState?.toolState?.clinicalNotes || ''}
-                                        onBlur={(e) => {
-                                            if (activeContextId) {
-                                                updateContextState(activeContextId, {
-                                                    toolState: {
-                                                        ...(activeState?.toolState || {}),
-                                                        clinicalNotes: e.target.value
-                                                    }
-                                                });
-                                            }
-                                        }}
+                                        value={clinicalNotes}
+                                        onChange={handleNotesChange}
+                                        onBlur={handleNotesBlur}
                                     />
                                 )}
                             </section>
