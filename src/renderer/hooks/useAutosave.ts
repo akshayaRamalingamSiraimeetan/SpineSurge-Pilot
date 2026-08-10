@@ -9,9 +9,8 @@ export function useAutosave() {
         threeDImplants,
         pedicleSimulations,
         currentImage,
-        isComparisonMode,
+        canvas,
         comparison,
-        updateContextState,
         setSyncStatus,
         setHasUnsyncedChanges,
     } = useAppStore();
@@ -25,16 +24,36 @@ export function useAutosave() {
         if (!state.activeContextId) return;
 
         const { left, right } = state.comparison;
+        const c = state.canvas;
+
+        // Never persist blob: URLs — they are session-only browser references that
+        // become broken after a page reload. Use null so the scan record URL is used
+        // on restore instead.
+        const safeImage = (url: string | null | undefined) =>
+            url?.startsWith('blob:') ? null : (url ?? null);
+
         state.setSyncStatus('saving');
         const success = await state.updateContextState(state.activeContextId, {
             measurements: state.measurements,
             implants: state.implants,
             threeDImplants: state.threeDImplants,
             pedicleSimulations: state.pedicleSimulations,
-            currentImage: state.currentImage,
+            currentImage: safeImage(state.currentImage) ?? undefined,
+            // Viewport state — restores zoom/pan/rotation/windowing on reopen
+            viewportState: {
+                zoom:               c.zoom,
+                pan:                c.pan,
+                rotation:           c.rotation,
+                brightness:         c.brightness,
+                contrast:           c.contrast,
+                sharpness:          c.sharpness,
+                flipX:              c.flipX,
+                pixelToMm:          c.pixelToMm,
+                calibrationApplied: c.calibrationApplied,
+            },
             // Always write the latest comparison state so it is never lost
-            comparisonLeft:  { image: left.image,  measurements: left.measurements,  implants: left.implants  },
-            comparisonRight: { image: right.image, measurements: right.measurements, implants: right.implants },
+            comparisonLeft:  { image: safeImage(left.image),  measurements: left.measurements,  implants: left.implants  },
+            comparisonRight: { image: safeImage(right.image), measurements: right.measurements, implants: right.implants },
         });
 
         if (success) {
@@ -77,10 +96,20 @@ export function useAutosave() {
         threeDImplants,
         pedicleSimulations,
         currentImage,
-        // Trigger autosave when compare measurements change
+        // Viewport changes
+        canvas.zoom,
+        canvas.rotation,
+        canvas.brightness,
+        canvas.contrast,
+        canvas.sharpness,
+        canvas.flipX,
+        canvas.pixelToMm,
+        // Compare side changes — measurements, implants, and images
         comparison.left.measurements,
-        comparison.right.measurements,
+        comparison.left.implants,
         comparison.left.image,
+        comparison.right.measurements,
+        comparison.right.implants,
         comparison.right.image,
     ]);
 }

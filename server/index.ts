@@ -166,6 +166,15 @@ app.get('/api/patients', authenticate, async (req, res) => {
             }
         });
 
+        // ── DIAGNOSTIC: print raw DB scan counts before any filtering ──
+        patientsData.forEach(p => {
+            p.studies.forEach(s => {
+                if (s.scans.length > 0 || p.id.startsWith('PAT-') || p.id.startsWith('std-')) {
+                    console.log(`[DIAG /api/patients RAW] patient=${p.id} study=${s.id} ownerUserId=${s.ownerUserId ?? 'null'} orgId=${s.organizationId ?? 'null'} scanCount=${s.scans.length} scans=${JSON.stringify(s.scans.map(sc => ({ id: sc.id, studyId: sc.studyId, filePath: sc.filePath })))}`);
+                }
+            });
+        });
+
         const formattedPatients = patientsData.map(p => {
             let studies = p.studies.map(s => ({
                 ...s,
@@ -234,6 +243,13 @@ app.get('/api/patients', authenticate, async (req, res) => {
                 visits,
                 studies
             };
+        });
+
+        // ── DIAGNOSTIC: print scan counts per study ──
+        formattedPatients.forEach(p => {
+            p.studies.forEach(s => {
+                console.log(`[DIAG /api/patients] patient=${p.id} study=${s.id} modality=${s.modality} scanCount=${s.scans.length} scans=${JSON.stringify(s.scans.map(sc => ({ id: sc.id, studyId: (sc as any).studyId, imageUrl: sc.imageUrl })))}`);
+            });
         });
 
         res.json(formattedPatients);
@@ -335,7 +351,7 @@ app.post('/api/studies', authenticate, async (req, res) => {
     const { id, patientId, visitId, modality, source, acquisitionDate, organizationId, name, status } = req.body;
     const ownerUserId = req.user!.id;
     try {
-        console.log(`Saving study: ${id} for patient: ${patientId}, owner: ${ownerUserId}, org: ${organizationId ?? 'personal'}`);
+        console.log(`[TRACE SERVER] POST /api/studies ENTER studyId=${id} patientId=${patientId} modality=${modality} organizationId=${organizationId ?? 'null'} ownerUserId=${ownerUserId}`);
         await db.insert(schema.studies).values({
             id,
             patientId,
@@ -372,6 +388,8 @@ app.post('/api/scans', upload.single('file'), async (req, res) => {
     const { id, studyId, type, date } = req.body;
     const file = req.file;
 
+    console.log(`[TRACE SERVER] POST /api/scans ENTER scanId=${id} studyId=${studyId} fileName=${file?.originalname ?? 'none'}`);
+
     if (!file) {
         console.error("Upload scan failed: No file provided");
         return res.status(400).json({ error: 'No file uploaded' });
@@ -398,9 +416,23 @@ app.post('/api/scans', upload.single('file'), async (req, res) => {
                 date: date || ''
             }
         });
+
+        const imageUrl = toAbsoluteUrl(relativePath, baseUrl);
+        console.log(`[DIAG /api/scans] SAVED scan=${id} studyId=${studyId} filePath=${relativePath} imageUrl=${imageUrl}`);
+
+        // Post-insert verification: query back the scan to confirm it's in the DB
+        try {
+            const insertedScan = await db.query.scans.findFirst({
+                where: eq(schema.scans.id, id),
+            });
+            console.log(`[DIAG /api/scans] DB VERIFY scan=${insertedScan?.id ?? 'NOT_FOUND'} studyId=${insertedScan?.studyId ?? 'null'} filePath=${insertedScan?.filePath ?? 'null'}`);
+        } catch (verifyErr) {
+            console.error('[DIAG /api/scans] DB verify failed:', verifyErr);
+        }
+
         res.json({
             success: true,
-            imageUrl: toAbsoluteUrl(relativePath, baseUrl)
+            imageUrl,
         });
     } catch (err: any) {
         console.error("Save scan error:", err);
@@ -441,8 +473,20 @@ app.get('/api/contexts/:patientId', async (req, res) => {
                 properties: JSON.parse(i.properties || '{}')
             })),
             annotations: JSON.parse(c.annotations || '[]'),
-            toolState: JSON.parse(c.toolState || '{}')
+            toolState: JSON.parse(c.toolState || '{}'),
+            // Extended workspace state
+            comparisonLeft:     c.comparisonLeft     ? JSON.parse(c.comparisonLeft)     : null,
+            comparisonRight:    c.comparisonRight    ? JSON.parse(c.comparisonRight)    : null,
+            threeDImplants:     c.threeDImplants     ? JSON.parse(c.threeDImplants)     : [],
+            pedicleSimulations: c.pedicleSimulations ? JSON.parse(c.pedicleSimulations) : [],
+            viewportState:      c.viewportState      ? JSON.parse(c.viewportState)      : null,
         }));
+
+        // ── DIAGNOSTIC: print the full ID chain for every context returned ──
+        hydrated.forEach(ctx => {
+            console.log(`[DIAG /api/contexts] context=${ctx.id} patient=${ctx.patientId} studyIds=${JSON.stringify(ctx.studyIds)} currentImage=${ctx.currentImage ?? 'null'} measurements=${ctx.measurements.length}`);
+        });
+
         res.json(hydrated);
     } catch (e: any) {
         res.status(500).json({ error: e.message });
@@ -477,6 +521,11 @@ app.post('/api/contexts', async (req, res) => {
                 annotations: JSON.stringify(state?.annotations || []),
                 toolState: JSON.stringify(state?.toolState || {}),
                 currentImage: state?.currentImage ?? null,
+                comparisonLeft:     state?.comparisonLeft     ? JSON.stringify(state.comparisonLeft)     : null,
+                comparisonRight:    state?.comparisonRight    ? JSON.stringify(state.comparisonRight)    : null,
+                threeDImplants:     state?.threeDImplants     ? JSON.stringify(state.threeDImplants)     : null,
+                pedicleSimulations: state?.pedicleSimulations ? JSON.stringify(state.pedicleSimulations) : null,
+                viewportState:      state?.viewportState      ? JSON.stringify(state.viewportState)      : null,
             }).onConflictDoUpdate({
                 target: schema.contexts.id,
                 set: {
@@ -487,6 +536,11 @@ app.post('/api/contexts', async (req, res) => {
                     annotations: JSON.stringify(state?.annotations || []),
                     toolState: JSON.stringify(state?.toolState || {}),
                     currentImage: state?.currentImage ?? null,
+                    comparisonLeft:     state?.comparisonLeft     ? JSON.stringify(state.comparisonLeft)     : null,
+                    comparisonRight:    state?.comparisonRight    ? JSON.stringify(state.comparisonRight)    : null,
+                    threeDImplants:     state?.threeDImplants     ? JSON.stringify(state.threeDImplants)     : null,
+                    pedicleSimulations: state?.pedicleSimulations ? JSON.stringify(state.pedicleSimulations) : null,
+                    viewportState:      state?.viewportState      ? JSON.stringify(state.viewportState)      : null,
                 }
             });
 
@@ -544,6 +598,74 @@ app.post('/api/contexts', async (req, res) => {
             stack: err.stack,
             detail: err.toString()
         });
+    }
+});
+
+// --- Diagnostic endpoint — prints the complete ID chain for a patient ---
+// GET /api/debug/patient/:patientId
+// Use this to verify Context → Study → Scan → imageUrl invariant after import.
+app.get('/api/debug/patient/:patientId', async (req, res) => {
+    try {
+        const patientId = req.params.patientId;
+
+        const patient = await db.query.patients.findFirst({
+            where: eq(schema.patients.id, patientId),
+        });
+
+        const studies = await db.query.studies.findMany({
+            where: eq(schema.studies.patientId, patientId),
+            with: { scans: true },
+        });
+
+        const contexts = await db.query.contexts.findMany({
+            where: eq(schema.contexts.patientId, patientId),
+            with: { studies: true },
+        });
+
+        const baseUrl = `${req.protocol}://${req.get('host')}`;
+
+        const chain = {
+            patient: patient ? { id: patient.id, name: patient.name } : null,
+            studies: studies.map(s => ({
+                id:       s.id,
+                modality: s.modality,
+                source:   s.source,
+                scans:    s.scans.map(sc => ({
+                    id:       sc.id,
+                    studyId:  sc.studyId,
+                    filePath: sc.filePath,
+                    imageUrl: toAbsoluteUrl(sc.filePath, baseUrl),
+                })),
+            })),
+            contexts: contexts.map(c => ({
+                id:       c.id,
+                mode:     c.mode,
+                studyIds: c.studies.map(cs => cs.studyId),
+                currentImage: c.currentImage,
+            })),
+            invariantCheck: contexts.map(ctx => {
+                const studyIds = ctx.studies.map(cs => cs.studyId);
+                const linkedStudies = studies.filter(s => studyIds.includes(s.id));
+                const scansInLinkedStudies = linkedStudies.flatMap(s => s.scans);
+                return {
+                    contextId: ctx.id,
+                    studyIds,
+                    linkedStudiesFound: linkedStudies.map(s => s.id),
+                    scansFound: scansInLinkedStudies.map(sc => sc.id),
+                    imageUrls: scansInLinkedStudies.map(sc => toAbsoluteUrl(sc.filePath, baseUrl)),
+                    BROKEN: scansInLinkedStudies.length === 0
+                        ? 'NO_SCANS — image will not restore'
+                        : !scansInLinkedStudies[0].filePath
+                            ? 'NULL_FILE_PATH — imageUrl will be empty'
+                            : 'OK',
+                };
+            }),
+        };
+
+        console.log('[DEBUG /api/debug/patient]', JSON.stringify(chain, null, 2));
+        res.json(chain);
+    } catch (e: any) {
+        res.status(500).json({ error: e.message });
     }
 });
 

@@ -64,7 +64,8 @@ export function ImportDialog({ children, targetSide, resetOnOpen, navigateOnImpo
     const [open, setOpen] = useState(false)
     const [step, setStep] = useState<ImportStep>('MODE')
     const [comingSoonTarget, setComingSoonTarget] = useState<string | null>(null)
-    const fileInputRef = useRef<HTMLInputElement>(null)
+    const fileInputRef = useRef<HTMLInputElement>(null)       // MODE step: Quick Use
+    const scanFileInputRef = useRef<HTMLInputElement>(null)   // SCAN_UPLOAD step: full wizard
     const folderInputRef = useRef<HTMLInputElement>(null)
 
     // Store State
@@ -132,6 +133,7 @@ export function ImportDialog({ children, targetSide, resetOnOpen, navigateOnImpo
     const handleQuickFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
         const file = event.target.files?.[0]
         if (!file) return;
+        console.log(`[TRACE] handleQuickFileChange ENTER fileName=${file.name} size=${file.size}`);
 
         // Render .dcm files to a plain PNG data URL so they open in the
         // normal image workspace — no DICOM mode, no series loading.
@@ -162,64 +164,82 @@ export function ImportDialog({ children, targetSide, resetOnOpen, navigateOnImpo
         };
 
         try {
-            const formData = new FormData();
-            const scanId = `quick-scan-${Date.now()}`;
-            const studyId = `quick-study-${Date.now()}`;
-
+            // Create patient, study, and scan through the store so they land in
+            // store.patients. This ensures ensurePatientAndStartEdit finds the
+            // existing quick patient (via activePatientId) and does NOT create a
+            // second ghost study — the context will link to the study that has
+            // the actual scan, so image restoration works on next open.
+            const scanId   = `quick-scan-${Date.now()}`;
+            const studyId  = `quick-study-${Date.now()}`;
             const patientId = `quick-${Date.now()}`;
-            const patientRes = await fetch(`${API_BASE}/api/patients`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    id: patientId,
-                    name: 'Quick Analysis',
-                    age: 0,
-                    gender: 'O',
-                    dob: '',
-                    lastVisit: new Date().toISOString()
-                })
+            const contextId = `quick-ctx-${Date.now()}`;
+
+            console.log(`[TRACE] handleQuickFileChange IDs patientId=${patientId} studyId=${studyId} scanId=${scanId} contextId=${contextId}`);
+
+            const newPatient: any = {
+                id: patientId,
+                name: 'Quick Analysis',
+                age: 0,
+                gender: 'O',
+                dob: '',
+                lastVisit: new Date().toISOString(),
+                visits: [],
+                studies: [],
+            };
+
+            console.log('[TRACE] handleQuickFileChange calling addPatient');
+            await addPatient(newPatient);
+            console.log('[TRACE] handleQuickFileChange addPatient OK — calling addStudy');
+            await addStudy({
+                id: studyId,
+                patientId,
+                modality: 'Import',
+                source: 'Quick Use',
+                acquisitionDate: new Date().toISOString().split('T')[0],
             });
-            if (!patientRes.ok) throw new Error('Failed to create quick patient');
+            console.log('[TRACE] handleQuickFileChange addStudy OK — calling addScan');
+            await addScan(patientId, studyId, {
+                id: scanId,
+                type: 'Pre-op' as const,
+                date: new Date().toISOString().split('T')[0],
+            }, file);
+            console.log('[TRACE] handleQuickFileChange addScan OK');
 
-            const studyRes = await fetch(`${API_BASE}/api/studies`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    id: studyId,
-                    patientId,
-                    modality: 'Import',
-                    source: 'Quick Use',
-                    acquisitionDate: new Date().toISOString()
-                })
+            // Find the server URL that addScan stored in the patients array
+            const updatedState = useAppStore.getState();
+            const updatedPatient = updatedState.patients.find(p => p.id === patientId);
+            const uploadedScan = updatedPatient?.studies
+                ?.find(s => s.id === studyId)
+                ?.scans?.find(sc => sc.id === scanId);
+            const serverUrl = uploadedScan?.imageUrl;
+
+            if (!serverUrl) throw new Error(`addScan did not return an imageUrl — studies: ${updatedPatient?.studies.map(s => `${s.id}(${s.scans.length}scans)`).join(',')}`);
+
+            // Create a context linked to the real study so reopening the patient
+            // finds the scan via context.studyIds → study.scans[0].imageUrl
+            console.log('[TRACE] handleQuickFileChange calling addContext');
+            await addContext({
+                id: contextId,
+                patientId,
+                studyIds: [studyId],
+                mode: 'plan',
+                name: `Quick Analysis - ${format(new Date(), 'MMM dd, yyyy')}`,
+                lastModified: new Date().toISOString(),
             });
-            if (!studyRes.ok) throw new Error('Failed to create quick study');
+            setActiveContextId(contextId);
 
-            formData.append('file', file);
-            formData.append('id', scanId);
-            formData.append('studyId', studyId);
-            formData.append('type', 'Pre-op');
-            formData.append('date', new Date().toISOString().split('T')[0]);
-
-            const scanRes = await fetch(`${API_BASE}/api/scans`, {
-                method: 'POST',
-                body: formData
-            });
-
-            if (!scanRes.ok) throw new Error('Failed to upload scan file');
-
-            const { imageUrl } = await scanRes.json();
-
-            if (!imageUrl) throw new Error('Server did not return an image URL');
-
-            loadQuickImage(imageUrl);
+            console.log(`[TRACE] handleQuickFileChange EXIT SUCCESS serverUrl=${serverUrl}`);
+            loadQuickImage(serverUrl);
         } catch (err) {
+            console.error(`[TRACE] handleQuickFileChange CATCH err=${String(err)}`);
             console.warn("Quick Use upload failed, falling back to local file:", err);
 
             try {
                 const localUrl = URL.createObjectURL(file);
+                console.log('[TRACE] handleQuickFileChange FALLBACK blob URL created');
                 loadQuickImage(localUrl);
             } catch (fallbackErr) {
-                console.error("Quick Use fallback failed:", fallbackErr);
+                console.error('[TRACE] handleQuickFileChange FALLBACK FAILED:', fallbackErr);
                 alert("Failed to open this file in Quick Use. Please start the server or try another image.");
             }
         }
@@ -280,7 +300,11 @@ export function ImportDialog({ children, targetSide, resetOnOpen, navigateOnImpo
     }
 
     const handleFinalImport = async () => {
-        if (!selectedPatient || !selectedVisit || !selectedFile) return
+        console.log(`[TRACE] handleFinalImport ENTER selectedPatient=${selectedPatient?.id ?? 'null'} selectedVisit=${selectedVisit?.id ?? 'null'} selectedFile=${selectedFile?.name ?? 'null'}`);
+        if (!selectedPatient || !selectedVisit || !selectedFile) {
+            console.warn(`[TRACE] handleFinalImport EARLY RETURN — missing: ${!selectedPatient ? 'patient' : ''} ${!selectedVisit ? 'visit' : ''} ${!selectedFile ? 'file' : ''}`);
+            return;
+        }
 
         // Render .dcm files to a plain PNG data URL so they open in the
         // normal image workspace — no DICOM mode, no series loading.
@@ -306,6 +330,8 @@ export function ImportDialog({ children, targetSide, resetOnOpen, navigateOnImpo
         const scanId = `scan-${Date.now()}`;
         const contextId = `ctx-${Date.now()}`;
 
+        console.log(`[TRACE] handleFinalImport IDs studyId=${studyId} scanId=${scanId} contextId=${contextId}`);
+
         await addStudy({
             id: studyId,
             patientId: selectedPatient.id,
@@ -329,6 +355,12 @@ export function ImportDialog({ children, targetSide, resetOnOpen, navigateOnImpo
             const found = s.scans.find(scan => scan.id === scanId);
             if (found) serverUrl = found.imageUrl;
         });
+
+        console.log(`[TRACE] handleFinalImport serverUrl=${serverUrl ?? 'NOT_FOUND'} studyId=${studyId} scanId=${scanId}`);
+        if (!serverUrl) {
+            const allStudyIds = updatedPatient?.studies.map(s => `${s.id}(scans:${s.scans.length})`).join(', ') ?? 'patient not found';
+            console.warn(`[TRACE] handleFinalImport serverUrl missing — patient studies: ${allStudyIds}`);
+        }
 
         const imageUrl = serverUrl ?? URL.createObjectURL(selectedFile);
 
@@ -691,9 +723,9 @@ export function ImportDialog({ children, targetSide, resetOnOpen, navigateOnImpo
 
                             <div
                                 className="border-2 border-dashed border-[#242427] rounded-2xl p-10 flex flex-col items-center justify-center cursor-pointer hover:border-[#FF453A]/50 hover:bg-[#FF453A]/5 transition-all text-[#9CA3AF]/50 group"
-                                onClick={() => fileInputRef.current?.click()}
+                                onClick={() => scanFileInputRef.current?.click()}
                             >
-                                <input type="file" ref={fileInputRef} className="hidden" accept="image/*,.dcm,application/dicom" onChange={(e) => setSelectedFile(e.target.files?.[0] || null)} />
+                                <input type="file" ref={scanFileInputRef} className="hidden" accept="image/*,.dcm,application/dicom" onChange={(e) => setSelectedFile(e.target.files?.[0] || null)} />
                                 {selectedFile ? (
                                     <div className="flex flex-col items-center">
                                         <div className="bg-[rgba(255,69,58,0.12)] p-3 rounded-full mb-3">
@@ -719,7 +751,10 @@ export function ImportDialog({ children, targetSide, resetOnOpen, navigateOnImpo
                             <Button
                                 className="w-full bg-[#FF453A] hover:bg-[#e03d33] h-12 shadow-[0_1px_2px_rgba(0,0,0,.04),0_8px_24px_rgba(0,0,0,.08)] font-bold text-white rounded-xl"
                                 disabled={!selectedFile}
-                                onClick={handleFinalImport}
+                                onClick={() => {
+                                    console.log(`[TRACE] Finalize & Import CLICKED selectedFile=${selectedFile?.name ?? 'null'} selectedPatient=${selectedPatient?.id ?? 'null'} selectedVisit=${selectedVisit?.id ?? 'null'}`);
+                                    handleFinalImport();
+                                }}
                             >
                                 Finalize & Import <Check className="ml-2 h-4 w-4" />
                             </Button>

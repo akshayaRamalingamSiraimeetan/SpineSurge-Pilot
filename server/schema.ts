@@ -68,6 +68,12 @@ export const contexts = pgTable('contexts', {
     annotations: text('annotations').default('[]'),
     toolState: text('tool_state').default('{}'),
     currentImage: text('current_image'),
+    // Extended workspace state (added for full persistence)
+    comparisonLeft:     text('comparison_left'),
+    comparisonRight:    text('comparison_right'),
+    threeDImplants:     text('three_d_implants'),
+    pedicleSimulations: text('pedicle_simulations'),
+    viewportState:      text('viewport_state'),
 });
 
 export const contextStudies = pgTable('context_studies', {

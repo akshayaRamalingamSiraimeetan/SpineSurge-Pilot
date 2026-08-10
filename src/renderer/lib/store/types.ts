@@ -84,6 +84,19 @@ export interface ContextState {
      *  measurements survive leaving/re-entering Compare mode. */
     comparisonLeft?: { image: string | null; measurements: Measurement[]; implants: any[] };
     comparisonRight?: { image: string | null; measurements: Measurement[]; implants: any[] };
+    /** Canvas viewport state — persisted so zoom/pan/rotation/windowing
+     *  are restored exactly when the study is reopened. */
+    viewportState?: {
+        zoom: number;
+        pan: { x: number; y: number };
+        rotation: number;
+        brightness: number;
+        contrast: number;
+        sharpness: number;
+        flipX: boolean;
+        pixelToMm: number | null;
+        calibrationApplied: boolean;
+    };
 }
 
 export interface Visit {

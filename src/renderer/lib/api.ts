@@ -80,6 +80,7 @@ export const api = {
      * organizationId is set by the caller based on active workspace.
      */
     async saveStudy(study: Study, token?: string | null) {
+        console.log(`[TRACE] api.saveStudy ENTER studyId=${study.id} patientId=${study.patientId} modality=${study.modality}`);
         const response = await fetch(`${API_BASE}/api/studies`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', ...authHeader(token ?? null) },
@@ -88,11 +89,16 @@ export const api = {
                 organizationId: study.organizationId ?? null,
             }),
         });
-        if (!response.ok) throw new Error('Failed to save study');
+        if (!response.ok) {
+            console.error(`[TRACE] api.saveStudy FAILED studyId=${study.id} status=${response.status}`);
+            throw new Error('Failed to save study');
+        }
+        console.log(`[TRACE] api.saveStudy OK studyId=${study.id}`);
         return response.json();
     },
 
     async uploadScan(studyId: string, scan: Omit<Scan, 'imageUrl'>, file: File, token?: string | null): Promise<{ success: boolean; imageUrl: string }> {
+        console.log(`[TRACE] api.uploadScan ENTER scanId=${scan.id} studyId=${studyId} fileName=${file.name} size=${file.size}`);
         const formData = new FormData();
         formData.append('file', file);
         formData.append('id', scan.id || Date.now().toString());
@@ -105,8 +111,13 @@ export const api = {
             headers: { ...authHeader(token ?? null) },
             body: formData,
         });
-        if (!response.ok) throw new Error('Failed to upload scan');
-        return response.json();
+        if (!response.ok) {
+            console.error(`[TRACE] api.uploadScan FAILED scanId=${scan.id} studyId=${studyId} status=${response.status}`);
+            throw new Error('Failed to upload scan');
+        }
+        const result = await response.json();
+        console.log(`[TRACE] api.uploadScan OK scanId=${scan.id} studyId=${studyId} imageUrl=${result.imageUrl}`);
+        return result;
     },
 
     async importFolder(folderPath: string, patientId?: string, visitId?: string, token?: string | null) {

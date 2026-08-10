@@ -80,9 +80,10 @@ const MainPage = () => {
         }
     }, [location.search, setActivePatient, setActiveContextId]);
 
-    // Persist currentImage to context state whenever it changes while a context is active
+    // Persist currentImage to context state whenever it changes while a context is active.
+    // Never persist blob: URLs — they are session-only and will be broken on next load.
     useEffect(() => {
-        if (activeContextId && currentImage) {
+        if (activeContextId && currentImage && !currentImage.startsWith('blob:')) {
             const state = useAppStore.getState();
             const existingState = state.contextStates.find(s => s.contextId === activeContextId);
             if (existingState?.currentImage !== currentImage) {
@@ -106,6 +107,11 @@ const MainPage = () => {
                 // should be replaced by the correct one for the newly active context.
                 if (contextState.currentImage) {
                     patch.currentImage = contextState.currentImage;
+                }
+                // Restore canvas viewport (zoom/pan/rotation/windowing) saved from last session
+                if (contextState.viewportState) {
+                    const current = useAppStore.getState().canvas;
+                    patch.canvas = { ...current, ...contextState.viewportState };
                 }
                 if (Object.keys(patch).length > 0) {
                     useAppStore.setState(patch);
@@ -187,20 +193,18 @@ const MainPage = () => {
     const isReportTab = new URLSearchParams(location.search).get('tab') === 'report';
     const renderBranch = isDicomMode ? 'DICOMViewer' : hasActiveContent ? 'CanvasWorkspace' : 'EmptyState';
 
-    // ── [TRACE] Single targeted log — the ONLY place that decides viewer ─────
+    // ── [DIAG] Full chain log — every render ─────────────────────────────────
+    const diagStudy   = currentStudy as any;
+    const diagContext = contexts.find((c: Context) => c.id === activeContextId);
     console.log(
-        `%c[WORKSPACE RENDER] branch=${renderBranch}`,
-        `color:${renderBranch === 'DICOMViewer' ? 'red' : renderBranch === 'CanvasWorkspace' ? 'lime' : 'gray'};font-weight:bold`,
-        {
-            isDicomMode,
-            currentImage: currentImage ? currentImage.slice(0, 80) : null,
-            dicomSeriesLength: dicomSeries.length,
-            activePatientId,
-            activeContextId,
-            studyId:       currentStudy?.id       ?? null,
-            studyModality: currentStudy?.modality  ?? null,
-            firstScanUrl:  currentStudy?.scans?.[0]?.imageUrl?.slice(0, 80) ?? null,
-        }
+        `[DIAG MainPage] branch=${renderBranch}` +
+        ` activeContextId=${activeContextId ?? 'null'}` +
+        ` activePatientId=${activePatientId ?? 'null'}` +
+        ` currentImage=${currentImage ? currentImage.slice(0, 80) : 'null'}` +
+        ` contextStudyIds=${JSON.stringify(diagContext?.studyIds ?? [])}` +
+        ` resolvedStudyId=${diagStudy?.id ?? 'null'}` +
+        ` scanCount=${diagStudy?.scans?.length ?? 'null'}` +
+        ` firstScanUrl=${diagStudy?.scans?.[0]?.imageUrl ?? 'null'}`
     );
 
     return (
