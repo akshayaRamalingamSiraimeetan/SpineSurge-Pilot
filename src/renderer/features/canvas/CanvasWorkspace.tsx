@@ -2474,6 +2474,7 @@ const CanvasWorkspace = ({ side }: CanvasWorkspaceProps) => {
             <canvas
                 ref={canvasRef}
                 className="absolute inset-0 w-full h-full block"
+                data-side={side}
             />
 
 

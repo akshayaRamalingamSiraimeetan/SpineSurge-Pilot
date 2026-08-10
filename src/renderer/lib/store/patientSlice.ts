@@ -1,5 +1,5 @@
 import { StateCreator } from 'zustand';
-import { Patient, Study, Scan, Visit, Context, ContextState } from './types';
+import { Patient, Study, Scan, Visit, Context, ContextState, SavedPlan, SavedComparison } from './types';
 import { api } from '../api';
 import type { AppState } from './index';
 
@@ -33,6 +33,12 @@ export interface PatientSlice {
     updateContextState: (contextId: string, updates: Partial<ContextState>) => Promise<boolean>;
     setActiveContextId: (contextId: string | null) => void;
     resetWorkspace: () => void;
+    /** Snapshot current measurements+implants as a named Plan and persist it. */
+    savePlan: () => Promise<SavedPlan | null>;
+    /** Snapshot current comparison state as a named Comparison and persist it. */
+    saveComparison: () => Promise<SavedComparison | null>;
+    /** Clear all saved plans (start a new report from Plan A). */
+    clearSavedPlans: () => Promise<void>;
 }
 
 export const createPatientSlice: StateCreator<AppState, [], [], PatientSlice> = (set, get) => ({
@@ -134,6 +140,8 @@ export const createPatientSlice: StateCreator<AppState, [], [], PatientSlice> = 
                 comparisonLeft:     c.comparisonLeft,
                 comparisonRight:    c.comparisonRight,
                 viewportState:      c.viewportState ?? null,
+                savedPlans:         c.savedPlans         || undefined,
+                savedComparisons:   c.savedComparisons   || undefined,
             }));
 
             const activeState = initialContextId
@@ -533,6 +541,9 @@ export const createPatientSlice: StateCreator<AppState, [], [], PatientSlice> = 
                         ...(stateForServer.comparisonRight ? { comparisonRight: stateForServer.comparisonRight } : {}),
                         // Persist canvas viewport so zoom/pan/rotation/windowing survive reload
                         ...(stateForServer.viewportState   ? { viewportState:   stateForServer.viewportState   } : {}),
+                        // Persist named plan/comparison snapshots
+                        ...(stateForServer.savedPlans        ? { savedPlans:        stateForServer.savedPlans        } : {}),
+                        ...(stateForServer.savedComparisons  ? { savedComparisons:  stateForServer.savedComparisons  } : {}),
                     },
                 };
             }
@@ -609,4 +620,81 @@ export const createPatientSlice: StateCreator<AppState, [], [], PatientSlice> = 
             }
         }
     }),
+
+    savePlan: async (): Promise<SavedPlan | null> => {
+        const state = get();
+        const { activeContextId, contextStates } = state;
+        if (!activeContextId) return null;
+
+        const ctxState = contextStates.find((s) => s.contextId === activeContextId);
+        const existing = ctxState?.savedPlans ?? [];
+        const planIndex = existing.length + 1;
+        const planLabel = String.fromCharCode(64 + planIndex); // A, B, C…
+
+        // Capture live canvas snapshot
+        let canvasSnapshot: string | undefined;
+        try {
+            const canvasEl = Array.from(document.querySelectorAll('canvas')).find(c => c.width > 300);
+            if (canvasEl) canvasSnapshot = canvasEl.toDataURL('image/png', 0.8);
+        } catch { /* ignore tainted canvas */ }
+
+        const activePatient = state.patients.find(p => p.id === state.activePatientId);
+        const activeNotes = ctxState?.toolState?.clinicalNotes || activePatient?.visits?.[0]?.comments || '';
+
+        const plan: SavedPlan = {
+            id:           crypto.randomUUID(),
+            name:         `Plan ${planLabel}`,
+            savedAt:      new Date().toISOString(),
+            measurements: state.measurements.filter(m => m.selected && m.toolKey !== 'c7pl' && m.toolKey !== 'csvl' && !(m as any).measurement?.isCalibration),
+            implants:     state.implants ?? [],
+            canvasSnapshot,
+            notes:        activeNotes,
+        };
+
+        const updatedPlans = [...existing, plan];
+        await state.updateContextState(activeContextId, { savedPlans: updatedPlans });
+        return plan;
+    },
+
+    saveComparison: async (): Promise<SavedComparison | null> => {
+        const state = get();
+        const { activeContextId, contextStates, comparison } = state;
+        if (!activeContextId) return null;
+
+        const ctxState = contextStates.find((s) => s.contextId === activeContextId);
+        const existing = ctxState?.savedComparisons ?? [];
+        const compIndex = existing.length + 1;
+
+        // Capture canvas snapshots for left and right
+        const captureSnapshot = (dataSide: 'left' | 'right'): string | undefined => {
+            try {
+                const canvases = Array.from(document.querySelectorAll('canvas')).filter(c => c.width > 300);
+                const el = canvases.find(c => c.getAttribute('data-side') === dataSide)
+                    ?? (dataSide === 'left' ? canvases[0] : canvases[1]);
+                return el ? el.toDataURL('image/png', 0.8) : undefined;
+            } catch { return undefined; }
+        };
+
+        const comp: SavedComparison = {
+            id:      crypto.randomUUID(),
+            name:    `Comparison ${compIndex}`,
+            savedAt: new Date().toISOString(),
+            left: {
+                image:          comparison.left.image,
+                measurements:   comparison.left.measurements,
+                implants:       comparison.left.implants,
+                canvasSnapshot: captureSnapshot('left'),
+            },
+            right: {
+                image:          comparison.right.image,
+                measurements:   comparison.right.measurements,
+                implants:       comparison.right.implants,
+                canvasSnapshot: captureSnapshot('right'),
+            },
+        };
+
+        const updatedComps = [...existing, comp];
+        await state.updateContextState(activeContextId, { savedComparisons: updatedComps });
+        return comp;
+    },
 });

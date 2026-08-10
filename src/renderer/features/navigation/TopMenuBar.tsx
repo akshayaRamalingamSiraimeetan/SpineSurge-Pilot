@@ -59,7 +59,7 @@ import { ShareDialog } from "./ShareDialog";
 import { useAppStore, getStudyDisplayName } from "@/lib/store/index";
 import { cn } from "@/lib/utils";
 import { generateReportPDF } from "@/lib/pdf/generateReportPDF";
-import { Eye } from "lucide-react";
+import { Eye, BookmarkPlus, RefreshCcw } from "lucide-react";
 
 /* ── Workspace mode tabs ─────────────────────────────────────── */
 type WsTab = 'assessment' | 'planning' | 'compare' | 'report';
@@ -69,6 +69,49 @@ const WS_TABS: { key: WsTab; label: string }[] = [
     { key: 'compare',    label: 'Compare'    },
     { key: 'report',     label: 'Report'     },
 ];
+
+/* ── Save Plan button (Planning tab only) ────────────────────── */
+const SavePlanButton = () => {
+    const { savePlan, activeContextId, contextStates } = useAppStore();
+    const [saving, setSaving] = useState(false);
+    const [saved, setSaved] = useState(false);
+
+    const ctxState = contextStates.find(s => s.contextId === activeContextId);
+    const planCount = ctxState?.savedPlans?.length ?? 0;
+
+    const handleSave = async () => {
+        setSaving(true);
+        try {
+            const plan = await savePlan();
+            if (plan) {
+                setSaved(true);
+                setTimeout(() => setSaved(false), 2000);
+            }
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    return (
+        <div className="flex items-center gap-2 mr-2">
+            {planCount > 0 && (
+                <span className="text-[10px] font-bold text-muted-foreground bg-muted/40 px-2 py-0.5 rounded-full border border-border/50">
+                    {planCount} plan{planCount !== 1 ? 's' : ''} saved
+                </span>
+            )}
+            <Button
+                size="sm"
+                className="h-8 text-xs text-white shadow-sm hover:brightness-110 transition-all border-none"
+                style={{ backgroundColor: saved ? '#34C759' : '#FF453A' }}
+                onClick={handleSave}
+                disabled={saving}
+            >
+                <BookmarkPlus className="w-3.5 h-3.5 mr-1.5" />
+                {saving ? 'Saving…' : saved ? 'Saved!' : 'Save Plan'}
+            </Button>
+        </div>
+    );
+};
 
 const TopMenuBar = () => {
     const { setTheme, theme, resolvedTheme } = useTheme();
@@ -469,6 +512,24 @@ const TopMenuBar = () => {
                         <Button 
                             variant="secondary" 
                             size="sm" 
+                            className="h-8 text-xs bg-white/10 hover:bg-white/20 border-white/5 text-white"
+                            onClick={async () => {
+                                if (confirm("Are you sure you want to start a new report? This will clear all saved plans and comparisons for this patient.")) {
+                                    if (activeContextId) {
+                                        await updateContextState(activeContextId, {
+                                            savedPlans: [],
+                                            savedComparisons: [],
+                                        });
+                                    }
+                                }
+                            }}
+                        >
+                            <RefreshCcw className="w-3.5 h-3.5 mr-1.5" />
+                            Start New Report
+                        </Button>
+                        <Button 
+                            variant="secondary" 
+                            size="sm" 
                             className="h-8 text-xs bg-white/10 hover:bg-white/20 border-white/5"
                             onClick={async () => {
                                 try {
@@ -489,6 +550,12 @@ const TopMenuBar = () => {
                             onClick={async () => {
                                 try {
                                     await generateReportPDF();
+                                    if (activeContextId) {
+                                        await updateContextState(activeContextId, {
+                                            savedPlans: [],
+                                            savedComparisons: [],
+                                        });
+                                    }
                                 } catch (e: any) {
                                     alert(e.message || "Failed to export PDF");
                                 }
@@ -498,6 +565,8 @@ const TopMenuBar = () => {
                             Export PDF
                         </Button>
                     </div>
+                ) : wsTab === 'planning' ? (
+                    <SavePlanButton />
                 ) : (
                     /* Legacy Export */
                     <Button variant="ghost" size="icon" className={cn(iconBtn)} title="Export Report"

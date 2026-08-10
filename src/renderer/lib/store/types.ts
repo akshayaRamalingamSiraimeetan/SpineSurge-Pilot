@@ -51,6 +51,24 @@ export interface Context {
     lastModified: string;
 }
 
+export interface SavedPlan {
+    id: string;
+    name: string;        // e.g. "Plan A", "Plan B"
+    savedAt: string;     // ISO timestamp
+    measurements: Measurement[];
+    implants: any[];
+    canvasSnapshot?: string; // base64 PNG from canvas.toDataURL()
+    notes?: string;
+}
+
+export interface SavedComparison {
+    id: string;
+    name: string;        // e.g. "Comparison 1"
+    savedAt: string;
+    left:  { image: string | null; measurements: Measurement[]; implants: any[]; canvasSnapshot?: string };
+    right: { image: string | null; measurements: Measurement[]; implants: any[]; canvasSnapshot?: string };
+}
+
 export interface ReportSectionConfig {
     id: string;
     type: 'patient_summary' | 'alignment_summary' | 'measurement_table' | 'compare_table' | 'surgical_plan' | 'osteotomies' | 'instrumentation' | 'images' | 'notes';
@@ -84,6 +102,10 @@ export interface ContextState {
      *  measurements survive leaving/re-entering Compare mode. */
     comparisonLeft?: { image: string | null; measurements: Measurement[]; implants: any[] };
     comparisonRight?: { image: string | null; measurements: Measurement[]; implants: any[] };
+    /** Named plan snapshots accumulated via "Save Plan" in Planning tab. */
+    savedPlans?: SavedPlan[];
+    /** Named comparison snapshots accumulated via "Save Comparison" in Compare mode. */
+    savedComparisons?: SavedComparison[];
     /** Canvas viewport state — persisted so zoom/pan/rotation/windowing
      *  are restored exactly when the study is reopened. */
     viewportState?: {

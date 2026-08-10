@@ -12,6 +12,8 @@ export default function ReportBuilderWorkspace() {
     const activeState = contextStates.find((s) => s.contextId === activeContextId);
     const reportConfig = activeState?.reportConfig;
     const activePatient = patients.find(p => p.id === activePatientId);
+    const savedPlans = activeState?.savedPlans ?? [];
+    const savedComparisons = activeState?.savedComparisons ?? [];
     const hasPlanningData = (implants && implants.length > 0) || (threeDImplants && threeDImplants.length > 0) || (pedicleSimulations && pedicleSimulations.length > 0);
     const isSingleReportMode = reportConfig?.reportType === 'single';
     const effectiveComparisonMode = isComparisonMode && !isSingleReportMode;
@@ -43,8 +45,17 @@ export default function ReportBuilderWorkspace() {
         );
     }
 
+    const multiPlan = savedPlans.length > 1;
     const sortedSections = [...reportConfig.sections]
         .filter(s => s.enabled)
+        .filter(s => {
+            // When there are saved plans, suppress live workspace sections —
+            // those are rendered per-plan below instead.
+            if (savedPlans.length > 0 && ['images', 'measurement_table', 'surgical_plan', 'notes'].includes(s.type)) {
+                return false;
+            }
+            return true;
+        })
         .sort((a, b) => a.order - b.order);
 
     return (
@@ -72,6 +83,8 @@ export default function ReportBuilderWorkspace() {
                 <div className="space-y-12">
                     {sortedSections.map((section) => {
                         // Conditional rendering based on data availability
+                        // When saved plans exist, all of these are rendered per-plan below — never here.
+                        if (savedPlans.length > 0 && ['images', 'measurement_table', 'surgical_plan', 'notes'].includes(section.type)) return null;
                         if (section.type === 'images' && previewImages.length === 0) return null;
                         if (section.type === 'measurement_table') {
                             if (effectiveComparisonMode) {
@@ -246,6 +259,180 @@ export default function ReportBuilderWorkspace() {
                             </section>
                         );
                     })}
+
+                    {/* Saved Plans */}
+                    {savedPlans.length > 0 && (
+                        <div className="space-y-12">
+                            {savedPlans.map((plan, idx) => {
+                                const planTitle = savedPlans.length > 1 ? `Plan ${String.fromCharCode(65 + idx)}` : 'Surgical Planning';
+                                return (
+                                    <section key={plan.id} className="space-y-6 pt-6 border-t first:border-t-0" style={{ borderColor: 'rgba(255, 69, 58, 0.1)' }}>
+                                        <div>
+                                            <h2 className="text-xl font-bold uppercase tracking-wider text-[#FF453A]">{planTitle}</h2>
+                                            <div className="text-xs opacity-50 mt-1">Saved: {new Date(plan.savedAt).toLocaleString()}</div>
+                                            <div className="h-0.5 w-full mt-2 mb-6" style={{ backgroundColor: 'rgba(255, 69, 58, 0.2)' }} />
+                                        </div>
+
+                                        {/* Plan Image */}
+                                        {plan.canvasSnapshot && (
+                                            <div className="w-full flex justify-center items-center bg-black/10 rounded-md p-2 border" style={{ borderColor: 'var(--border)' }}>
+                                                <img src={plan.canvasSnapshot} alt={`${planTitle} Image`} className="max-w-full max-h-[400px] object-contain shadow-md" />
+                                            </div>
+                                        )}
+
+                                        {/* Plan Measurements */}
+                                        {plan.measurements.length > 0 && (
+                                            <div className="space-y-2">
+                                                <h3 className="text-sm font-semibold opacity-80 uppercase">Measurements</h3>
+                                                <div className="w-full rounded-lg border overflow-hidden" style={{ borderColor: 'var(--border)' }}>
+                                                    <table className="w-full text-sm text-left">
+                                                        <thead className="text-xs uppercase" style={{ backgroundColor: 'var(--surface-2)' }}>
+                                                            <tr>
+                                                                <th className="px-4 py-3 font-semibold">Parameter</th>
+                                                                <th className="px-4 py-3 font-semibold">Value</th>
+                                                            </tr>
+                                                        </thead>
+                                                        <tbody>
+                                                            {plan.measurements.map(m => (
+                                                                <tr key={m.id} className="border-t" style={{ borderColor: 'var(--border)' }}>
+                                                                    <td className="px-4 py-3 opacity-80">{m.toolKey.toUpperCase()}</td>
+                                                                    <td className="px-4 py-3 font-medium">
+                                                                        {typeof m.result === 'string' ? m.result.split('\n')[0] : '—'}
+                                                                    </td>
+                                                                </tr>
+                                                            ))}
+                                                        </tbody>
+                                                    </table>
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        {/* Plan Planned Implants */}
+                                        {plan.implants && plan.implants.length > 0 && (
+                                            <div className="space-y-2">
+                                                <h3 className="text-sm font-semibold opacity-80 uppercase">Planned Implants</h3>
+                                                <div className="w-full rounded-lg border overflow-hidden" style={{ borderColor: 'var(--border)' }}>
+                                                    <table className="w-full text-sm text-left">
+                                                        <thead className="text-xs uppercase" style={{ backgroundColor: 'var(--surface-2)' }}>
+                                                            <tr>
+                                                                <th className="px-4 py-3 font-semibold">Implant Type</th>
+                                                                <th className="px-4 py-3 font-semibold">Details</th>
+                                                            </tr>
+                                                        </thead>
+                                                        <tbody>
+                                                            {plan.implants.map((imp, idx) => (
+                                                                <tr key={idx} className="border-t" style={{ borderColor: 'var(--border)' }}>
+                                                                    <td className="px-4 py-3 opacity-80 capitalize">{imp.type}</td>
+                                                                    <td className="px-4 py-3 font-medium">
+                                                                        Size: {imp.width || imp.diameter}x{imp.height || imp.length}mm
+                                                                    </td>
+                                                                </tr>
+                                                            ))}
+                                                        </tbody>
+                                                    </table>
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        {/* Plan Notes */}
+                                        {plan.notes && (
+                                            <div className="space-y-2">
+                                                <h3 className="text-sm font-semibold opacity-80 uppercase">Plan Notes</h3>
+                                                <div className="w-full p-4 rounded-lg border bg-black/5" style={{ borderColor: 'var(--border)' }}>
+                                                    <p className="text-sm opacity-90 whitespace-pre-wrap">{plan.notes}</p>
+                                                </div>
+                                            </div>
+                                        )}
+                                    </section>
+                                );
+                            })}
+                        </div>
+                    )}
+
+                    {/* Saved Comparisons */}
+                    {savedComparisons.length > 0 && (
+                        <div className="space-y-12 mt-12 pt-6 border-t" style={{ borderColor: 'rgba(255, 69, 58, 0.2)' }}>
+                            <div>
+                                <h2 className="text-xl font-bold uppercase tracking-wider text-[#FF453A]">Saved Comparisons</h2>
+                                <div className="h-0.5 w-full mt-2 mb-6" style={{ backgroundColor: 'rgba(255, 69, 58, 0.2)' }} />
+                            </div>
+
+                            {savedComparisons.map((comp) => (
+                                <div key={comp.id} className="space-y-6">
+                                    <h3 className="text-base font-bold text-[#FF453A]">{comp.name}</h3>
+                                    <div className="text-xs opacity-50">Saved: {new Date(comp.savedAt).toLocaleString()}</div>
+
+                                    {/* Snapshot Pair */}
+                                    <div className="flex gap-4 w-full">
+                                        <div className="flex-1 space-y-2">
+                                            <div className="text-center font-semibold text-xs opacity-70 uppercase">Image A</div>
+                                            {comp.left.canvasSnapshot ? (
+                                                <div className="w-full flex justify-center items-center bg-black/10 rounded-md p-2 border" style={{ borderColor: 'var(--border)' }}>
+                                                    <img src={comp.left.canvasSnapshot} alt="Image A" className="max-w-full max-h-[300px] object-contain shadow-md" />
+                                                </div>
+                                            ) : (
+                                                <div className="w-full h-[200px] flex justify-center items-center bg-black/5 rounded-md p-2 border border-dashed opacity-50" style={{ borderColor: 'var(--border)' }}>No image</div>
+                                            )}
+                                        </div>
+                                        <div className="flex-1 space-y-2">
+                                            <div className="text-center font-semibold text-xs opacity-70 uppercase">Image B</div>
+                                            {comp.right.canvasSnapshot ? (
+                                                <div className="w-full flex justify-center items-center bg-black/10 rounded-md p-2 border" style={{ borderColor: 'var(--border)' }}>
+                                                    <img src={comp.right.canvasSnapshot} alt="Image B" className="max-w-full max-h-[300px] object-contain shadow-md" />
+                                                </div>
+                                            ) : (
+                                                <div className="w-full h-[200px] flex justify-center items-center bg-black/5 rounded-md p-2 border border-dashed opacity-50" style={{ borderColor: 'var(--border)' }}>No image</div>
+                                            )}
+                                        </div>
+                                    </div>
+
+                                    {/* Measurements Table for Comparison */}
+                                    {comp.left.measurements.length > 0 && (
+                                        <div className="w-full rounded-lg border overflow-hidden" style={{ borderColor: 'var(--border)' }}>
+                                            <table className="w-full text-sm text-left">
+                                                <thead className="text-xs uppercase" style={{ backgroundColor: 'var(--surface-2)' }}>
+                                                    <tr>
+                                                        <th className="px-4 py-3 font-semibold">Parameter</th>
+                                                        <th className="px-4 py-3 font-semibold">Image A</th>
+                                                        <th className="px-4 py-3 font-semibold">Image B</th>
+                                                        <th className="px-4 py-3 font-semibold">Difference</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    {comp.left.measurements.map((mA) => {
+                                                        const mB = comp.right.measurements.find(m => m.toolKey === mA.toolKey);
+                                                        const valA = typeof mA.result === 'string' ? mA.result.split('\n')[0] : '—';
+                                                        const valB = mB && typeof mB.result === 'string' ? mB.result.split('\n')[0] : '—';
+                                                        let diffStr = '—';
+                                                        if (valA !== '—' && valB !== '—') {
+                                                            const extractNum = (s: string) => {
+                                                                const match = s.match(/-?\d+(\.\d+)?/);
+                                                                return match ? parseFloat(match[0]) : NaN;
+                                                            };
+                                                            const numA = extractNum(valA);
+                                                            const numB = extractNum(valB);
+                                                            if (!isNaN(numA) && !isNaN(numB)) {
+                                                                const diff = (numB - numA).toFixed(1);
+                                                                diffStr = (parseFloat(diff) > 0 ? '+' : '') + diff + (valA.includes('°') ? '°' : ' px');
+                                                            }
+                                                        }
+                                                        return (
+                                                            <tr key={mA.id} className="border-t" style={{ borderColor: 'var(--border)' }}>
+                                                                <td className="px-4 py-3 opacity-80">{mA.toolKey.toUpperCase()}</td>
+                                                                <td className="px-4 py-3 font-medium">{valA}</td>
+                                                                <td className="px-4 py-3 font-medium">{valB}</td>
+                                                                <td className="px-4 py-3 font-medium" style={{ color: diffStr.startsWith('+') ? '#34C759' : diffStr.startsWith('-') ? '#FF453A' : 'inherit' }}>{diffStr}</td>
+                                                            </tr>
+                                                        );
+                                                    })}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    )}
+                                </div>
+                            ))}
+                        </div>
+                    )}
                 </div>
             </div>
         </div>

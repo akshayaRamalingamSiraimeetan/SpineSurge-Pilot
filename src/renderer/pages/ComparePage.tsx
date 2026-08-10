@@ -1,4 +1,4 @@
-import { Search, Upload, Image as ImageIcon, ChevronRight, FolderOpen } from "lucide-react";
+import { Search, Upload, Image as ImageIcon, ChevronRight, FolderOpen, BookmarkPlus } from "lucide-react";
 import { useAppStore } from "@/lib/store/index";
 import { useLocation } from "react-router-dom";
 import CanvasWorkspace from "@/features/canvas/CanvasWorkspace";
@@ -9,6 +9,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
 import { useTheme } from "@/components/theme-provider";
 import { getStudyDisplayName } from "@/lib/store/types";
+import { Button } from "@/components/ui/button";
 
 type PickerStep = "ROOT" | "PATIENTS" | "STUDIES";
 
@@ -285,6 +286,179 @@ const PanePicker = ({ side, label }: PanePickerProps) => {
     );
 };
 
+/* ── Save Comparison button ──────────────────────────────────── */
+const SaveComparisonButton = () => {
+    const { saveComparison, activeContextId, contextStates } = useAppStore();
+    const [saving, setSaving] = useState(false);
+    const [saved, setSaved] = useState(false);
+
+    const ctxState = contextStates.find(s => s.contextId === activeContextId);
+    const compCount = ctxState?.savedComparisons?.length ?? 0;
+
+    const handleSave = async () => {
+        setSaving(true);
+        try {
+            const comp = await saveComparison();
+            if (comp) { setSaved(true); setTimeout(() => setSaved(false), 2000); }
+        } finally { setSaving(false); }
+    };
+
+    return (
+        <div className="flex items-center gap-2">
+            {compCount > 0 && (
+                <span className="text-[10px] font-bold text-white/50 bg-white/10 px-2 py-0.5 rounded-full border border-white/10">
+                    {compCount} saved
+                </span>
+            )}
+            <Button size="sm" className="h-7 text-xs text-white shadow-sm hover:brightness-110 transition-all border-none"
+                style={{ backgroundColor: saved ? '#34C759' : '#FF453A' }}
+                onClick={handleSave} disabled={saving}>
+                <BookmarkPlus className="w-3 h-3 mr-1" />
+                {saving ? 'Saving…' : saved ? 'Saved!' : 'Save Comparison'}
+            </Button>
+        </div>
+    );
+};
+
+/* ── Import scan for comparison button ───────────────────────── */
+const ImportComparisonScanButton = () => {
+    const { resolvedTheme } = useTheme();
+    const isDark = resolvedTheme === 'dark';
+    const { comparison, setComparisonImage } = useAppStore();
+    const [open, setOpen] = useState(false);
+    const [importOpen, setImportOpen] = useState(false);
+    const [targetSide, setTargetSide] = useState<'left' | 'right'>('right');
+
+    // Reuse the PanePicker steps inline
+    const [step, setStep] = useState<PickerStep>('ROOT');
+    const [query, setQuery] = useState('');
+    const [selectedPatientId, setSelectedPatientId] = useState<string | null>(null);
+    const { patients } = useAppStore();
+
+    const selectedPatient = useMemo(() => patients.find(p => p.id === selectedPatientId) ?? null, [patients, selectedPatientId]);
+    const filteredPatients = useMemo(() => patients.filter(p =>
+        (p.name||'').toLowerCase().includes(query.toLowerCase()) ||
+        (p.id||'').toLowerCase().includes(query.toLowerCase())
+    ), [patients, query]);
+    const allStudiesWithScans = useMemo(() => {
+        if (!selectedPatient) return [];
+        return (selectedPatient.studies ?? []).map(s => ({ study: s, scans: (s.scans ?? []).filter(sc => !!sc.imageUrl) })).filter(e => e.scans.length > 0);
+    }, [selectedPatient]);
+
+    const handleSelect = (imageUrl: string) => {
+        setComparisonImage(targetSide, imageUrl);
+        setOpen(false); setStep('ROOT'); setQuery(''); setSelectedPatientId(null);
+    };
+
+    const btn = cn('w-full flex items-center gap-3 rounded-xl p-3 text-left transition-all cursor-pointer', isDark ? 'hover:bg-[#1B1B1E] text-[#9CA3AF] hover:text-[#F5F5F7]' : 'hover:bg-gray-50 text-slate-600 hover:text-slate-900');
+
+    return (
+        <>
+            <Button size="sm" variant="secondary" className="h-7 text-xs gap-1.5 border border-border/40"
+                onClick={() => { setOpen(true); setStep('ROOT'); }}>
+                <Upload className="w-3 h-3" />
+                Import New Scan
+            </Button>
+
+            <ImportDialog targetSide={targetSide} hideCloseButton open={importOpen} onOpenChange={setImportOpen} />
+
+            {open && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+                    <div className={cn('w-[440px] max-h-[580px] flex flex-col shadow-2xl rounded-2xl border overflow-hidden', isDark ? 'bg-[#0A0A0B] border-[#242427]' : 'bg-gray-50 border-gray-300')}>
+                        {/* Header */}
+                        <div className={cn('flex items-center justify-between px-5 py-4 border-b', isDark ? 'border-[#242427]' : 'border-gray-200')}>
+                            <div>
+                                {step !== 'ROOT' && (
+                                    <button className={cn('text-xs font-semibold mb-0.5 flex items-center gap-1', isDark ? 'text-[#FF453A]' : 'text-red-600')}
+                                        onClick={() => { if(step==='STUDIES') setStep('PATIENTS'); else setStep('ROOT'); }}>← Back</button>
+                                )}
+                                <h3 className="text-base font-bold">Import Scan for Comparison</h3>
+                                <p className={cn('text-xs mt-0.5', isDark ? 'text-[#6B7280]' : 'text-slate-400')}>
+                                    {step==='ROOT' && 'Choose which side to replace and source'} {step==='PATIENTS' && 'Select patient'} {step==='STUDIES' && selectedPatient?.name}
+                                </p>
+                            </div>
+                            <button onClick={() => setOpen(false)} className={cn('text-xs px-2 py-1 rounded-lg border', isDark ? 'border-[#242427] text-[#6B7280] hover:text-white' : 'border-gray-300 text-slate-400 hover:text-slate-700')}>✕</button>
+                        </div>
+
+                        <ScrollArea className="flex-1 min-h-0 p-4">
+                            {/* ROOT: pick side + source */}
+                            {step === 'ROOT' && (
+                                <div className="flex flex-col gap-3">
+                                    <p className={cn('text-[10px] font-bold uppercase tracking-widest', isDark ? 'text-[#4B5563]' : 'text-slate-400')}>Replace side</p>
+                                    <div className="grid grid-cols-2 gap-2">
+                                        {(['left','right'] as const).map(side => (
+                                            <button key={side} onClick={() => setTargetSide(side)}
+                                                className={cn('px-3 py-2 rounded-xl text-sm font-bold border transition-all',
+                                                    targetSide===side ? 'bg-[#FF453A]/10 text-[#FF453A] border-[#FF453A]/40' :
+                                                    isDark ? 'bg-[#141416] border-[#242427] text-[#9CA3AF]' : 'bg-white border-gray-200 text-slate-600')}>
+                                                {side==='left' ? 'View A' : 'View B'}
+                                                {comparison[side].image && <span className="ml-1 text-[9px] opacity-50">• loaded</span>}
+                                            </button>
+                                        ))}
+                                    </div>
+                                    <p className={cn('text-[10px] font-bold uppercase tracking-widest mt-2', isDark ? 'text-[#4B5563]' : 'text-slate-400')}>Source</p>
+                                    <button className={cn('flex items-center gap-3 rounded-xl p-3 border transition-all', isDark ? 'bg-[#141416] border-[#242427] hover:border-[#FF453A]/40 text-[#F5F5F7]' : 'bg-white border-gray-200 hover:border-red-300 text-slate-900')}
+                                        onClick={() => setStep('PATIENTS')}>
+                                        <FolderOpen className="h-4 w-4 text-[#FF453A] flex-shrink-0" />
+                                        <div className="flex-1 text-sm font-semibold text-left">Choose Existing Study</div>
+                                        <ChevronRight className="h-4 w-4 opacity-40" />
+                                    </button>
+                                    <button className={cn('flex items-center gap-3 rounded-xl p-3 border transition-all cursor-pointer', isDark ? 'bg-[#141416] border-[#242427] hover:border-[#FF453A]/40 text-[#F5F5F7]' : 'bg-white border-gray-200 hover:border-red-300 text-slate-900')}
+                                        onClick={() => {
+                                            setOpen(false);
+                                            setImportOpen(true);
+                                        }}>
+                                        <Upload className="h-4 w-4 text-[#FF453A] flex-shrink-0" />
+                                        <div className="flex-1 text-sm font-semibold text-left">Import New File</div>
+                                        <ChevronRight className="h-4 w-4 opacity-40" />
+                                    </button>
+                                </div>
+                            )}
+
+                            {/* PATIENTS */}
+                            {step === 'PATIENTS' && (
+                                <div className="flex flex-col gap-2">
+                                    <div className="relative mb-1">
+                                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+                                        <Input value={query} onChange={e => setQuery(e.target.value)} placeholder="Search patients…"
+                                            className={cn('pl-9 h-8 text-sm', isDark ? 'bg-[#141416] border-[#242427]' : 'bg-white border-gray-200')} autoFocus />
+                                    </div>
+                                    {filteredPatients.map(p => (
+                                        <button key={p.id} className={btn} onClick={() => { setSelectedPatientId(p.id); setStep('STUDIES'); }}>
+                                            <div className={cn('h-8 w-8 rounded-full flex items-center justify-center font-bold text-sm flex-shrink-0', isDark ? 'bg-[#242427] text-[#FF453A]' : 'bg-red-50 text-red-600')}>{(p.name||'?')[0].toUpperCase()}</div>
+                                            <div className="flex-1 min-w-0"><div className="font-semibold text-sm truncate">{p.name}</div></div>
+                                            <ChevronRight className="h-4 w-4 flex-shrink-0 opacity-50" />
+                                        </button>
+                                    ))}
+                                </div>
+                            )}
+
+                            {/* STUDIES */}
+                            {step === 'STUDIES' && (
+                                <div className="flex flex-col gap-3">
+                                    {allStudiesWithScans.length === 0 && <div className={cn('text-center py-8 text-sm', isDark ? 'text-[#4B5563]' : 'text-slate-400')}>No scans available</div>}
+                                    {allStudiesWithScans.map(({ study, scans }) => (
+                                        <div key={study.id}>
+                                            <div className={cn('text-[10px] font-bold uppercase tracking-widest mb-1.5 px-1', isDark ? 'text-[#4B5563]' : 'text-slate-300')}>{getStudyDisplayName(study)} · {study.acquisitionDate}</div>
+                                            {scans.map(sc => (
+                                                <button key={sc.id} className={btn} onClick={() => handleSelect(sc.imageUrl)}>
+                                                    <div className={cn('h-8 w-8 rounded-lg flex items-center justify-center flex-shrink-0', isDark ? 'bg-[#242427]' : 'bg-gray-100')}><ImageIcon className={cn('h-4 w-4', isDark ? 'text-[#FF453A]' : 'text-red-600')} /></div>
+                                                    <div className="flex-1 min-w-0"><div className="font-semibold text-sm truncate">{sc.type} · {sc.date}</div></div>
+                                                    <ChevronRight className="h-4 w-4 flex-shrink-0 opacity-50" />
+                                                </button>
+                                            ))}
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </ScrollArea>
+                    </div>
+                </div>
+            )}
+        </>
+    );
+};
+
 /* ─────────────────────────────────────────────────────────────────────────────
    ComparePage
 ───────────────────────────────────────────────────────────────────────────── */
@@ -418,9 +592,14 @@ const ComparePage = () => {
     return (
         <div id="comparison-container" className="flex flex-col h-full bg-background relative">
 
+            {/* Save Comparison bar */}
+            <div className="flex items-center justify-end gap-2 px-3 py-1.5 border-b border-border/20 shrink-0">
+                <ImportComparisonScanButton />
+                <SaveComparisonButton />
+            </div>
 
             {/* Split Canvas Area */}
-            <div className="flex-1 flex overflow-hidden relative p-2 gap-2 mt-2">
+            <div className="flex-1 flex overflow-hidden relative p-2 gap-2">
 
                 {/* ── Left (View A) ───────────────────────────────────────── */}
                 <div className="flex-1 flex flex-col relative rounded-xl overflow-hidden border border-border/20">

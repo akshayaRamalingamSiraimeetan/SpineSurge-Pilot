@@ -154,12 +154,17 @@ export const createCanvasSlice: StateCreator<AppState, [], [], CanvasSlice> = (s
 
     loadImage: (imageUrl: string) => set((state) => {
         console.log('[CanvasSlice] loadImage called', imageUrl);
-        console.log('[CanvasSlice] Current measurements count:', state.measurements.length);
         console.log('[CanvasSlice] Resetting canvas state...');
+        syncManagerMeasurements(state.managers.main, []);
+        if (state.activeContextId) {
+            state.updateContextState(state.activeContextId, { measurements: [], implants: [] });
+        }
         return {
             currentImage: imageUrl,
             isDicomMode: false,
             dicomSeries: [],
+            measurements: [],
+            implants: [],
             canvas: { ...state.canvas, zoom: 1, pan: { x: 0, y: 0 }, rotation: 0, brightness: 100, contrast: 100, sharpness: 0, flipX: false }
         };
     }),

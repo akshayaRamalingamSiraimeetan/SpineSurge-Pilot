@@ -37,5 +37,5 @@ export const useAppStore = create<AppState>()(
     )
 );
 
-export type { Patient, Study, Scan, Visit, Context, ContextState, UserProfile, ThreeDImplant, DICOMResource, StudyStatus };
+export type { Patient, Study, Scan, Visit, Context, ContextState, UserProfile, ThreeDImplant, DICOMResource, StudyStatus, SavedPlan, SavedComparison };
 export { getStudyDisplayName, STUDY_STATUSES };

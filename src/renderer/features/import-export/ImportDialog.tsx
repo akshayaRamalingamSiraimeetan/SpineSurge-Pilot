@@ -47,7 +47,7 @@ type ImportStep =
     | 'DICOM_FOLDER' // Added
 
 interface ImportDialogProps {
-    children: React.ReactNode;
+    children?: React.ReactNode;
     targetSide?: 'left' | 'right';
     resetOnOpen?: boolean;
     navigateOnImport?: boolean;
@@ -55,13 +55,17 @@ interface ImportDialogProps {
      *  Use when the dialog is embedded in a context where the close button
      *  would be confusing (e.g. inside the Compare pane picker). */
     hideCloseButton?: boolean;
+    open?: boolean;
+    onOpenChange?: (open: boolean) => void;
 }
 
-export function ImportDialog({ children, targetSide, resetOnOpen, navigateOnImport, hideCloseButton }: ImportDialogProps) {
+export function ImportDialog({ children, targetSide, resetOnOpen, navigateOnImport, hideCloseButton, open: controlledOpen, onOpenChange: controlledOnOpenChange }: ImportDialogProps) {
     const navigate = useNavigate();
     const { resolvedTheme } = useTheme();
     const isDark = resolvedTheme === "dark";
-    const [open, setOpen] = useState(false)
+    const [internalOpen, setInternalOpen] = useState(false);
+    const open = controlledOpen !== undefined ? controlledOpen : internalOpen;
+    const setOpen = controlledOnOpenChange !== undefined ? controlledOnOpenChange : setInternalOpen;
     const [step, setStep] = useState<ImportStep>('MODE')
     const [comingSoonTarget, setComingSoonTarget] = useState<string | null>(null)
     const fileInputRef = useRef<HTMLInputElement>(null)       // MODE step: Quick Use
@@ -151,16 +155,26 @@ export function ImportDialog({ children, targetSide, resetOnOpen, navigateOnImpo
                 alert('Could not open this DICOM file. The file may be compressed or missing pixel data.');
             }
             handleClose();
-            goToWorkspace();
+            if (!isComparisonMode) goToWorkspace();
+            return;
+        }
+
+        // In comparison mode: just load the file directly into the comparison side.
+        // Do NOT create a new patient/context — that would wipe the active patient's data.
+        if (isComparisonMode && importSide) {
+            try {
+                const localUrl = URL.createObjectURL(file);
+                setComparisonImage(importSide, localUrl);
+            } catch (err) {
+                console.error('[TRACE] handleQuickFileChange comparison import failed:', err);
+                alert('Failed to open this file for comparison.');
+            }
+            handleClose();
             return;
         }
 
         const loadQuickImage = (imageUrl: string) => {
-            if (isComparisonMode && importSide) {
-                setComparisonImage(importSide, imageUrl);
-            } else {
-                loadImage(imageUrl);
-            }
+            loadImage(imageUrl);
         };
 
         try {

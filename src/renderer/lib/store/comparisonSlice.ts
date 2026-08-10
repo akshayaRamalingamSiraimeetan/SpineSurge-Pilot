@@ -1,6 +1,7 @@
 import { StateCreator } from 'zustand';
 import { Measurement } from './types';
 import { type AppState } from './index';
+import { syncManagerMeasurements } from '@/lib/canvas/measurementSync';
 
 export interface ComparisonSlice {
     isComparisonMode: boolean;
@@ -80,15 +81,22 @@ export const createComparisonSlice: StateCreator<AppState, [], [], ComparisonSli
         }
     }),
     setActiveCanvasSide: (side) => set({ activeCanvasSide: side }),
-    setComparisonImage: (side, imageUrl) => set((state) => ({
-        comparison: {
-            ...state.comparison,
-            [side]: {
-                ...state.comparison[side],
-                image: imageUrl,
-            }
+    setComparisonImage: (side, imageUrl) => set((state) => {
+        if (state.managers[side]) {
+            syncManagerMeasurements(state.managers[side], []);
         }
-    })),
+        return {
+            comparison: {
+                ...state.comparison,
+                [side]: {
+                    ...state.comparison[side],
+                    image: imageUrl,
+                    measurements: [],
+                    implants: [],
+                }
+            }
+        };
+    }),
     setComparisonMeasurements: (side, measurements) => set((state) => ({
         comparison: {
             ...state.comparison,
