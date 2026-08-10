@@ -284,17 +284,40 @@ export const createCanvasSlice: StateCreator<AppState, [], [], CanvasSlice> = (s
     undo: () => set((state) => ({ undoTrigger: state.undoTrigger + 1 })),
     redo: () => set((state) => ({ redoTrigger: state.redoTrigger + 1 })),
     setMeasurements: (measurements) => set((state) => {
+        const ratio = state.isComparisonMode
+            ? state.comparison[state.activeCanvasSide].canvas.pixelToMm
+            : state.canvas.pixelToMm;
+
+        const converted = ratio ? measurements.map((m) => {
+            const originalPx = (m.measurement as any)?.originalPxResult || m.result;
+            const convertedResult = convertPxResultToMm(originalPx, ratio);
+            if (convertedResult.changed) {
+                return {
+                    ...m,
+                    result: convertedResult.result,
+                    measurement: {
+                        ...m.measurement,
+                        originalPxResult: originalPx,
+                        wasConvertedFromPx: true,
+                    },
+                };
+            }
+            return m;
+        }) : measurements;
+
+        const finalMeas = converted.map(m => m.selected === undefined ? { ...m, selected: true } : m);
+
         if (state.isComparisonMode) {
             const side = state.activeCanvasSide;
             return {
                 comparison: {
                     ...state.comparison,
-                    [side]: { ...state.comparison[side], measurements: measurements.map(m => m.selected === undefined ? { ...m, selected: true } : m) }
+                    [side]: { ...state.comparison[side], measurements: finalMeas }
                 }
             };
         }
         return {
-            measurements: measurements.map(m => m.selected === undefined ? { ...m, selected: true } : m)
+            measurements: finalMeas
         };
     }),
     setImplants: (implants) => set((state) => {
@@ -518,7 +541,8 @@ export const createCanvasSlice: StateCreator<AppState, [], [], CanvasSlice> = (s
             if (innerState.isComparisonMode) {
                 const side = innerState.activeCanvasSide;
                 const converted = innerState.comparison[side].measurements.map((m) => {
-                    const convertedResult = convertPxResultToMm(m.result, ratio);
+                    const originalPx = (m.measurement as any)?.originalPxResult || m.result;
+                    const convertedResult = convertPxResultToMm(originalPx, ratio);
                     if (!convertedResult.changed) {
                         return m;
                     }
@@ -528,6 +552,7 @@ export const createCanvasSlice: StateCreator<AppState, [], [], CanvasSlice> = (s
                         result: convertedResult.result,
                         measurement: {
                             ...m.measurement,
+                            originalPxResult: originalPx,
                             wasConvertedFromPx: true,
                         },
                     };
@@ -547,7 +572,8 @@ export const createCanvasSlice: StateCreator<AppState, [], [], CanvasSlice> = (s
             }
 
             const converted = innerState.measurements.map((m) => {
-                const convertedResult = convertPxResultToMm(m.result, ratio);
+                const originalPx = (m.measurement as any)?.originalPxResult || m.result;
+                const convertedResult = convertPxResultToMm(originalPx, ratio);
                 if (!convertedResult.changed) {
                     return m;
                 }
@@ -557,6 +583,7 @@ export const createCanvasSlice: StateCreator<AppState, [], [], CanvasSlice> = (s
                     result: convertedResult.result,
                     measurement: {
                         ...m.measurement,
+                        originalPxResult: originalPx,
                         wasConvertedFromPx: true,
                     },
                 };
