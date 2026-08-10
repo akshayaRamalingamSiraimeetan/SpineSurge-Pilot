@@ -341,6 +341,90 @@ const CanvasWorkspace = ({ side }: CanvasWorkspaceProps) => {
         return img;
     }, []);
 
+    // Invalidate sharpness cache whenever the sharpness value changes
+    useEffect(() => {
+        sharpnessCacheRef.current.clear();
+    }, [storeCanvas.sharpness]);
+
+    /**
+     * Returns a sharpened HTMLCanvasElement using unsharp mask, or the original image
+     * if sharpness === 0. Results are cached per (url, sharpness) for performance.
+     *
+     * Unsharp mask: output = clamp(original + amount × (original − blur(original)))
+     * - Gaussian blur radius scales with sharpness for natural progression
+     * - Negative sharpness softens the image (just the blur, no subtraction)
+     */
+    const getSharpImage = useCallback((
+        img: HTMLImageElement,
+        sharpness: number
+    ): HTMLImageElement | HTMLCanvasElement => {
+        if (sharpness === 0 || !img.complete || img.naturalWidth === 0) return img;
+
+        const url = img.src;
+        const cacheKey = `${url}__${sharpness}`;
+        if (sharpnessCacheRef.current.has(cacheKey)) {
+            return sharpnessCacheRef.current.get(cacheKey)!;
+        }
+
+        const w = img.naturalWidth;
+        const h = img.naturalHeight;
+
+        // Source canvas — draw original image
+        const src = document.createElement('canvas');
+        src.width = w;
+        src.height = h;
+        const srcCtx = src.getContext('2d', { willReadFrequently: true })!;
+        srcCtx.drawImage(img, 0, 0);
+        const srcData = srcCtx.getImageData(0, 0, w, h);
+        const orig = srcData.data; // Uint8ClampedArray
+
+        // Blurred canvas using CSS filter (fast native Gaussian blur)
+        const blurCanvas = document.createElement('canvas');
+        blurCanvas.width = w;
+        blurCanvas.height = h;
+        const blurCtx = blurCanvas.getContext('2d', { willReadFrequently: true })!;
+        // Blur radius: for sharpening (positive), 1–2px is enough; negative uses a softer radius
+        const absS = Math.abs(sharpness);
+        const blurRadius = sharpness > 0
+            ? 0.5 + (absS / 100) * 1.5   // 0.5–2px for sharpen
+            : 0.5 + (absS / 100) * 3.0;  // 0.5–3.5px for soften
+        blurCtx.filter = `blur(${blurRadius.toFixed(2)}px)`;
+        blurCtx.drawImage(img, 0, 0);
+        blurCtx.filter = 'none';
+        const blurData = blurCtx.getImageData(0, 0, w, h);
+        const blurred = blurData.data;
+
+        // Output canvas
+        const out = document.createElement('canvas');
+        out.width = w;
+        out.height = h;
+        const outCtx = out.getContext('2d')!;
+        const outData = outCtx.createImageData(w, h);
+        const result = outData.data;
+
+        // Unsharp mask amount: positive = sharpen, negative = soften (just blend with blur)
+        // amount range: 0.0 → 0 (at s=0, unused) up to ~1.5 (at s=100)
+        const amount = sharpness > 0
+            ? (absS / 100) * 1.5
+            : -(absS / 100) * 1.0; // negative blends toward blur
+
+        for (let i = 0; i < orig.length; i += 4) {
+            // Apply to R, G, B channels only (preserve alpha)
+            for (let c = 0; c < 3; c++) {
+                const o = orig[i + c];
+                const b = blurred[i + c];
+                // Unsharp mask: o + amount × (o − b)
+                // For negative amount this adds (o − b) negatively → pulls toward blur
+                result[i + c] = Math.min(255, Math.max(0, o + amount * (o - b)));
+            }
+            result[i + 3] = orig[i + 3]; // Alpha unchanged
+        }
+
+        outCtx.putImageData(outData, 0, 0);
+        sharpnessCacheRef.current.set(cacheKey, out);
+        return out;
+    }, []);
+
     // View Sync: Handle deletions from external sources (like RightSidebar)
     useEffect(() => {
         if (managerRef.current && managerReady) {
@@ -466,11 +550,11 @@ const CanvasWorkspace = ({ side }: CanvasWorkspaceProps) => {
         ctx.imageSmoothingEnabled = true;
         ctx.imageSmoothingQuality = 'high';
 
-        // Apply Global Filters
+        // Apply Global Filters (brightness + contrast only — sharpness is handled via pixel-level unsharp mask)
         const b = storeCanvas.brightness;
         const c = storeCanvas.contrast;
         const s = storeCanvas.sharpness;
-        ctx.filter = `brightness(${b}%) contrast(${c + (s / 2)}%) saturate(${100 + (s / 4)}%)`;
+        ctx.filter = `brightness(${b}%) contrast(${c}%)`;
 
         // PRE-PASS: Populate osteotomy calculation data (rays, angles, translation) before fragment clipping/rendering
         const dummyCtx = document.createElement('canvas').getContext('2d')!;
@@ -521,7 +605,9 @@ const CanvasWorkspace = ({ side }: CanvasWorkspaceProps) => {
             ctx.translate(-pivot.x, -pivot.y);
 
             if (img.complete) {
-                ctx.drawImage(img, frag.imageX, frag.imageY, frag.imageWidth, frag.imageHeight);
+                // Apply unsharp mask sharpening at pixel level (s=0 → original image unchanged)
+                const drawSrc = getSharpImage(img, s);
+                ctx.drawImage(drawSrc, frag.imageX, frag.imageY, frag.imageWidth, frag.imageHeight);
             }
             ctx.restore();
 
@@ -879,7 +965,7 @@ const CanvasWorkspace = ({ side }: CanvasWorkspaceProps) => {
         }
 
         ctx.restore(); // Final balance
-    }, [storeCanvas, getCachedImage, activeTool, tempPoints, cropRect, isDragging, mouseWorldPosRef, selection, vbmMode, tiltMode, managerReady, isCalibrationDialogOpen, isTiltDialogOpen, isTextDialogOpen]);
+    }, [storeCanvas, getCachedImage, getSharpImage, activeTool, tempPoints, cropRect, isDragging, mouseWorldPosRef, selection, vbmMode, tiltMode, managerReady, isCalibrationDialogOpen, isTiltDialogOpen, isTextDialogOpen]);
 
     useEffect(() => {
         let rafId: number;

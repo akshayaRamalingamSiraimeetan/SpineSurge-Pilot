@@ -7,7 +7,6 @@ import {
     ZoomIn,
     RotateCw,
     RotateCcw,
-    FlipHorizontal,
     Crop,
     Undo2,
     Redo2,
@@ -429,14 +428,6 @@ const BottomToolbar = () => {
                 >
                     <RotateCw className="h-4 w-4" />
                 </Button>
-
-                <Divider />
-
-                {/* ── Flip ─────────────────────────────────────── */}
-                <VToolbarBtn
-                    icon={FlipHorizontal} label="Flip"
-                    action="flip" active={canvas.flipX}
-                />
 
                 {/* ── Crop ─────────────────────────────────────── */}
                 <VToolbarBtn
