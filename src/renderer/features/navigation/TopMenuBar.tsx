@@ -20,11 +20,7 @@ import {
     Sun,
     Settings,
     User,
-    Crop,
-    LayoutTemplate,
-    Grid2X2,
     Share2,
-    Target,
     FileText,
     MoreVertical,
     Cloud,
@@ -139,9 +135,6 @@ const TopMenuBar = () => {
         isDicomMode,
         dicomSeries,
         dicom3D,
-        setDicomLayoutMode,
-        setDicomCroppingActive,
-        triggerFocusCrop,
         setActiveDialog,
         syncStatus,
         hasUnsyncedChanges,
@@ -470,36 +463,6 @@ const TopMenuBar = () => {
                         {syncStatus === 'saving' && <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Saving...</>}
                         {syncStatus === 'error' && <><CloudOff className="w-3.5 h-3.5 text-red-500" /> Sync error</>}
                     </div>
-                )}
-
-                {/* DICOM layout controls */}
-                {isDicomMode && (
-                    <>
-                        <div className="flex items-center gap-1 bg-muted/30 p-1 rounded-lg border border-border/50">
-                            <Button variant="ghost" size="icon" onClick={() => setDicomLayoutMode('axial-sagittal')}
-                                className={cn("h-7 w-10 rounded text-[10px] font-bold", dicom3D.layoutMode === 'axial-sagittal' ? "bg-[#FF453A] text-white" : "text-muted-foreground")} title="2D Layout">
-                                <LayoutTemplate className="w-3.5 h-3.5 rotate-90" />
-                            </Button>
-                            <Button variant="ghost" size="icon" onClick={() => setDicomLayoutMode('grid')}
-                                className={cn("h-7 w-7 rounded", dicom3D.layoutMode === 'grid' ? "bg-[#FF453A] text-white" : "text-muted-foreground")} title="Grid">
-                                <Grid2X2 className="w-3.5 h-3.5" />
-                            </Button>
-                            <Button variant="ghost" size="icon" onClick={() => setDicomLayoutMode('focus-3d')}
-                                className={cn("h-7 w-7 rounded", dicom3D.layoutMode === 'focus-3d' ? "bg-[#FF453A] text-white" : "text-muted-foreground")} title="3D Focus">
-                                <LayoutTemplate className="w-3.5 h-3.5" />
-                            </Button>
-                        </div>
-                        <div className="flex items-center gap-1 bg-muted/30 p-1 rounded-lg border border-border/50">
-                            <Button variant="ghost" size="icon" onClick={() => setDicomCroppingActive(!dicom3D.isCroppingActive)}
-                                className={cn("h-7 w-7 rounded", dicom3D.isCroppingActive ? "bg-primary text-white" : "text-muted-foreground")} title="Crop">
-                                <Crop className="w-3.5 h-3.5" />
-                            </Button>
-                            <Button variant="ghost" size="icon" onClick={triggerFocusCrop}
-                                className="h-7 w-7 rounded text-primary" title="Focus">
-                                <Target className="w-3.5 h-3.5" />
-                            </Button>
-                        </div>
-                    </>
                 )}
 
                 {/* Import (hidden in workspace mode) */}
