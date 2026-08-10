@@ -253,6 +253,7 @@ const MemberWorkspacePage = () => {
     const modalities  = [...new Set(studies.map(s => s.modality).filter(Boolean))] as string[];
 
     return (
+        <div className="h-full overflow-y-auto px-8 py-6">
         <div className="mx-auto max-w-5xl space-y-6">
 
             {/* ── Header ──────────────────────────────────────────── */}
@@ -349,6 +350,7 @@ const MemberWorkspacePage = () => {
                         ))}
                 </div>
             )}
+        </div>
         </div>
     );
 };

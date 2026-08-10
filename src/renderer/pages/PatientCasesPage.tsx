@@ -440,7 +440,7 @@ const PatientCasesPage = () => {
     };
 
     return (
-        <div className="-mx-8 -my-6 flex h-[calc(100vh-4rem)] overflow-hidden bg-[#0A0A0B] text-[#F5F5F7]">
+        <div className="flex h-full overflow-hidden bg-[#0A0A0B] text-[#F5F5F7]">
             {/* Left — Patient list */}
             <div className="flex w-[320px] flex-shrink-0 flex-col border-r border-[#242427] bg-[#0F0F11]">
                 <div className="space-y-3 border-b border-[#242427] p-4">

@@ -238,11 +238,13 @@ const OrgMembersPage = () => {
   // ── Guard: personal workspace ─────────────────────────────────────────────
   if (!orgId) {
     return (
+      <div className="h-full overflow-y-auto px-8 py-6">
       <div className="mx-auto max-w-5xl pt-16 text-center">
         <Users className="mx-auto mb-4 h-12 w-12 text-[#4B5563]" />
         <h2 className="text-lg font-semibold text-[#F5F5F7]">No Organization Selected</h2>
         <p className="mt-2 text-sm text-[#6B7280]">Switch to an organization workspace to view its members.</p>
         <button onClick={() => navigate('/dashboard')} className="mt-6 rounded-lg bg-[#FF453A] px-5 py-2.5 text-sm font-semibold text-white hover:bg-[#e03d33] transition-colors">Back to Dashboard</button>
+      </div>
       </div>
     );
   }
@@ -254,6 +256,7 @@ const OrgMembersPage = () => {
     : (['members'] as const);
 
   return (
+    <div className="h-full overflow-y-auto px-8 py-6">
     <div className="mx-auto max-w-5xl space-y-6">
 
       {/* ── Header ──────────────────────────────────────────────── */}
@@ -438,6 +441,7 @@ const OrgMembersPage = () => {
           onCancel={() => setConfirm(null)}
         />
       )}
+    </div>
     </div>
   );
 };
