@@ -433,7 +433,20 @@ const CanvasWorkspace = ({ side }: CanvasWorkspaceProps) => {
                 const storeIds = new Set(storeMeasurements.map(m => m.id));
                 const toDelete = currentManagerMeasurements.find(m => !storeIds.has(m.id));
                 if (toDelete) {
-                    managerRef.current.applyOperation('DELETE_MEASUREMENT', { id: toDelete.id });
+                    const PLANNING_TOOLS = ['ost-resect', 'ost-open'];
+                    if (PLANNING_TOOLS.includes(toDelete.toolKey)) {
+                        // Surgical operations split/move fragments in addition to adding a
+                        // measurement. Reverting fully undoes those fragment changes.
+                        const prior = managerRef.current.revertToStateBeforeMeasurement(toDelete.id);
+                        if (prior) {
+                            syncStoreWithCanvas(prior.data.measurements, prior.data.implants);
+                        } else {
+                            // Fallback: just remove the annotation
+                            managerRef.current.applyOperation('DELETE_MEASUREMENT', { id: toDelete.id });
+                        }
+                    } else {
+                        managerRef.current.applyOperation('DELETE_MEASUREMENT', { id: toDelete.id });
+                    }
                 }
             }
 
@@ -446,7 +459,7 @@ const CanvasWorkspace = ({ side }: CanvasWorkspaceProps) => {
                 }
             }
         }
-    }, [storeMeasurements, storeImplants, managerReady]);
+    }, [storeMeasurements, storeImplants, managerReady, syncStoreWithCanvas]);
 
     useEffect(() => {
         const init = async () => {
@@ -573,12 +586,14 @@ const CanvasWorkspace = ({ side }: CanvasWorkspaceProps) => {
             if (frag.isSourceOf) return; // Hidden source kept for updates
             const img = getCachedImage(frag.image);
 
-            // 1. New: Check for active planning/resection lines that affect this fragment's visual boundary
-            const activePlanning = state.data.measurements.find(m =>
+            // 1. Check for active planning/resection lines affecting this fragment
+            const activePlanning = state.data.measurements.find((m: Measurement) =>
                 m.fragmentId === frag.id && ['ost-pso', 'ost-spo', 'ost-resect', 'ost-open'].includes(m.toolKey)
             );
 
-            // 2. CLIP PASS: Combine fragment boundary + planning cut logic
+            // 2. CLIP PASS: Clip to the fragment's current world-space polygon.
+            // The polygon vertices already encode the final world position after all
+            // CUT / ROTATE / MOVE operations — no additional transform is needed here.
             ctx.save();
             ctx.beginPath();
             frag.polygon.forEach((p: Point, i: number) => {
@@ -586,30 +601,39 @@ const CanvasWorkspace = ({ side }: CanvasWorkspaceProps) => {
                 else ctx.lineTo(p.x, p.y);
             });
             ctx.closePath();
-            ctx.clip(); // Fragment Boundary Clip
-
-            // If planning tool is active, clip the "moving" side out of the base fragment visually
-            if (activePlanning) {
-                // ... (Original planning clip logic for inferior segment would go here if needed)
-                // Actually, the original code had complex clipping for inferior side. 
-                // For simplicity, we keep the world-space polygon as the primary truth.
-            }
-
-            // 3. IMAGE CONTENT PASS: Transform image content relative to frag.rotation/pivot
-            const pivot = frag.pivot || getPolygonCenter(frag.polygon);
-            ctx.translate(pivot.x, pivot.y);
-            // Disable rotation for Resect fragments (baked into geometry)
-            if (!activePlanning || activePlanning.toolKey !== 'ost-resect') {
-                ctx.rotate((frag.rotation * Math.PI) / 180);
-            }
-            ctx.translate(-pivot.x, -pivot.y);
+            ctx.clip();
 
             if (img.complete) {
-                // Apply unsharp mask sharpening at pixel level (s=0 → original image unchanged)
                 const drawSrc = getSharpImage(img, s);
+
+                // 3. IMAGE CONTENT PASS
+                // For fragments that have been rotated via CanvasManager (imageOriginX/Y
+                // tracks where the image centre ends up in world space after each ROTATE),
+                // we must rotate the image content around that world-space pivot so that
+                // the drawn pixels align with the clipped polygon.
+                //
+                // For the initial / non-rotated fragment (rotation === 0) or for PSO/SPO
+                // which use a different deformation path, a plain drawImage is sufficient.
+                const totalRotationRad = (frag.rotation || 0) * (Math.PI / 180);
+
+                // Use the tracked image origin as pivot (falls back to image centre for
+                // legacy fragments that predate the imageOriginX/Y fields).
+                const pivotX = frag.imageOriginX ?? (frag.imageX + frag.imageWidth / 2);
+                const pivotY = frag.imageOriginY ?? (frag.imageY + frag.imageHeight / 2);
+
+                if (totalRotationRad !== 0) {
+                    ctx.translate(pivotX, pivotY);
+                    ctx.rotate(totalRotationRad);
+                    ctx.translate(-pivotX, -pivotY);
+                }
+
                 ctx.drawImage(drawSrc, frag.imageX, frag.imageY, frag.imageWidth, frag.imageHeight);
             }
             ctx.restore();
+
+            // Suppress any residual rotation-based deformation for planning tools
+            // (the geometry is baked into polygon + imageOriginX/Y above).
+            void activePlanning; // acknowledged, no further action needed
 
             return; // Done with this fragment
         });

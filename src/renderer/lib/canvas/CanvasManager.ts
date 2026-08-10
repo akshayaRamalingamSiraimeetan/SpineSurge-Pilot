@@ -14,6 +14,11 @@ export interface Fragment {
     imageY: number;
     imageWidth: number;
     imageHeight: number;
+    // The rotation pivot used for image rendering — set at creation and updated by ROTATE.
+    // This is the point (in world space) around which the image content is rotated so that
+    // it aligns with the polygon after each ROTATE operation.
+    imageOriginX: number;
+    imageOriginY: number;
     x: number;
     y: number;
     rotation: number;
@@ -112,6 +117,9 @@ export class CanvasManager {
             imageY: 0,
             imageWidth: width,
             imageHeight: height,
+            // The image-space center – used as the rotation pivot for rendering.
+            imageOriginX: width / 2,
+            imageOriginY: height / 2,
             polygon: [
                 { x: 0, y: 0 },
                 { x: width, y: 0 },
@@ -234,13 +242,22 @@ export class CanvasManager {
                 const cos = Math.cos(rad);
                 const sin = Math.sin(rad);
 
-                // Rotate Polygon
+                // Rotate Polygon vertices to new world positions
                 fragment.polygon.forEach(p => {
                     const dx = p.x - center.x;
                     const dy = p.y - center.y;
                     p.x = (dx * cos - dy * sin) + center.x;
                     p.y = (dx * sin + dy * cos) + center.y;
                 });
+
+                // Also rotate imageOriginX/imageOriginY so the renderer knows where to
+                // pivot the image content (keeps image aligned with the rotated polygon).
+                {
+                    const ox = (fragment.imageOriginX ?? (fragment.imageX + fragment.imageWidth / 2)) - center.x;
+                    const oy = (fragment.imageOriginY ?? (fragment.imageY + fragment.imageHeight / 2)) - center.y;
+                    fragment.imageOriginX = (ox * cos - oy * sin) + center.x;
+                    fragment.imageOriginY = (ox * sin + oy * cos) + center.y;
+                }
 
                 // Rotate Measurements
                 newMeasurements.forEach(m => {
@@ -334,8 +351,12 @@ export class CanvasManager {
 
                     newFragments.splice(i, 1);
 
-                    const f1 = { ...frag, id: uuidv4(), polygon: resultPolys[0] };
-                    const f2 = { ...frag, id: uuidv4(), polygon: resultPolys[1] };
+                    // Ensure child fragments inherit imageOriginX/imageOriginY from parent.
+                    // These are needed for correct image rendering after rotation.
+                    const sharedImageOriginX = frag.imageOriginX ?? (frag.imageX + frag.imageWidth / 2);
+                    const sharedImageOriginY = frag.imageOriginY ?? (frag.imageY + frag.imageHeight / 2);
+                    const f1 = { ...frag, id: uuidv4(), polygon: resultPolys[0], imageOriginX: sharedImageOriginX, imageOriginY: sharedImageOriginY };
+                    const f2 = { ...frag, id: uuidv4(), polygon: resultPolys[1], imageOriginX: sharedImageOriginX, imageOriginY: sharedImageOriginY };
                     newFragments.push(f1, f2);
 
                     console.log('[CanvasManager CUT] New fragment IDs:', f1.id, f2.id);
@@ -393,9 +414,13 @@ export class CanvasManager {
                 fragment.x += deltaX;
                 fragment.y += deltaY;
 
-                // CRITICAL FIX: Update image position when fragment is moved
+                // Update image position when fragment is moved
                 fragment.imageX += deltaX;
                 fragment.imageY += deltaY;
+
+                // Keep the rotation pivot in sync with the image translation
+                if (fragment.imageOriginX !== undefined) fragment.imageOriginX += deltaX;
+                if (fragment.imageOriginY !== undefined) fragment.imageOriginY += deltaY;
 
                 fragment.polygon.forEach(p => {
                     p.x += deltaX;
@@ -800,6 +825,51 @@ export class CanvasManager {
             description: node.data.description,
             isCurrent: node === this.current
         }));
+    }
+
+    /**
+     * Revert the canvas to the state that existed immediately BEFORE the planning
+     * measurement with the given id was applied.
+     *
+     * This is used to fully undo surgical operations (Resection, Open Osteotomy)
+     * which modify fragments in addition to adding a measurement. A plain
+     * DELETE_MEASUREMENT would remove the annotation but leave the split/rotated
+     * fragments behind.
+     *
+     * Algorithm:
+     * 1. Walk history backwards looking for the last entry that does NOT contain
+     *    the measurement.
+     * 2. Truncate history to that point and set current to that node.
+     * 3. Clear redo stack (the deleted operation cannot be redone).
+     */
+    revertToStateBeforeMeasurement(measurementId: string): StateNode | null {
+        // Find the last history index where this measurement is absent
+        let targetIndex = -1;
+        for (let i = this.history.length - 1; i >= 0; i--) {
+            const hasM = this.history[i].data.measurements.some(m => m.id === measurementId);
+            if (!hasM) {
+                targetIndex = i;
+                break;
+            }
+        }
+
+        if (targetIndex === -1) {
+            // Measurement not found or always present — nothing to revert
+            console.warn('[CanvasManager] revertToStateBeforeMeasurement: no suitable prior state found for', measurementId);
+            return null;
+        }
+
+        const targetState = this.history[targetIndex];
+        // Truncate: keep history up to and including targetIndex
+        this.history = this.history.slice(0, targetIndex + 1);
+        this.current = targetState;
+        this.head = this.history[0] ?? null;
+        this.redoStack = [];
+        this.lastState = null;
+        this.activeHistoryTransaction = null;
+
+        console.log('[CanvasManager] Reverted to state before measurement', measurementId, '— fragments:', targetState.data.fragments.length);
+        return targetState;
     }
 
     /**
