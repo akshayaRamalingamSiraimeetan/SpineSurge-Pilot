@@ -490,7 +490,7 @@ const TopMenuBar = () => {
                     </>
                 )}
 
-                {/* Import — visible on non-workspace routes only (workspace has the Home page button) */}
+                {/* Import (hidden in workspace mode) */}
                 {!isWorkspaceRoute && (
                 <ImportDialog>
                     <Button variant="ghost" size="icon" className={cn(iconBtn)} title="Import Scan">
@@ -570,11 +570,13 @@ const TopMenuBar = () => {
                 ) : wsTab === 'planning' ? (
                     <SavePlanButton />
                 ) : (
-                    /* Legacy Export */
-                    <Button variant="ghost" size="icon" className={cn(iconBtn)} title="Export Report"
-                        onClick={() => handleWsTab('report')}>
-                        <FileText className="h-3.5 w-3.5" />
-                    </Button>
+                    /* Legacy Export (hidden in workspace mode) */
+                    !isWorkspaceRoute && (
+                        <Button variant="ghost" size="icon" className={cn(iconBtn)} title="Export Report"
+                            onClick={() => handleWsTab('report')}>
+                            <FileText className="h-3.5 w-3.5" />
+                        </Button>
+                    )
                 )}
 
                 {/* Cases (non-workspace only) */}
@@ -598,79 +600,7 @@ const TopMenuBar = () => {
                     <Moon className="absolute h-3.5 w-3.5 rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100" />
                 </Button>
 
-                {/* View Report (workspace only) */}
-                {isWorkspaceRoute && (
-                    <button
-                        onClick={() => { setWsTab('report'); setReportOpen(true); setActiveDialog('report'); }}
-                        style={{
-                            display: 'flex', alignItems: 'center', gap: 6,
-                            height: 30, padding: '0 12px',
-                            borderRadius: 7,
-                            border: `1px solid var(--border-2)`,
-                            background: 'var(--surface-2)',
-                            color: 'var(--text)',
-                            fontSize: 12.5, fontWeight: 600,
-                            cursor: 'pointer',
-                            flexShrink: 0,
-                        }}
-                    >
-                        <FileText size={13} style={{ color: 'var(--accent)' }} />
-                        View Report
-                    </button>
-                )}
-
-                {/* Three dots menu (workspace only) */}
-                {isWorkspaceRoute && (
-                    <button
-                        style={{
-                            display: 'grid', placeItems: 'center',
-                            width: 30, height: 30, borderRadius: 7,
-                            border: `1px solid var(--border-2)`,
-                            background: 'var(--surface-2)',
-                            color: 'var(--text-2)', cursor: 'pointer', flexShrink: 0,
-                        }}
-                        title="More options"
-                    >
-                        <MoreVertical size={15} />
-                    </button>
-                )}
-
-                {/* Avatar / Profile */}
-                <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="icon" className="w-7 h-7 p-0 hover:bg-transparent">
-                            <div className="w-7 h-7 rounded-full bg-[rgba(255,69,58,0.12)] flex items-center justify-center border border-[#FF453A]/20 hover:border-[#FF453A]/40 transition-all">
-                                <span className="text-xs font-bold text-[#FF453A]">{userInitial}</span>
-                            </div>
-                        </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end"
-                        className={cn("w-56 rounded-xl p-2 z-[100] shadow-md border",
-                            isDark ? 'border-[#242427] bg-[#141416] text-[#F5F5F7]' : '!border-gray-200 !bg-white !text-gray-900'
-                        )}
-                    >
-                        <DropdownMenuLabel className={cn("font-normal p-3", isDark ? '' : 'text-gray-900')}>
-                            <div className="flex flex-col gap-0.5">
-                                <p className="text-sm font-bold leading-none">{user?.name || 'User'}</p>
-                                <p className="text-xs leading-none opacity-60">{user?.email || '—'}</p>
-                            </div>
-                        </DropdownMenuLabel>
-                        <DropdownMenuSeparator className={isDark ? 'bg-[#242427]' : 'bg-gray-200'} />
-                        <DropdownMenuItem className={cn("cursor-pointer rounded px-2 py-1.5 font-semibold !bg-transparent", isDark ? '!text-[#F5F5F7] hover:!bg-[#1B1B1E]' : '!text-gray-900 hover:!bg-gray-100')}
-                            onClick={() => { setProfileOpen(true); setActiveDialog('profile'); }}>
-                            <User className="mr-2 h-4 w-4 text-primary" /> Profile
-                        </DropdownMenuItem>
-                        <DropdownMenuItem className={cn("cursor-pointer rounded px-2 py-1.5 font-semibold !bg-transparent", isDark ? '!text-[#F5F5F7] hover:!bg-[#1B1B1E]' : '!text-gray-900 hover:!bg-gray-100')}
-                            onClick={() => { setSettingsOpen(true); setActiveDialog('settings'); }}>
-                            <Settings className="mr-2 h-4 w-4 text-primary" /> Settings
-                        </DropdownMenuItem>
-                        <DropdownMenuSeparator className={isDark ? 'bg-[#242427]' : 'bg-gray-200'} />
-                        <DropdownMenuItem className={cn("cursor-pointer rounded px-2 py-1.5 font-semibold !bg-transparent", isDark ? 'hover:!bg-[#1B1B1E]' : 'hover:!bg-red-50')}
-                            onClick={() => { logout(); navigate('/login'); }}>
-                            <LogOut className="mr-2 h-4 w-4" /> Log out
-                        </DropdownMenuItem>
-                    </DropdownMenuContent>
-                </DropdownMenu>
+                {/* View Report, More Menu, and Profile avatar hidden in workspace per request */}
             </div>
 
             {/* Dialogs */}
