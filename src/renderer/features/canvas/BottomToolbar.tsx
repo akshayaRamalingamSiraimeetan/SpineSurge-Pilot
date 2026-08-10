@@ -298,7 +298,6 @@ const BottomToolbar = () => {
             rotateRight: () => setRotation(canvas.rotation + 90),
             rotateFineUp: () => setRotation(canvas.rotation + 1),
             rotateFineDown: () => setRotation(canvas.rotation - 1),
-            flip: () => toggleFlipX(),
             crop: () => toggleTool("crop"),
             reset: () => resetCanvas(),
             undo: () => undo(),
@@ -308,7 +307,6 @@ const BottomToolbar = () => {
         [
             canvas.rotation,
             setRotation,
-            toggleFlipX,
             toggleTool,
             resetCanvas,
             undo,
