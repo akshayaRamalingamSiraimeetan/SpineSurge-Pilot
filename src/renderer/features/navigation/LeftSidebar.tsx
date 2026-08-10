@@ -30,6 +30,14 @@ import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea
 import { GripVertical, Eye, EyeOff, LayoutTemplate } from 'lucide-react';
 import { getDefaultReportConfig } from '../report/defaultConfig';
 import { useTheme } from '@/components/theme-provider';
+import {
+  computeTargets,
+  classifyValue,
+  extractNumericValue,
+  STATUS_COLORS,
+  STATUS_LABELS,
+  type TargetStatus,
+} from '@/lib/spinalTargets';
 
 /* ── Planning sub-tab ──────────────────────────────────────── */
 type PlanningTab = 'target' | 'simulation';
@@ -681,7 +689,7 @@ const DicomLeftSidebar = () => {
 
 /* ── Normal LeftSidebar Content ────────────────────────────────── */
 const NormalLeftSidebarContent = () => {
-  const { activeTool, setActiveTool, measurements, canvas, vbmMode, setVbmMode } = useAppStore();
+  const { activeTool, setActiveTool, measurements, canvas, vbmMode, setVbmMode, patients, activePatientId } = useAppStore();
   const location = useLocation();
   const queryParams = useMemo(() => new URLSearchParams(location.search), [location.search]);
   const isPlanningMode = queryParams.get('tab') === 'planning';
@@ -689,20 +697,45 @@ const NormalLeftSidebarContent = () => {
   const [activeTab, setActiveTab] = useState<TabKey>('alignment');
   const [plane, setPlane] = useState<Plane>('coronal');
   const [planningTab, setPlanningTab] = useState<PlanningTab>('target');
-  const [targetValues, setTargetValues] = useState<Record<string, string>>({});
-  const setTarget = (id: string, val: string) =>
-    setTargetValues((prev) => ({ ...prev, [id]: val }));
+  // overrides keyed by toolKey (e.g. 'll', 'sva')
+  const [targetOverrides, setTargetOverrides] = useState<Record<string, string>>({});
+  const [overrideOpen, setOverrideOpen] = useState<Record<string, boolean>>({});
 
-  const REF_LINE_KEYS = new Set(['c7pl', 'csvl']);
-  const checkedMeasurements = useMemo(() =>
-    measurements.filter(
-      (m: any) =>
-        m.selected &&
-        !m?.measurement?.isCalibration &&
-        !REF_LINE_KEYS.has(m.toolKey),
-    ),
+  const activePatient = useMemo(
+    () => patients?.find((p: any) => p.id === activePatientId),
+    [patients, activePatientId],
+  );
+  const patientAge = (activePatient?.age as number) ?? 0;
+
+  // Extract PI from live measurements
+  const piMeasurement = useMemo(
+    () => measurements.find((m: any) => m.toolKey === 'pi'),
     [measurements],
   );
+  const piDeg: number = useMemo(() => {
+    if (!piMeasurement) return NaN;
+    return extractNumericValue((piMeasurement as any).result);
+  }, [piMeasurement]);
+
+  // Detect scoliosis mode from presence of cobb/cmc measurements
+  const isScoliosis = useMemo(
+    () => measurements.some((m: any) => m.toolKey === 'cobb' || m.toolKey === 'cmc'),
+    [measurements],
+  );
+
+  // Compute recommended targets
+  const targetParams = useMemo(
+    () => computeTargets(patientAge, piDeg, isScoliosis),
+    [patientAge, piDeg, isScoliosis],
+  );
+
+  // Helper: get current measured value for a toolKey
+  const getMeasuredValue = (toolKey: string): number => {
+    const m = measurements.find((x: any) => x.toolKey === toolKey);
+    if (!m) return NaN;
+    // pi_ll may be a multi-line result — first numeric
+    return extractNumericValue((m as any).result);
+  };
 
   const currentTabKey = isPlanningMode ? 'planning' : activeTab;
   const tab = TABS.find((t) => t.key === currentTabKey)!;
@@ -879,146 +912,251 @@ const NormalLeftSidebarContent = () => {
         {isPlanningMode && planningTab === 'target' && (
           <div style={{ padding: '12px 12px 16px' }}>
 
-            {/* Hint */}
+            {/* Context bar: age + PI */}
             <div style={{
-              fontSize: 10,
-              fontWeight: 700,
-              letterSpacing: '.06em',
-              textTransform: 'uppercase',
-              color: 'var(--text-3)',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6,
               marginBottom: 10,
+              padding: '6px 10px',
+              background: 'var(--surface-2)',
+              borderRadius: 8,
+              border: '1px solid var(--border)',
             }}>
-              Alignment Goals
+              <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase', color: 'var(--text-3)' }}>
+                Alignment Goals
+              </span>
+              <span style={{ flex: 1 }} />
+              <span style={{ fontSize: 10, color: 'var(--text-2)', fontWeight: 600 }}>
+                Age {patientAge > 0 ? patientAge : '?'}
+              </span>
+              {!isNaN(piDeg) && (
+                <span style={{
+                  fontSize: 10,
+                  color: '#22c55e',
+                  fontWeight: 700,
+                  background: 'rgba(34,197,94,0.12)',
+                  borderRadius: 4,
+                  padding: '1px 5px',
+                }}>
+                  PI {piDeg.toFixed(0)}°
+                </span>
+              )}
             </div>
 
-            {checkedMeasurements.length === 0 ? (
-              /* Empty state */
-              <div style={{
-                textAlign: 'center',
-                padding: '32px 12px',
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                gap: 8,
-              }}>
-                <div style={{ fontSize: 26, opacity: 0.4 }}>🎯</div>
-                <div style={{ fontWeight: 600, fontSize: 12.5, color: 'var(--text)' }}>
-                  No measurements selected
-                </div>
-                <div style={{ fontSize: 11, color: 'var(--text-3)', lineHeight: 1.4 }}>
-                  Check measurements in the{' '}
-                  <span style={{ color: 'var(--text-2)', fontWeight: 600 }}>Current Measurements</span>
-                  {' '}panel on the right to set targets here.
-                </div>
-              </div>
-            ) : (
-              /* Rows — one per checked measurement */
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                {checkedMeasurements.map((m: any) => {
-                  const name = TC_DISPLAY_NAMES[m.toolKey] ?? m.toolKey.toUpperCase();
-                  const currentVal = tcFormatValue(m);
-                  const currentColor = tcValueColor(currentVal);
-                  const targetVal = targetValues[m.id] ?? '';
+            {/* Target parameter cards */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {targetParams.map((param) => {
+                const measured = getMeasuredValue(param.toolKey);
+                const override = targetOverrides[param.toolKey] ?? '';
+                const isOpen = overrideOpen[param.toolKey] ?? false;
 
-                  return (
-                    <div
-                      key={m.id}
-                      style={{
-                        background: 'var(--surface-2)',
-                        borderRadius: 10,
-                        padding: '10px 12px',
-                        border: '1px solid var(--border)',
-                        marginBottom: 6,
-                      }}
-                    >
-                      {/* Measurement name */}
+                // Determine status from measured value
+                const status: TargetStatus = override
+                  ? 'unknown'
+                  : classifyValue(param.toolKey, measured, patientAge, piDeg);
+
+                const statusColor = STATUS_COLORS[status];
+                const statusLabel = override ? 'OVERRIDE' : STATUS_LABELS[status];
+
+                // Format measured display
+                const measuredDisplay = isNaN(measured)
+                  ? '—'
+                  : `${measured.toFixed(1)}${param.unit}`;
+
+                // Effective target (override takes precedence)
+                const effectiveTarget = override || param.healthyRange;
+
+                return (
+                  <div
+                    key={param.toolKey}
+                    style={{
+                      background: 'var(--surface-2)',
+                      borderRadius: 10,
+                      padding: '10px 12px',
+                      border: `1px solid ${isNaN(measured) ? 'var(--border)' : statusColor + '44'}`,
+                      transition: 'border-color 0.2s',
+                    }}
+                  >
+                    {/* Header row: name + status chip */}
+                    <div style={{ display: 'flex', alignItems: 'center', marginBottom: 8, gap: 6 }}>
                       <div style={{
-                        fontSize: 12,
+                        fontSize: 11.5,
                         fontWeight: 700,
                         color: 'var(--text)',
-                        marginBottom: 8,
+                        flex: 1,
                         overflow: 'hidden',
                         textOverflow: 'ellipsis',
                         whiteSpace: 'nowrap',
                       }}>
-                        {name}
+                        {param.label}
+                      </div>
+                      <div style={{
+                        fontSize: 9,
+                        fontWeight: 800,
+                        letterSpacing: '.06em',
+                        color: override ? '#f97316' : statusColor,
+                        background: (override ? '#f9731620' : statusColor + '20'),
+                        borderRadius: 4,
+                        padding: '2px 6px',
+                        whiteSpace: 'nowrap',
+                        flexShrink: 0,
+                      }}>
+                        {statusLabel}
+                      </div>
+                    </div>
+
+                    {/* Current value + recommended target */}
+                    <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+                      {/* Current */}
+                      <div style={{ flex: 1 }}>
+                        <div style={{
+                          fontSize: 9,
+                          fontWeight: 700,
+                          textTransform: 'uppercase',
+                          letterSpacing: '.06em',
+                          color: 'var(--text-3)',
+                          marginBottom: 3,
+                        }}>
+                          Current
+                        </div>
+                        <div style={{
+                          fontSize: 15,
+                          fontWeight: 800,
+                          color: isNaN(measured) ? 'var(--text-3)' : statusColor,
+                          lineHeight: 1.2,
+                        }}>
+                          {measuredDisplay}
+                        </div>
                       </div>
 
-                      {/* Current / Target row */}
-                      <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end' }}>
-                        {/* Current */}
-                        <div style={{ flex: 1 }}>
-                          <div style={{
-                            fontSize: 9,
-                            fontWeight: 700,
-                            textTransform: 'uppercase',
-                            letterSpacing: '.06em',
-                            color: 'var(--text-3)',
-                            marginBottom: 3,
-                          }}>
-                            Current
-                          </div>
-                          <div style={{
-                            fontSize: 14,
-                            fontWeight: 700,
-                            color: currentColor,
-                            lineHeight: 1.2,
-                          }}>
-                            {currentVal}
-                          </div>
-                        </div>
+                      {/* Arrow */}
+                      <div style={{
+                        color: 'var(--text-3)',
+                        fontSize: 14,
+                        paddingTop: 14,
+                        flexShrink: 0,
+                      }}>→</div>
 
-                        {/* Arrow */}
+                      {/* Target range */}
+                      <div style={{ flex: 1 }}>
                         <div style={{
+                          fontSize: 9,
+                          fontWeight: 700,
+                          textTransform: 'uppercase',
+                          letterSpacing: '.06em',
                           color: 'var(--text-3)',
-                          fontSize: 16,
-                          paddingBottom: 2,
-                          flexShrink: 0,
-                        }}>→</div>
+                          marginBottom: 3,
+                        }}>
+                          Target
+                        </div>
+                        <div style={{
+                          fontSize: 12,
+                          fontWeight: 700,
+                          color: '#22c55e',
+                          lineHeight: 1.3,
+                        }}>
+                          {effectiveTarget}
+                        </div>
+                      </div>
+                    </div>
 
-                        {/* Target */}
-                        <div style={{ flex: 1 }}>
-                          <div style={{
-                            fontSize: 9,
-                            fontWeight: 700,
-                            textTransform: 'uppercase',
-                            letterSpacing: '.06em',
-                            color: 'var(--text-3)',
-                            marginBottom: 3,
-                          }}>
-                            Target
-                          </div>
+                    {/* Clinical note */}
+                    {param.note && (
+                      <div style={{
+                        fontSize: 9.5,
+                        color: 'var(--text-3)',
+                        marginTop: 6,
+                        lineHeight: 1.4,
+                      }}>
+                        {param.note}
+                      </div>
+                    )}
+
+                    {/* Override toggle */}
+                    <div style={{ marginTop: 8 }}>
+                      <button
+                        onClick={() => setOverrideOpen(prev => ({ ...prev, [param.toolKey]: !isOpen }))}
+                        style={{
+                          fontSize: 9,
+                          fontWeight: 700,
+                          color: isOpen ? 'var(--accent)' : 'var(--text-3)',
+                          background: 'none',
+                          border: 'none',
+                          cursor: 'pointer',
+                          padding: 0,
+                          letterSpacing: '.04em',
+                          textTransform: 'uppercase',
+                        }}
+                      >
+                        {isOpen ? '▲ Cancel Override' : '▼ Override Target'}
+                      </button>
+
+                      {isOpen && (
+                        <div style={{ marginTop: 6, display: 'flex', gap: 6 }}>
                           <input
                             type="text"
-                            value={targetVal}
-                            onChange={(e) => setTarget(m.id, e.target.value)}
-                            placeholder="e.g. 10°"
+                            value={override}
+                            onChange={(e) => setTargetOverrides(prev => ({ ...prev, [param.toolKey]: e.target.value }))}
+                            placeholder={`e.g. ${param.healthyRange.split('–')[0]}…`}
                             style={{
-                              width: '100%',
+                              flex: 1,
                               background: 'var(--surface)',
-                              border: '1px solid var(--border-2)',
+                              border: '1px solid var(--accent)',
                               borderRadius: 6,
                               padding: '4px 7px',
-                              fontSize: 13,
+                              fontSize: 12,
                               fontWeight: 700,
                               color: 'var(--accent)',
                               outline: 'none',
                               boxSizing: 'border-box',
                             }}
-                            onFocus={(e) => {
-                              (e.currentTarget as HTMLInputElement).style.borderColor = 'var(--accent)';
-                            }}
-                            onBlur={(e) => {
-                              (e.currentTarget as HTMLInputElement).style.borderColor = 'var(--border-2)';
-                            }}
                           />
+                          {override && (
+                            <button
+                              onClick={() => setTargetOverrides(prev => { const n = { ...prev }; delete n[param.toolKey]; return n; })}
+                              style={{
+                                fontSize: 10,
+                                fontWeight: 700,
+                                color: '#ef4444',
+                                background: 'none',
+                                border: '1px solid #ef444440',
+                                borderRadius: 5,
+                                cursor: 'pointer',
+                                padding: '3px 7px',
+                              }}
+                            >
+                              ✕
+                            </button>
+                          )}
                         </div>
-                      </div>
+                      )}
                     </div>
-                  );
-                })}
-              </div>
-            )}
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Legend */}
+            <div style={{
+              display: 'flex',
+              gap: 8,
+              marginTop: 12,
+              padding: '6px 8px',
+              background: 'var(--surface-2)',
+              borderRadius: 7,
+              border: '1px solid var(--border)',
+              flexWrap: 'wrap',
+            }}>
+              {(['healthy', 'borderline', 'abnormal'] as TargetStatus[]).map(s => (
+                <div key={s} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                  <div style={{ width: 7, height: 7, borderRadius: '50%', background: STATUS_COLORS[s], flexShrink: 0 }} />
+                  <span style={{ fontSize: 9, fontWeight: 700, color: 'var(--text-3)', letterSpacing: '.04em', textTransform: 'uppercase' }}>
+                    {STATUS_LABELS[s]}
+                  </span>
+                </div>
+              ))}
+            </div>
           </div>
         )}
 
