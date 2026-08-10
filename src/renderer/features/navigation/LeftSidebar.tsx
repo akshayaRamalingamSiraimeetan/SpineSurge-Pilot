@@ -38,6 +38,14 @@ import {
   STATUS_LABELS,
   type TargetStatus,
 } from '@/lib/spinalTargets';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from '@/components/ui/dialog';
 
 /* ── Planning sub-tab ──────────────────────────────────────── */
 type PlanningTab = 'target' | 'simulation';
@@ -737,6 +745,15 @@ const NormalLeftSidebarContent = () => {
     return extractNumericValue((m as any).result);
   };
 
+  const [showCalibrationReminder, setShowCalibrationReminder] = useState(false);
+  const [pendingTool, setPendingTool] = useState<string | null>(null);
+
+  // Check calibration state
+  const { activeCanvasSide, isComparisonMode, comparison } = useAppStore();
+  const isCalibrated = isComparisonMode
+    ? comparison[activeCanvasSide]?.canvas?.calibrationApplied
+    : canvas?.calibrationApplied;
+
   const currentTabKey = isPlanningMode ? 'planning' : activeTab;
   const tab = TABS.find((t) => t.key === currentTabKey)!;
 
@@ -748,7 +765,15 @@ const NormalLeftSidebarContent = () => {
     ? (plane === 'coronal' ? (tab.coronalRefLines ?? []) : (tab.sagittalRefLines ?? []))
     : (tab.refLines ?? []);
 
-  const handleTool = (id: string) => setActiveTool(activeTool === id ? null : id);
+  const handleTool = (id: string) => {
+    // Prompt if not calibrated and trying to select a measurement tool (anything except calibration or custom templates)
+    if (id && id !== 'calibration' && !isCalibrated) {
+      setPendingTool(id);
+      setShowCalibrationReminder(true);
+    } else {
+      setActiveTool(activeTool === id ? null : id);
+    }
+  };
 
   return (
     <div
@@ -1441,6 +1466,40 @@ const ReportLeftSidebar = () => {
           </DragDropContext>
         </div>
       </ScrollArea>
+
+      {/* Calibration Reminder Dialog */}
+      <Dialog open={showCalibrationReminder} onOpenChange={setShowCalibrationReminder}>
+        <DialogContent className="sm:max-w-md border-[#242427] bg-[#141416] text-[#F5F5F7]">
+          <DialogHeader>
+            <DialogTitle className="text-lg font-semibold text-white">Calibration Required</DialogTitle>
+            <DialogDescription className="text-[#9CA3AF] text-sm mt-2">
+              This image has not been calibrated. Please calibrate the image before taking measurements.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2 sm:justify-end mt-4">
+            <Button
+              variant="outline"
+              onClick={() => {
+                setShowCalibrationReminder(false);
+                setPendingTool(null);
+              }}
+              className="h-9 rounded-md border-[#242427] bg-transparent text-[#9CA3AF] text-sm hover:bg-[#242427] hover:text-[#F5F5F7]"
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={() => {
+                setShowCalibrationReminder(false);
+                setActiveTool('calibration');
+                setPendingTool(null);
+              }}
+              className="h-9 rounded-md bg-[#FF453A] text-white text-sm font-semibold hover:bg-[#e03d33]"
+            >
+              Calibrate Now
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
