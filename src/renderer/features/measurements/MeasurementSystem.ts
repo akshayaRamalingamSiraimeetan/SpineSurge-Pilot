@@ -15,12 +15,7 @@ import { drawWedgeOsteotomy, drawResection } from "./planning/PlanningTools";
 import { drawPencil, drawText, drawCircle, drawEllipse, drawPolygon } from "./utilities/UtilitiesTools";
 
 const shouldConvertMeasurement = (m: Measurement, ratio: number | null, calibrationEnabledAt: number | null): boolean => {
-    if (!ratio) return false;
-    if ((m.measurement as any)?.calibrateAllConverted) return true;
-    if (typeof calibrationEnabledAt === 'number' && typeof m.timestamp === 'number') {
-        return m.timestamp >= calibrationEnabledAt;
-    }
-    return false;
+    return !!ratio;
 };
 
 const formatResultWithCalibration = (result: unknown, ratio: number | null, shouldConvert: boolean): unknown => {

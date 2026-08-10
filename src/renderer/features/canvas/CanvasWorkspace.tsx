@@ -211,6 +211,8 @@ const CanvasWorkspace = ({ side }: CanvasWorkspaceProps) => {
     const containerRef = useRef<HTMLDivElement>(null);
     const managerRef = useRef<CanvasManager | null>(null);
     const imageCacheRef = useRef<Map<string, HTMLImageElement>>(new Map());
+    // Cache for sharpened offscreen canvases: key = `${url}__${sharpness}`
+    const sharpnessCacheRef = useRef<Map<string, HTMLCanvasElement>>(new Map());
 
     const [managerReady, setManagerReady] = useState(false);
 
@@ -274,6 +276,15 @@ const CanvasWorkspace = ({ side }: CanvasWorkspaceProps) => {
             setIsTiltDialogOpen(false);
         }
     }, [activeTool, tiltMode, isTiltDialogOpen]);
+
+    // Discard uncompleted calibration attempts if leaving calibration mode
+    useEffect(() => {
+        if (activeTool !== 'calibration') {
+            setTempPoints([]);
+            setCalibrationPoints(null);
+            setIsCalibrationDialogOpen(false);
+        }
+    }, [activeTool]);
 
     const getWorldPos = useCallback((mouseX: number, mouseY: number) => {
         if (!containerRef.current) return { x: 0, y: 0 };
@@ -2679,7 +2690,10 @@ const CanvasWorkspace = ({ side }: CanvasWorkspaceProps) => {
                                 if (isNaN(mmValue) || mmValue <= 0 || distPx <= 0) return;
 
                                 const ratio = mmValue / distPx;
-                                useAppStore.getState().setCalibration(ratio);
+                                const store = useAppStore.getState();
+                                store.setCalibration(ratio);
+                                store.convertLegacyPxMeasurementsToMm();
+                                store.applyCalibrationToExistingMeasurements();
 
                                 setIsCalibrationDialogOpen(false);
                                 setActiveDialog(null);
