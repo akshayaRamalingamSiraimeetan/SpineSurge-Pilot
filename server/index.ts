@@ -68,7 +68,8 @@ app.use((req, res, next) => {
 });
 
 // Setup uploads directory
-const UPLOADS_DIR = path.resolve(__dirname, 'uploads');
+// UPLOADS_DIR env = persistent disk mount in hosting (e.g. /data/uploads).
+const UPLOADS_DIR = path.resolve(process.env.UPLOADS_DIR || path.join(__dirname, 'uploads'));
 fs.ensureDirSync(UPLOADS_DIR);
 // Only inert media types are ever served inline; anything else downloads.
 // nosniff stops the browser treating an upload as HTML/JS (BUGS SRV-07).
@@ -424,6 +425,76 @@ app.post('/api/studies', authenticate, async (req, res) => {
     } catch (e: any) {
         console.error("Save study error:", e);
         res.status(500).json({ error: e.message });
+    }
+});
+
+// ── Deleting studies / patients ─────────────────────────────────────────────
+// Only the owner may delete (legacy studies without an owner are deletable by
+// any signed-in user of this server). Uploaded files are removed as well.
+const removeUploads = async (names: (string | null | undefined)[]) => {
+    for (const n of names) {
+        if (!n) continue;
+        const abs = path.resolve(UPLOADS_DIR, path.basename(n));
+        if (abs.startsWith(UPLOADS_DIR + path.sep)) await fs.remove(abs).catch(() => {});
+    }
+};
+
+app.delete('/api/studies/:id', async (req, res) => {
+    const studyId = req.params.id;
+    try {
+        const [study] = await db.select().from(schema.studies).where(eq(schema.studies.id, studyId)).limit(1);
+        if (!study) return res.status(404).json({ error: 'Study not found' });
+        if (study.ownerUserId && study.ownerUserId !== req.user!.id) {
+            return res.status(403).json({ error: 'Only the owner of this study can delete it' });
+        }
+        const files: string[] = [];
+        await db.transaction(async (tx) => {
+            const scans = await tx.select().from(schema.scans).where(eq(schema.scans.studyId, studyId));
+            const reports = await tx.select().from(schema.reports).where(eq(schema.reports.studyId, studyId));
+            files.push(...scans.map((s) => s.filePath), ...reports.map((r) => r.filePath));
+            // Sessions that only belong to this study go with it.
+            const links = await tx.select().from(schema.contextStudies).where(eq(schema.contextStudies.studyId, studyId));
+            for (const l of links) {
+                const all = await tx.select().from(schema.contextStudies).where(eq(schema.contextStudies.contextId, l.contextId));
+                if (all.every((x) => x.studyId === studyId)) {
+                    await tx.delete(schema.contexts).where(eq(schema.contexts.id, l.contextId));
+                }
+            }
+            await tx.delete(schema.studies).where(eq(schema.studies.id, studyId)); // cascades scans, links, reports
+        });
+        await removeUploads(files);
+        res.json({ success: true });
+    } catch (e: any) {
+        console.error('Delete study error:', e);
+        res.status(500).json({ error: 'Failed to delete study' });
+    }
+});
+
+app.delete('/api/patients/:id', async (req, res) => {
+    const patientId = req.params.id;
+    try {
+        const studies = await db.select().from(schema.studies).where(eq(schema.studies.patientId, patientId));
+        if (studies.some((s) => s.ownerUserId && s.ownerUserId !== req.user!.id)) {
+            return res.status(403).json({ error: 'This patient has studies owned by other users and cannot be deleted' });
+        }
+        const files: string[] = [];
+        await db.transaction(async (tx) => {
+            for (const st of studies) {
+                const scans = await tx.select().from(schema.scans).where(eq(schema.scans.studyId, st.id));
+                files.push(...scans.map((s) => s.filePath));
+            }
+            const visits = await tx.select().from(schema.visits).where(eq(schema.visits.patientId, patientId));
+            for (const v of visits) {
+                const reports = await tx.select().from(schema.reports).where(eq(schema.reports.visitId, v.id));
+                files.push(...reports.map((r) => r.filePath));
+            }
+            await tx.delete(schema.patients).where(eq(schema.patients.id, patientId)); // cascades everything
+        });
+        await removeUploads(files);
+        res.json({ success: true });
+    } catch (e: any) {
+        console.error('Delete patient error:', e);
+        res.status(500).json({ error: 'Failed to delete patient' });
     }
 });
 
@@ -863,6 +934,27 @@ app.use((err: any, _req: express.Request, res: express.Response, _next: express.
     console.error('[unhandled]', err);
     res.status(500).json({ error: 'Internal server error' });
 });
+
+// Health check for the hosting platform
+app.get('/healthz', (_req, res) => { res.json({ ok: true }); });
+
+// ── Hosted demo / production: serve the built web app from this server ─────
+// SERVE_CLIENT=true (set in Dockerfile) → same-origin app + API, no CORS setup.
+if (process.env.SERVE_CLIENT === 'true') {
+    const CLIENT_DIR = path.resolve(process.env.CLIENT_DIR || path.join(__dirname, '..', 'dist'));
+    app.use(express.static(CLIENT_DIR, {
+        index: false,
+        setHeaders: (res, filePath) => {
+            if (filePath.endsWith('.wasm')) res.setHeader('Content-Type', 'application/wasm');
+        },
+    }));
+    // HashRouter: every non-API path returns the app shell.
+    app.get(/^(?!\/(api|auth|orgs|invitations|uploads|healthz)\b).*/, (_req, res) => {
+        // Same isolation headers as the Vite dev server (cornerstone workers).
+        res.setHeader('Cross-Origin-Opener-Policy', 'same-origin');
+        res.sendFile(path.join(CLIENT_DIR, 'index.html'));
+    });
+}
 
 server.listen(port, () => {
     console.log(`Server running at http://localhost:${port}`);

@@ -23,7 +23,7 @@ const Field = ({ name, children }: { name: string; children: React.ReactNode }) 
         {children}
     </label>
 );
-const numCls = 'w-20 bg-white/5 border border-white/10 rounded px-2 py-1 text-right text-xs focus:outline-none focus:border-cyan-500/50';
+const numCls = 'w-20 bg-[var(--surface-2)] border border-[var(--border)] rounded px-2 py-1 text-right text-xs focus:outline-none focus:border-cyan-500/50';
 
 export function PlanPanel() {
     const { implants, selectedId } = useAppStore(useShallow((s) => ({ implants: s.threeDImplants, selectedId: s.dicom3D.selectedImplantId })));
@@ -57,9 +57,9 @@ export function PlanPanel() {
                             <div
                                 key={i.id}
                                 onClick={() => st().setSelectedDicomImplant(selectedId === i.id ? null : i.id)}
-                                className={`flex items-center gap-2 px-2 py-1 rounded cursor-pointer text-xs ${selectedId === i.id ? 'bg-cyan-500/15 text-cyan-200' : 'hover:bg-white/5'}`}
+                                className={`flex items-center gap-2 px-2 py-1 rounded cursor-pointer text-xs ${selectedId === i.id ? 'bg-cyan-500/15 text-cyan-700 dark:text-cyan-200' : 'hover:bg-[var(--surface-2)]'}`}
                             >
-                                <span className="w-1.5 h-1.5 rounded-full bg-white/80" />
+                                <span className="w-1.5 h-1.5 rounded-full bg-[var(--text-2)]" />
                                 <span>{label(i)}</span>
                                 <span className="ml-auto font-mono text-[10px] text-[var(--text-3)]">
                                     {i.type === 'screw' ? `${screwLength(i).toFixed(0)}×${i.diameter}`
@@ -76,7 +76,7 @@ export function PlanPanel() {
             {selected?.type === 'screw' && (() => {
                 const a = trajectoryAngles(selected);
                 return (
-                    <div className="border-t border-white/10 pt-3">
+                    <div className="border-t border-[var(--border)] pt-3">
                         <div className="text-[10px] font-bold uppercase tracking-wider text-[var(--text-3)] mb-1.5">Screw</div>
                         <Field name="Length (mm)">
                             <input type="number" step={5} min={10} max={120} className={numCls}
@@ -90,14 +90,14 @@ export function PlanPanel() {
                         <Field name="Level">
                             <select className={numCls} value={selected.level ?? ''} onChange={(e) => update({ ...selected, level: e.target.value || undefined })}>
                                 <option value="">—</option>
-                                {LEVELS.map((l) => <option key={l} value={l} className="bg-[#0f0f11]">{l}</option>)}
+                                {LEVELS.map((l) => <option key={l} value={l} className="bg-[var(--sidebar)]">{l}</option>)}
                             </select>
                         </Field>
                         <Field name="Side">
                             <div className="flex gap-1">
                                 {(['L', 'R'] as const).map((s) => (
                                     <button key={s} onClick={() => update({ ...selected, side: s })}
-                                        className={`px-2 py-0.5 rounded border text-xs ${selected.side === s ? 'border-cyan-400/50 bg-cyan-500/15 text-cyan-200' : 'border-white/10 text-[var(--text-3)]'}`}>
+                                        className={`px-2 py-0.5 rounded border text-xs ${selected.side === s ? 'border-cyan-400/50 bg-cyan-500/15 text-cyan-700 dark:text-cyan-200' : 'border-[var(--border)] text-[var(--text-3)]'}`}>
                                         {s === 'L' ? 'Left' : 'Right'}
                                     </button>
                                 ))}
@@ -111,7 +111,7 @@ export function PlanPanel() {
             })()}
 
             {selected?.type === 'rod' && (
-                <div className="border-t border-white/10 pt-3">
+                <div className="border-t border-[var(--border)] pt-3">
                     <div className="text-[10px] font-bold uppercase tracking-wider text-[var(--text-3)] mb-1.5">Rod</div>
                     <Field name="Diameter (mm)">
                         <input type="number" step={0.5} min={3} max={8} className={numCls} value={selected.diameter}
@@ -125,7 +125,7 @@ export function PlanPanel() {
             )}
 
             {selected?.type === 'cage' && (
-                <div className="border-t border-white/10 pt-3">
+                <div className="border-t border-[var(--border)] pt-3">
                     <div className="text-[10px] font-bold uppercase tracking-wider text-[var(--text-3)] mb-1.5">Cage</div>
                     {(['Width', 'Depth', 'Height'] as const).map((n, idx) => (
                         <Field key={n} name={`${n} (mm)`}>
@@ -140,7 +140,7 @@ export function PlanPanel() {
                     <Field name="Level">
                         <select className={numCls} value={selected.level ?? ''} onChange={(e) => update({ ...selected, level: e.target.value || undefined })}>
                             <option value="">—</option>
-                            {LEVELS.map((l) => <option key={l} value={l} className="bg-[#0f0f11]">{l}</option>)}
+                            {LEVELS.map((l) => <option key={l} value={l} className="bg-[var(--sidebar)]">{l}</option>)}
                         </select>
                     </Field>
                 </div>

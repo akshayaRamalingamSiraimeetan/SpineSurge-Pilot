@@ -13,12 +13,12 @@ export function ScreenshotDialog({ open, onOpenChange, screenshotUrl }: { open: 
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
             <DialogContent
-                className="sm:max-w-[500px] !bg-card !text-card-foreground border-border !opacity-100"
+                className="sm:max-w-[500px] !text-card-foreground !opacity-100"
                 style={{ backgroundColor: "hsl(var(--card))", opacity: 1 }}
             >
                 <DialogHeader>
                     <DialogTitle className="text-xl font-bold flex items-center gap-2">
-                        <Camera className="h-5 w-5 text-blue-600" />
+                        <Camera className="h-5 w-5 text-[var(--accent)]" />
                         Capture Stored
                     </DialogTitle>
                     <DialogDescription>
@@ -65,7 +65,7 @@ export function ScreenshotDialog({ open, onOpenChange, screenshotUrl }: { open: 
                         <Share2 className="h-4 w-4" />
                         Share
                     </Button>
-                    <Button className="flex-1 gap-2 bg-blue-600 hover:bg-blue-500 text-white shadow-lg shadow-blue-900/20 font-bold" onClick={() => {
+                    <Button className="flex-1 gap-2 bg-[var(--accent)] hover:brightness-110 text-white shadow-lg font-bold" onClick={() => {
                         // Download logic
                         const link = document.createElement('a');
                         link.href = screenshotUrl || '';

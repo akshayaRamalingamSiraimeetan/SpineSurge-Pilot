@@ -135,16 +135,16 @@ const PendingInvitationsPage = () => {
     return (
         <div className="px-8 py-12 max-w-2xl mx-auto">
             <div className="mb-8">
-                <h1 className="text-2xl font-semibold text-[#F5F5F7] tracking-tight">
+                <h1 className="text-2xl font-semibold text-[var(--text)] tracking-tight">
                     Pending Invitations
                 </h1>
-                <p className="mt-1 text-sm text-[#9CA3AF]">
+                <p className="mt-1 text-sm text-[var(--text-2)]">
                     Join additional organizations on SpineSurge.
                 </p>
             </div>
 
             {loading && (
-                <p className="text-sm text-[#9CA3AF]">Loading invitations…</p>
+                <p className="text-sm text-[var(--text-2)]">Loading invitations…</p>
             )}
 
             {!loading && fetchError && (
@@ -154,7 +154,7 @@ const PendingInvitationsPage = () => {
             )}
 
             {!loading && !fetchError && invitations.length === 0 && (
-                <p className="text-sm text-[#9CA3AF]">No pending invitations found.</p>
+                <p className="text-sm text-[var(--text-2)]">No pending invitations found.</p>
             )}
 
             {!loading && !fetchError && invitations.length > 0 && (
@@ -162,13 +162,13 @@ const PendingInvitationsPage = () => {
                     {invitations.map((inv) => (
                         <Card
                             key={inv.id}
-                            className="rounded-xl border border-[#242427] bg-[#141416]"
+                            className="rounded-xl border border-[var(--border)] bg-[var(--surface)]"
                         >
                             <CardHeader className="pb-2">
-                                <CardTitle className="text-base font-semibold text-[#F5F5F7]">
+                                <CardTitle className="text-base font-semibold text-[var(--text)]">
                                     {inv.orgName}
                                 </CardTitle>
-                                <CardDescription className="text-xs text-[#9CA3AF] capitalize">
+                                <CardDescription className="text-xs text-[var(--text-2)] capitalize">
                                     Role: {inv.role}
                                 </CardDescription>
                             </CardHeader>
@@ -189,7 +189,7 @@ const PendingInvitationsPage = () => {
                                         variant="outline"
                                         onClick={() => handleDecline(inv.id)}
                                         disabled={actionPending[inv.id]}
-                                        className="h-9 rounded-md border-[#242427] bg-transparent text-[#9CA3AF] text-sm hover:bg-[#242427] hover:text-[#F5F5F7]"
+                                        className="h-9 rounded-md border-[var(--border)] bg-transparent text-[var(--text-2)] text-sm hover:bg-[var(--surface-3)] hover:text-[var(--text)]"
                                     >
                                         Decline
                                     </Button>

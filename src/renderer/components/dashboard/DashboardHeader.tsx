@@ -30,17 +30,17 @@ const DashboardHeader = () => {
   const isOrgWorkspace = activeWorkspace.type === 'organization';
 
   return (
-    <header className="flex items-center justify-between px-8 py-5 border-b border-[#242427] bg-[#0A0A0B]">
+    <header className="flex items-center justify-between px-8 py-5 border-b border-[var(--border)] bg-[var(--bg)]">
       {/* Left: greeting + workspace badge */}
       <div>
-        <h1 className="text-xl font-semibold text-[#F5F5F7] tracking-tight">
+        <h1 className="text-xl font-semibold text-[var(--text)] tracking-tight">
           {getGreeting()}
         </h1>
         <div className="mt-0.5 flex items-center gap-2">
-          <p className="text-sm text-[#6B7280]">
+          <p className="text-sm text-[var(--text-3)]">
             Let's continue your work{displayName ? `, ${displayName}` : ''}.
           </p>
-          <span className="rounded-full border border-[#242427] bg-[#1C1C1F] px-2 py-0.5 text-[10px] font-medium text-[#9CA3AF]">
+          <span className="rounded-full border border-[var(--border)] bg-[var(--surface-2)] px-2 py-0.5 text-[10px] font-medium text-[var(--text-2)]">
             {workspaceLabel}
           </span>
         </div>
@@ -54,7 +54,7 @@ const DashboardHeader = () => {
             variant="outline"
             size="sm"
             onClick={() => navigate('/members')}
-            className="h-9 gap-2 rounded-lg border-[#242427] bg-[#141416] text-[#9CA3AF] hover:bg-[#242427] hover:text-[#F5F5F7] text-sm"
+            className="h-9 gap-2 rounded-lg border-[var(--border)] bg-[var(--surface)] text-[var(--text-2)] hover:bg-[var(--surface-3)] hover:text-[var(--text)] text-sm"
           >
             <Users className="h-4 w-4" />
             View Members
@@ -63,7 +63,7 @@ const DashboardHeader = () => {
 
         {/* Notification bell */}
         <button
-          className="relative flex h-9 w-9 items-center justify-center rounded-lg border border-[#242427] bg-[#141416] text-[#9CA3AF] hover:bg-[#242427] hover:text-[#F5F5F7] transition-colors"
+          className="relative flex h-9 w-9 items-center justify-center rounded-lg border border-[var(--border)] bg-[var(--surface)] text-[var(--text-2)] hover:bg-[var(--surface-3)] hover:text-[var(--text)] transition-colors"
           aria-label="Notifications"
         >
           <Bell className="h-4 w-4" />
@@ -82,7 +82,7 @@ const DashboardHeader = () => {
 
         {/* More actions */}
         <button
-          className="flex h-9 w-9 items-center justify-center rounded-lg border border-[#242427] bg-[#141416] text-[#9CA3AF] hover:bg-[#242427] hover:text-[#F5F5F7] transition-colors"
+          className="flex h-9 w-9 items-center justify-center rounded-lg border border-[var(--border)] bg-[var(--surface)] text-[var(--text-2)] hover:bg-[var(--surface-3)] hover:text-[var(--text)] transition-colors"
           aria-label="More actions"
         >
           <ChevronDown className="h-4 w-4" />

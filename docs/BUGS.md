@@ -246,3 +246,66 @@ empty click deselects + pans, Delete key, mm-based default sizes, deep-copied ro
 - TS-01 C [x] BottomToolbar.tsx:232,266,271,296 — hooks called after early return (rules-of-hooks) → "Rendered more hooks" crash.
 - TS-02 m [x] PelvicTools/SpinopelvicTools/Spondylolisthesis/Stenosis — import nonexistent `drawPoint`.
 - TS-03 m [ ] 97 tsc errors mostly unused imports; DICOMViewer.legacy.tsx likely dead.
+
+## UI — Workspace UI/UX batch (user request 2026-10-02) — all done in code, needs on-screen review
+- UI-01 [x] Dashboard rail removed from workspace (MainLayout); logo + Back are the only exits.
+- UI-02 [x] Image toolbar is positioned inside the canvas (absolute), default right-centre, drag clamped to canvas.
+- UI-03 [x] VBM: Sagittal/Coronal picker inline under the tool (store `vbmMode`); dialog removed.
+- UI-04 [x] Case Summary rows are click-to-edit on the whole row ("Add …" placeholder); section open by default.
+- UI-05 [x] Header: no profile, ⋮, import, share, report, View Report.
+- UI-06 [x] Tabs always enabled. Report = live summary of Assessment + Planning + Compare; empty sections hidden.
+- UI-07 [x] One case image: Assessment = Planning = Compare Image A (left pane IS the case; canvasSlice `isPaneB`).
+       Import only when no image (empty states). Image B saved in context toolState.comparisonB.
+- UI-08 [x] Light/dark toggle rightmost in header.
+- UI-09 [x] Header/sidebar gap closed (54px offset); sidebars open by default; rounded edge tabs in MainLayout.
+- UI-10 [x] Pencil emoji removed.
+- UI-11 [x] Calibration onboarding card on the canvas until calibrated (skip remembered in toolState.calibrationSkipped).
+- UI-12 [x] Report tab replaces the view in 2D and 3D (3D viewer kept mounted hidden); left = contents
+       (sections), right = ReportDocumentPanel (title/institution/department, A4/Letter, orientation, accent,
+       text size, footer, page numbers, preview/export/save). Settings stored in reportConfig.document.
+- UI-13 [x] Header = logo · back · patient/study · 4 tabs · save status · theme. 3D layout buttons moved into viewer.
+- UI-14 [x] Untitled flow: status "Not saved — add patient details"; leaving asks Discard/Keep editing; saving
+       updates context lastModified and marks Draft studies In Progress; Patients page refreshes on open.
+
+## UI batch 2 (2026-10-02)
+- UI2-01 [x] C "Could not save this session as a study": api.ts authedFetch called itself (bulk replace) → every
+        API call overflowed the stack. Fixed + regression test lib/api.test.ts.
+- UI2-02 [x] Planning tab "Target Correction" → "Targets"; 🎯 removed.
+- UI2-03 [x] Screenshot dialog uses app accent.
+- UI2-04 [x] 2D implants: no dark outline; implant annotations (selection, handles, drag label) cyan
+        (IMPLANT_ANNOTATION); fine-tune inputs in the implant card (screw length/diameter, cage length/height/
+        lordosis angle/rotation, rod diameter) via UPDATE_IMPLANT; card auto-expands when implant selected.
+- UI2-05 [x] UIV/LIV → tool "Instr. Level" with inline UIV/LIV picker (store tiltMode); dialog removed.
+- UI2-06 [x] Report contents sidebar 340px.
+- UI2-07 [x] Compare: "Replace image" on Image B with confirm.
+- UI2-08 [x] Image B measurements: list shown in Compare (per active image) with delete; B deletions persisted.
+- UI2-09 [x] Measurement list redesigned as cards (16px checkbox = in report, name + level chip, normal range,
+        large value, visible delete). Level edit no longer depends on removed window.canvasManager.
+- UI2-10 [x] Patients page: no greeting/bell/New Study/⋮ header; list and studies scroll independently;
+        search fixed at top.
+
+## UI batch 3 (2026-10-02)
+- UI3-01 [x] Theme toggle (components/ThemeToggle.tsx) in dashboard rail (home, patients, members) + workspace header.
+- UI3-02 [x] Measurement panel clipped on the right: Radix ScrollArea `display:table` grew past panel → forced block;
+        long values wrap.
+- UI3-03 [x] 3D planning light mode: text-white/* in DICOM sidebar + PlanPanel → theme vars; tints readable in both.
+- UI3-04 [x] Light/dark consistency: ~800 hardcoded dark hex classes → CSS vars (pages, dashboard, dialogs);
+        dropdown/select/card components restyled (were blue #0F2A44); `dark:` now follows the in-app toggle
+        (`@custom-variant dark` in index.css; Tailwind v4 ignored tailwind.config darkMode).
+- UI3-05 [x] Study card: icon buttons (open, reports/download); menu = Rename, Share, Status (4, inline), Delete.
+        Patient list menu = Share, Archive/Restore, Delete. Header ⋮ and bell removed; "Archived" toggle in list header.
+- UI3-06 [x] "Add New Study" opens the same Import dialog as Home, preset to the patient (presetPatientId).
+- UI3-07 [x] Study names: default "Pre-op · 2 Oct 2026" / "Study · <date>"; modality only as badge; click title to rename.
+- UI3-08 [x] Delete patient / study: DELETE /api/patients/:id, /api/studies/:id (owner-checked, removes files),
+        store actions + confirm dialogs (components/ConfirmDialog.tsx).
+
+## UI batch 4 (2026-10-02)
+- UI4-01 [x] "Can't delete patient/study": running dev server predated the new DELETE routes (no auto-reload).
+        Verified routes on a fresh server; `npm run start:server` now uses `tsx watch`. **Restart once.**
+- UI4-02 [x] Study card: patient name → "Study #N · <custom name> · date" (date once) → modality/status/images.
+        New studies no longer embed the date in their name.
+- UI4-03 [x] Uniform dialogs: base dialog themed (surface, border, subtle shadow, light backdrop); colour/shadow
+        overrides stripped from all dialogs; light-mode gray/slate branches mapped to theme vars.
+- DEPLOY-01 [~] Hosted demo stage: Dockerfile, .dockerignore, render.yaml, SERVE_CLIENT static serving + /healthz,
+        UPLOADS_DIR, DB TLS, DEMO_MODE sign-up, demo seed (prod-guarded), JWT secret guard, login pre-fill via
+        VITE_DEMO_*. Verified locally (production build served by API on one port). Not deployed yet.

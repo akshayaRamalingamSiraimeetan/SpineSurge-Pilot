@@ -1,37 +1,12 @@
 /**
- * TopMenuBar — Unified application header.
+ * TopMenuBar — workspace header (only rendered by MainLayout: /workspace, /compare).
  *
- * On workspace routes (/workspace, /compare):
- *   [S] [← Patient Name / subtitle]  [Assessment|Planning|Compare|Report]  [Import][Share][Theme][View Report][⋮][Avatar]
+ *   [S] [←] Patient / Study name     [Assessment | Planning | Compare | Report]     [Saved] [☀/☾]
  *
- * On all other routes:
- *   [Logo]  (spacer)  [Import][Compare][Export][Cases][Share][Theme][Avatar]
- *
- * All existing functionality (import, compare, share, report, theme, profile, DICOM controls)
- * is fully preserved — only the visual layout changes.
+ * Nothing else lives here on purpose: import, report export and 3D layout
+ * controls belong to the page they act on, so the header only navigates.
  */
-import {
-    Upload,
-    ArrowLeftRight,
-    Download,
-    FolderOpen,
-    LogOut,
-    Moon,
-    Sun,
-    Settings,
-    User,
-    Crop,
-    LayoutTemplate,
-    Grid2X2,
-    Share2,
-    Target,
-    FileText,
-    MoreVertical,
-    Cloud,
-    CloudOff,
-    Loader2
-} from "lucide-react";
-import { ImportDialog } from "@/features/import-export/ImportDialog";
+import { Cloud, CloudOff, Loader2, AlertCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
     Dialog,
@@ -42,26 +17,13 @@ import {
     DialogTitle,
 } from "@/components/ui/dialog";
 import { useTheme } from "@/components/theme-provider";
-import {
-    DropdownMenu,
-    DropdownMenuContent,
-    DropdownMenuItem,
-    DropdownMenuLabel,
-    DropdownMenuSeparator,
-    DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+import { ThemeToggle } from "@/components/ThemeToggle";
 import { useNavigate, useLocation } from "react-router-dom";
-import { useState, useRef, useMemo } from "react";
-import { ProfileDialog } from "./ProfileDialog";
-import { SettingsDialog } from "./SettingsDialog";
-import { ShareDialog } from "./ShareDialog";
+import { useMemo, useState } from "react";
+import { useShallow } from "zustand/react/shallow";
 import { useAppStore, getStudyDisplayName } from "@/lib/store/index";
-import { cn } from "@/lib/utils";
-import { buildReportPDF, exportReportPDF } from "@/lib/pdf/generateReportPDF";
-import { Eye } from "lucide-react";
 
-/* ── Workspace mode tabs ─────────────────────────────────────── */
-type WsTab = 'assessment' | 'planning' | 'compare' | 'report';
+export type WsTab = 'assessment' | 'planning' | 'compare' | 'report';
 const WS_TABS: { key: WsTab; label: string }[] = [
     { key: 'assessment', label: 'Assessment' },
     { key: 'planning',   label: 'Planning'   },
@@ -69,554 +31,234 @@ const WS_TABS: { key: WsTab; label: string }[] = [
     { key: 'report',     label: 'Report'     },
 ];
 
+/** Work exists that is not attached to any study (untitled Quick Use session). */
+export const hasUntitledWork = () => {
+    const s = useAppStore.getState();
+    return !s.activeContextId && (!!s.currentImage || s.measurements.length > 0 || s.implants.length > 0 || s.threeDImplants.length > 0);
+};
+
 const TopMenuBar = () => {
-    const { setTheme, theme, resolvedTheme } = useTheme();
+    const { resolvedTheme } = useTheme();
     const navigate = useNavigate();
     const location = useLocation();
     const isDark = resolvedTheme === 'dark';
 
     const {
-        user,
-        logout,
-        activePatientId,
-        patients,
-        activeContextId,
-        contexts,
-        currentImage,
-        addContext,
-        updateContextState,
-        generateShareLink,
-        measurements,
-        implants,
-        threeDImplants,
-        pedicleSimulations,
-        isComparisonMode,
-        setComparisonMode,
-        isDicomMode,
-        dicomSeries,
-        dicom3D,
-        setDicomLayoutMode,
-        setDicomCroppingActive,
-        triggerFocusCrop,
-        setActiveDialog,
-        syncStatus,
-        hasUnsyncedChanges,
-    } = useAppStore();
+        activePatientId, patients, activeContextId, contexts, syncStatus, hasUnsyncedChanges,
+        isComparisonMode, setComparisonMode, currentImage, measurements,
+    } = useAppStore(useShallow((s) => ({
+        activePatientId: s.activePatientId,
+        patients: s.patients,
+        activeContextId: s.activeContextId,
+        contexts: s.contexts,
+        syncStatus: s.syncStatus,
+        hasUnsyncedChanges: s.hasUnsyncedChanges,
+        isComparisonMode: s.isComparisonMode,
+        setComparisonMode: s.setComparisonMode,
+        currentImage: s.currentImage,
+        measurements: s.measurements,
+    })));
 
-    const [profileOpen, setProfileOpen]   = useState(false);
-    const [settingsOpen, setSettingsOpen] = useState(false);
-    const [reportBusy, setReportBusy]     = useState<'preview' | 'export' | null>(null);
-    const [pdfPreviewUrl, setPdfPreviewUrl] = useState<string | null>(null);
     const [closeAttemptRoute, setCloseAttemptRoute] = useState<string | null>(null);
-    const queryParams = useMemo(() => new URLSearchParams(location.search), [location.search]);
-    const wsTab = (queryParams.get('tab') as WsTab) || 'assessment';
+    const [discardRoute, setDiscardRoute] = useState<string | null>(null);
 
-    const lastMainRouteRef = useRef('/dashboard');
-    if (location.pathname === '/dashboard' || location.pathname === '/compare') {
-        lastMainRouteRef.current = location.pathname;
-    }
+    const wsTab: WsTab = location.pathname === '/compare'
+        ? 'compare'
+        : ((new URLSearchParams(location.search).get('tab') as WsTab) || 'assessment');
 
-    // Is this a workspace route?
-    const isWorkspaceRoute = location.pathname === '/workspace' || location.pathname === '/compare';
-
-    /* ── Patient / context data ──────────────────────────────── */
-    const patient = useMemo(
-        () => patients.find((p) => p.id === activePatientId) ?? null,
-        [activePatientId, patients],
-    );
-    const context = useMemo(
-        () => contexts.find((c) => c.id === activeContextId) ?? null,
-        [activeContextId, contexts],
-    );
+    /* ── Title ─────────────────────────────────────────────── */
+    const patient = useMemo(() => patients.find((p) => p.id === activePatientId) ?? null, [activePatientId, patients]);
+    const context = useMemo(() => contexts.find((c) => c.id === activeContextId) ?? null, [activeContextId, contexts]);
     const headerTitle = useMemo(() => {
-        if (!activePatientId) return 'Untitled Study';
-        if (activeContextId && context && patient) {
+        if (!activePatientId) return 'Untitled study';
+        if (context && patient) {
             const studyId = context.studyIds?.[0];
-            const study =
-                patient.studies?.find(s => s.id === studyId) ||
-                patient.visits?.flatMap(v => v.studies || []).find(s => s.id === studyId);
-            if (study) return getStudyDisplayName(study);
-            if (context.name) return context.name;
+            const study = patient.studies?.find(s => s.id === studyId)
+                || patient.visits?.flatMap(v => v.studies || []).find(s => s.id === studyId);
+            if (study) return `${patient.name || 'Unnamed patient'} · ${getStudyDisplayName(study)}`;
         }
-        return patient?.name ?? 'Loading…';
-    }, [activePatientId, activeContextId, context, patient]);
-
+        return patient?.name || 'Unnamed patient';
+    }, [activePatientId, context, patient]);
     const subtitle = useMemo(() => {
         if (!patient) return null;
         const parts: string[] = [];
         if (patient.age) parts.push(`${patient.age}${patient.gender ?? ''}`);
-        if (patient.contact) parts.push(`MRN ${patient.contact}`);
+        if (patient.id) parts.push(`ID ${patient.id}`);
         const dx = patient.visits?.[0]?.diagnosis;
         if (dx) parts.push(dx);
-        return parts.length ? parts.join(' · ') : null;
+        return parts.join(' · ') || null;
     }, [patient]);
 
-    const selectedCount = measurements.filter((m) => m.selected && !(m as any).isImplant).length;
-
-    const userInitial = user?.name
-        ? user.name.replace(/^(Dr\.|Mr\.|Ms\.)\s+/i, '').charAt(0).toUpperCase()
-        : 'U';
-
-    /* ── Tab switching ───────────────────────────────────────── */
-    // Tabs replace the history entry so Back leaves the workspace instead of
-    // walking through tabs (BUGS NAV-30). Tool state is reset per tab (WS-20).
+    /* ── Tabs: always available; replace history so Back leaves the workspace ── */
     const handleWsTab = (key: WsTab) => {
         const st = useAppStore.getState();
         st.setActiveTool(null);
         st.setSelection(null);
         if (key === 'compare') {
             setComparisonMode(true);
-            navigate('/compare');
+            navigate('/compare', { replace: location.pathname === '/workspace' || location.pathname === '/compare' });
             return;
         }
-        // Keep comparison mode for the report tab (comparison reports).
         if (key !== 'report' && isComparisonMode) setComparisonMode(false);
-        const searchParams = new URLSearchParams(location.search);
-        searchParams.set('tab', key);
-        navigate(`/workspace?${searchParams.toString()}`, { replace: location.pathname === '/workspace' });
+        navigate(`/workspace?tab=${key}`, { replace: true });
     };
 
-    /* ── Other navigation ────────────────────────────────────── */
-    // Leaving the workspace: flush pending edits, then close the case so a
-    // later Quick Use can't write into this study (BUGS WS-10).
-    const leaveWorkspace = (targetRoute: string) => {
+    /* ── Leaving the workspace ─────────────────────────────── */
+    const leaveWorkspace = (targetRoute: string | -1) => {
         setComparisonMode(false);
         useAppStore.getState().closeCase();
-        navigate(targetRoute);
+        if (targetRoute === -1) navigate(-1);
+        else navigate(targetRoute);
     };
 
-    const handleCloseWorkspace = async (targetRoute: string) => {
-        const state = useAppStore.getState();
-        if (!state.activeContextId || !hasUnsyncedChanges) {
-            leaveWorkspace(targetRoute);
+    const handleClose = async (target: string | -1) => {
+        // Untitled work has nowhere to be saved — confirm before discarding.
+        if (hasUntitledWork()) {
+            setDiscardRoute(target === -1 ? '__back__' : target);
             return;
         }
-
+        const state = useAppStore.getState();
+        if (!state.activeContextId || !hasUnsyncedChanges) {
+            leaveWorkspace(target);
+            return;
+        }
         state.setSyncStatus('saving');
-        const success = await state.updateContextState(state.activeContextId, {
+        const ok = await state.updateContextState(state.activeContextId, {
             measurements: state.measurements,
             implants: state.implants,
             threeDImplants: state.threeDImplants,
             pedicleSimulations: state.pedicleSimulations,
             ...(state.currentImage ? { currentImage: state.currentImage } : {}),
         });
-
-        if (success) {
+        if (ok) {
             state.setHasUnsyncedChanges(false);
             state.setSyncStatus('synced');
-            leaveWorkspace(targetRoute);
+            leaveWorkspace(target);
         } else {
             state.setSyncStatus('error');
-            setCloseAttemptRoute(targetRoute);
+            setCloseAttemptRoute(target === -1 ? '__back__' : target);
         }
     };
 
-    const handleCompareToggle = () => {
-        if (location.pathname === '/patients') { setComparisonMode(true); navigate('/compare'); return; }
-        const next = !isComparisonMode;
-        setComparisonMode(next);
-        if (!next) handleCloseWorkspace('/dashboard');
-        else navigate('/compare');
-    };
+    // Back = where the user came from (tabs replace history), else dashboard.
+    const canGoBack = ((window.history.state as { idx?: number } | null)?.idx ?? 0) > 0;
+    const onBack = () => handleClose(canGoBack ? -1 : '/dashboard');
+    const routeOf = (r: string) => (r === '__back__' ? -1 : r);
 
-    const handlePatientsToggle = () => {
-        if (location.pathname === '/patients') handleCloseWorkspace(lastMainRouteRef.current);
-        else handleCloseWorkspace('/patients');
-    };
-
-    /* ── Share handler (unchanged logic) ─────────────────────── */
-    const handleShare = async () => {
-        if (activeContextId) { generateShareLink(); return; }
-        const newId = crypto.randomUUID();
-        if (isDicomMode && dicomSeries.length > 0 && typeof dicomSeries[0] === 'string') {
-            const targetUrl = dicomSeries[0] as string;
-            let foundStudyId: string | undefined;
-            let foundPatientId: string | undefined = activePatientId || undefined;
-            const findStudy = (p: any) => p.studies.find((s: any) =>
-                s.scans.some((scan: any) => targetUrl.includes(scan.imageUrl) || scan.imageUrl.includes(targetUrl))
-            );
-            const state = useAppStore.getState();
-            let study: any;
-            if (activePatientId) { const p = state.patients.find((p: any) => p.id === activePatientId); if (p) study = findStudy(p); }
-            if (!study) { for (const p of state.patients) { study = findStudy(p); if (study) { foundPatientId = p.id; break; } } }
-            if (study && foundPatientId) {
-                foundStudyId = study.id;
-                await addContext({ id: newId, patientId: foundPatientId!, studyIds: [foundStudyId!], mode: 'view', name: `Shared DICOM ${new Date().toLocaleDateString()}`, lastModified: new Date().toISOString() });
-                await updateContextState(newId, { threeDImplants, pedicleSimulations });
-                generateShareLink({ contextId: newId }); return;
-            }
-        }
-        if (activePatientId && currentImage && !isDicomMode) {
-            await addContext({ id: newId, patientId: activePatientId, studyIds: [], mode: 'view', name: `Shared Snapshot ${new Date().toLocaleDateString()}`, lastModified: new Date().toISOString() });
-            await updateContextState(newId, { measurements, implants, threeDImplants, pedicleSimulations, currentImage });
-            generateShareLink({ contextId: newId }); return;
-        }
-        generateShareLink();
-    };
-
-    /* ── Shared icon button style ────────────────────────────── */
-    const iconBtn = "h-7 w-7 rounded-md border border-border/70 bg-secondary hover:bg-muted text-foreground transition-all active:scale-95 shadow-sm";
+    /* ── Save status ───────────────────────────────────────── */
+    const untitled = !activeContextId && (!!currentImage || measurements.length > 0);
+    const status = untitled
+        ? { icon: <AlertCircle className="w-3.5 h-3.5 text-amber-500" />, text: 'Not saved — add patient details', title: 'Fill in the patient name in the right panel to save this study' }
+        : syncStatus === 'saving' ? { icon: <Loader2 className="w-3.5 h-3.5 animate-spin" />, text: 'Saving…', title: '' }
+        : syncStatus === 'error' ? { icon: <CloudOff className="w-3.5 h-3.5 text-red-500" />, text: 'Save failed — retrying', title: '' }
+        : syncStatus === 'unsynced' ? { icon: <Cloud className="w-3.5 h-3.5 opacity-50" />, text: 'Saving soon…', title: '' }
+        : activeContextId ? { icon: <Cloud className="w-3.5 h-3.5" />, text: 'Saved', title: '' }
+        : null;
 
     return (
         <div
-            className="fixed top-0 left-0 right-0 z-50 flex items-center gap-0"
+            className="fixed top-0 left-0 right-0 z-50 flex items-center"
             style={{
                 height: 54,
                 background: isDark ? 'rgba(10,10,11,0.97)' : 'rgba(255,255,255,0.97)',
-                borderBottom: `1px solid var(--border)`,
+                borderBottom: '1px solid var(--border)',
                 backdropFilter: 'blur(20px)',
-                boxShadow: '0 1px 3px rgba(0,0,0,.08)',
             }}
         >
-            {/* ── [S] Logo placeholder ─────────────────────────── */}
-            <div
-                onClick={() => handleCloseWorkspace('/dashboard')}
-                style={{
-                    width: 54, height: 54, flexShrink: 0,
-                    display: 'grid', placeItems: 'center',
-                    borderRight: `1px solid var(--border)`,
-                    cursor: 'pointer',
-                }}
+            {/* Logo */}
+            <button
+                onClick={() => handleClose('/dashboard')}
+                title="Dashboard"
+                style={{ width: 54, height: 54, flexShrink: 0, display: 'grid', placeItems: 'center', borderRight: '1px solid var(--border)' }}
             >
-                <div style={{
-                    width: 32, height: 32, borderRadius: 8,
-                    background: 'var(--accent)',
-                    display: 'grid', placeItems: 'center',
-                    color: '#fff', fontSize: 16, fontWeight: 800,
-                    letterSpacing: '-.02em', userSelect: 'none',
-                }}>
+                <div style={{ width: 32, height: 32, borderRadius: 8, background: 'var(--accent)', display: 'grid', placeItems: 'center', color: '#fff', fontSize: 16, fontWeight: 800 }}>
                     S
                 </div>
-            </div>
+            </button>
 
-            {/* ── Patient info (workspace routes) / empty (other) ── */}
-            <div style={{
-                display: 'flex', alignItems: 'center', gap: 8,
-                padding: '0 16px', minWidth: 0, flexShrink: 0,
-                maxWidth: isWorkspaceRoute ? 280 : 0,
-                overflow: 'hidden',
-                transition: 'max-width .2s',
-            }}>
-                {isWorkspaceRoute && (
-                    <>
-                        <button
-                            onClick={() => handleCloseWorkspace('/dashboard')}
-                            style={{
-                                display: 'grid', placeItems: 'center',
-                                width: 26, height: 26, borderRadius: 6,
-                                border: `1px solid var(--border-2)`,
-                                background: 'transparent', cursor: 'pointer',
-                                color: 'var(--text-2)', flexShrink: 0,
-                            }}
-                        >
-                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                                <path d="M15 18l-6-6 6-6" />
-                            </svg>
-                        </button>
-                        <div style={{ minWidth: 0 }}>
-                            <div style={{
-                                fontSize: 14, fontWeight: 700,
-                                color: 'var(--text)',
-                                whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-                                maxWidth: 200,
-                            }}>
-                                {headerTitle}
-                            </div>
-                            {activePatientId && (
-                                <div style={{
-                                    fontSize: 11, color: 'var(--text-3)',
-                                    whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-                                    maxWidth: 200,
-                                }}>
-                                    {subtitle ?? '—'}
-                                </div>
-                            )}
-                        </div>
-                    </>
-                )}
-            </div>
-
-            {/* ── Center: Assessment / Planning / Compare / Report tabs ── */}
-            {isWorkspaceRoute ? (
-                <div style={{
-                    flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center',
-                }}>
-                    <div style={{
-                        display: 'flex', gap: 2,
-                        background: 'var(--surface-3)',
-                        padding: '3px',
-                        borderRadius: 10,
-                    }}>
-                        {WS_TABS.map((t) => {
-                            const isDisabled = isDicomMode && (t.key === 'assessment' || t.key === 'compare');
-                            return (
-                                <button
-                                    key={t.key}
-                                    onClick={() => !isDisabled && handleWsTab(t.key)}
-                                    disabled={isDisabled}
-                                    style={{
-                                        padding: '6px 16px',
-                                        borderRadius: 8,
-                                        fontSize: 13,
-                                        fontWeight: 600,
-                                        border: 'none',
-                                        cursor: isDisabled ? 'not-allowed' : 'pointer',
-                                        opacity: isDisabled ? 0.35 : 1,
-                                        color: wsTab === t.key ? 'var(--accent)' : 'var(--text-2)',
-                                        background: wsTab === t.key ? 'var(--accent-soft)' : 'transparent',
-                                        transition: 'all .14s',
-                                        whiteSpace: 'nowrap',
-                                    }}
-                                >
-                                    {t.label}
-                                </button>
-                            );
-                        })}
+            {/* Back + title */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '0 14px', minWidth: 0, flex: '0 1 340px' }}>
+                <button
+                    onClick={onBack}
+                    title="Back"
+                    style={{ display: 'grid', placeItems: 'center', width: 28, height: 28, borderRadius: 8, border: '1px solid var(--border-2)', color: 'var(--text-2)', flexShrink: 0 }}
+                >
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M15 18l-6-6 6-6" /></svg>
+                </button>
+                <div style={{ minWidth: 0 }}>
+                    <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        {headerTitle}
                     </div>
+                    {subtitle && (
+                        <div style={{ fontSize: 11, color: 'var(--text-3)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{subtitle}</div>
+                    )}
                 </div>
-            ) : (
-                <div style={{ flex: 1 }} />
-            )}
-
-            {/* ── Right actions ─────────────────────────────────── */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6, paddingRight: 12 }}>
-                
-                {/* Sync Indicator */}
-                {isWorkspaceRoute && (
-                    <div className="flex items-center gap-1.5 mr-2 text-xs font-medium text-muted-foreground bg-muted/30 px-2 py-1 rounded-md">
-                        {syncStatus === 'synced' && <><Cloud className="w-3.5 h-3.5" /> Saved</>}
-                        {syncStatus === 'unsynced' && <><CloudOff className="w-3.5 h-3.5" /> Unsynced changes</>}
-                        {syncStatus === 'saving' && <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Saving...</>}
-                        {syncStatus === 'error' && <><CloudOff className="w-3.5 h-3.5 text-red-500" /> Sync error</>}
-                    </div>
-                )}
-
-                {/* DICOM layout controls */}
-                {isDicomMode && (
-                    <>
-                        <div className="flex items-center gap-1 bg-muted/30 p-1 rounded-lg border border-border/50">
-                            <Button variant="ghost" size="icon" onClick={() => setDicomLayoutMode('axial-sagittal')}
-                                className={cn("h-7 w-10 rounded text-[10px] font-bold", dicom3D.layoutMode === 'axial-sagittal' ? "bg-[#FF453A] text-white" : "text-muted-foreground")} title="2D Layout">
-                                <LayoutTemplate className="w-3.5 h-3.5 rotate-90" />
-                            </Button>
-                            <Button variant="ghost" size="icon" onClick={() => setDicomLayoutMode('grid')}
-                                className={cn("h-7 w-7 rounded", dicom3D.layoutMode === 'grid' ? "bg-[#FF453A] text-white" : "text-muted-foreground")} title="Grid">
-                                <Grid2X2 className="w-3.5 h-3.5" />
-                            </Button>
-                            <Button variant="ghost" size="icon" onClick={() => setDicomLayoutMode('focus-3d')}
-                                className={cn("h-7 w-7 rounded", dicom3D.layoutMode === 'focus-3d' ? "bg-[#FF453A] text-white" : "text-muted-foreground")} title="3D Focus">
-                                <LayoutTemplate className="w-3.5 h-3.5" />
-                            </Button>
-                        </div>
-                        <div className="flex items-center gap-1 bg-muted/30 p-1 rounded-lg border border-border/50">
-                            <Button variant="ghost" size="icon" onClick={() => setDicomCroppingActive(!dicom3D.isCroppingActive)}
-                                className={cn("h-7 w-7 rounded", dicom3D.isCroppingActive ? "bg-primary text-white" : "text-muted-foreground")} title="Crop">
-                                <Crop className="w-3.5 h-3.5" />
-                            </Button>
-                            <Button variant="ghost" size="icon" onClick={triggerFocusCrop}
-                                className="h-7 w-7 rounded text-primary" title="Focus">
-                                <Target className="w-3.5 h-3.5" />
-                            </Button>
-                        </div>
-                    </>
-                )}
-
-                {/* Import */}
-                <ImportDialog>
-                    <Button variant="ghost" size="icon" className={cn(iconBtn)} title="Import Scan">
-                        <Upload className="h-3.5 w-3.5" />
-                    </Button>
-                </ImportDialog>
-
-                {/* Compare (non-workspace only) */}
-                {!isWorkspaceRoute && (
-                    <Button variant="ghost" size="icon"
-                        className={cn(iconBtn, isComparisonMode && "bg-primary text-primary-foreground border-primary/50")}
-                        title="Compare" onClick={handleCompareToggle}>
-                        <ArrowLeftRight className="h-3.5 w-3.5" />
-                    </Button>
-                )}
-
-                {/* PDF Actions (Report Tab Only) — one generator, model-driven (RPT-13/14) */}
-                {wsTab === 'report' ? (
-                    <div className="flex items-center gap-2 mr-2">
-                        <Button
-                            variant="secondary"
-                            size="sm"
-                            className="h-8 text-xs bg-white/10 hover:bg-white/20 border-white/5"
-                            disabled={reportBusy !== null}
-                            onClick={async () => {
-                                setReportBusy('preview');
-                                try {
-                                    const { blob } = await buildReportPDF();
-                                    setPdfPreviewUrl(URL.createObjectURL(blob));
-                                } catch (e: any) {
-                                    alert(e.message || "Failed to preview PDF");
-                                } finally {
-                                    setReportBusy(null);
-                                }
-                            }}
-                        >
-                            <Eye className="w-3.5 h-3.5 mr-1.5" />
-                            {reportBusy === 'preview' ? 'Building…' : 'Preview PDF'}
-                        </Button>
-                        <Button
-                            size="sm"
-                            className="h-8 text-xs text-white shadow-sm hover:brightness-110 transition-all border-none"
-                            style={{ backgroundColor: '#FF453A' }}
-                            disabled={reportBusy !== null}
-                            onClick={async () => {
-                                setReportBusy('export');
-                                try {
-                                    const r = await exportReportPDF({ saveToRecord: true });
-                                    if (r.uploadError) alert(`PDF downloaded, but it was not saved to the patient record: ${r.uploadError}`);
-                                } catch (e: any) {
-                                    alert(e.message || "Failed to export PDF");
-                                } finally {
-                                    setReportBusy(null);
-                                }
-                            }}
-                        >
-                            <Download className="w-3.5 h-3.5 mr-1.5" />
-                            {reportBusy === 'export' ? 'Exporting…' : 'Export PDF'}
-                        </Button>
-                    </div>
-                ) : (
-                    /* Legacy Export */
-                    <Button variant="ghost" size="icon" className={cn(iconBtn)} title="Export Report"
-                        onClick={() => handleWsTab('report')}>
-                        <FileText className="h-3.5 w-3.5" />
-                    </Button>
-                )}
-
-                {/* Cases (non-workspace only) */}
-                {!isWorkspaceRoute && (
-                    <Button variant="ghost" size="icon"
-                        className={cn(iconBtn, location.pathname === '/patients' && "bg-primary/20 text-primary border-primary/30")}
-                        onClick={handlePatientsToggle} title="Patient Cases">
-                        <FolderOpen className="h-3.5 w-3.5" />
-                    </Button>
-                )}
-
-                {/* Share */}
-                <Button variant="ghost" size="icon" className={cn(iconBtn)} title="Share" onClick={handleShare}>
-                    <Share2 className="h-3.5 w-3.5" />
-                </Button>
-
-                {/* Theme */}
-                <Button variant="ghost" size="icon" className={cn(iconBtn)}
-                    onClick={() => setTheme(theme === "dark" ? "light" : "dark")} title="Toggle Theme">
-                    <Sun className="h-3.5 w-3.5 rotate-0 scale-100 transition-all dark:-rotate-90 dark:scale-0" />
-                    <Moon className="absolute h-3.5 w-3.5 rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100" />
-                </Button>
-
-                {/* View Report (workspace only) */}
-                {isWorkspaceRoute && (
-                    <button
-                        onClick={() => handleWsTab('report')}
-                        style={{
-                            display: 'flex', alignItems: 'center', gap: 6,
-                            height: 30, padding: '0 12px',
-                            borderRadius: 7,
-                            border: `1px solid var(--border-2)`,
-                            background: 'var(--surface-2)',
-                            color: 'var(--text)',
-                            fontSize: 12.5, fontWeight: 600,
-                            cursor: 'pointer',
-                            flexShrink: 0,
-                        }}
-                    >
-                        <FileText size={13} style={{ color: 'var(--accent)' }} />
-                        View Report
-                    </button>
-                )}
-
-                {/* Three dots menu (workspace only) */}
-                {isWorkspaceRoute && (
-                    <button
-                        style={{
-                            display: 'grid', placeItems: 'center',
-                            width: 30, height: 30, borderRadius: 7,
-                            border: `1px solid var(--border-2)`,
-                            background: 'var(--surface-2)',
-                            color: 'var(--text-2)', cursor: 'pointer', flexShrink: 0,
-                        }}
-                        title="More options"
-                    >
-                        <MoreVertical size={15} />
-                    </button>
-                )}
-
-                {/* Avatar / Profile */}
-                <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="icon" className="w-7 h-7 p-0 hover:bg-transparent">
-                            <div className="w-7 h-7 rounded-full bg-[rgba(255,69,58,0.12)] flex items-center justify-center border border-[#FF453A]/20 hover:border-[#FF453A]/40 transition-all">
-                                <span className="text-xs font-bold text-[#FF453A]">{userInitial}</span>
-                            </div>
-                        </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end"
-                        className={cn("w-56 rounded-xl p-2 z-[100] shadow-md border",
-                            isDark ? 'border-[#242427] bg-[#141416] text-[#F5F5F7]' : '!border-gray-200 !bg-white !text-gray-900'
-                        )}
-                    >
-                        <DropdownMenuLabel className={cn("font-normal p-3", isDark ? '' : 'text-gray-900')}>
-                            <div className="flex flex-col gap-0.5">
-                                <p className="text-sm font-bold leading-none">{user?.name || 'User'}</p>
-                                <p className="text-xs leading-none opacity-60">{user?.email || '—'}</p>
-                            </div>
-                        </DropdownMenuLabel>
-                        <DropdownMenuSeparator className={isDark ? 'bg-[#242427]' : 'bg-gray-200'} />
-                        <DropdownMenuItem className={cn("cursor-pointer rounded px-2 py-1.5 font-semibold !bg-transparent", isDark ? '!text-[#F5F5F7] hover:!bg-[#1B1B1E]' : '!text-gray-900 hover:!bg-gray-100')}
-                            onClick={() => { setProfileOpen(true); setActiveDialog('profile'); }}>
-                            <User className="mr-2 h-4 w-4 text-primary" /> Profile
-                        </DropdownMenuItem>
-                        <DropdownMenuItem className={cn("cursor-pointer rounded px-2 py-1.5 font-semibold !bg-transparent", isDark ? '!text-[#F5F5F7] hover:!bg-[#1B1B1E]' : '!text-gray-900 hover:!bg-gray-100')}
-                            onClick={() => { setSettingsOpen(true); setActiveDialog('settings'); }}>
-                            <Settings className="mr-2 h-4 w-4 text-primary" /> Settings
-                        </DropdownMenuItem>
-                        <DropdownMenuSeparator className={isDark ? 'bg-[#242427]' : 'bg-gray-200'} />
-                        <DropdownMenuItem className={cn("cursor-pointer rounded px-2 py-1.5 font-semibold !bg-transparent", isDark ? 'hover:!bg-[#1B1B1E]' : 'hover:!bg-red-50')}
-                            onClick={() => { logout(); navigate('/login'); }}>
-                            <LogOut className="mr-2 h-4 w-4" /> Log out
-                        </DropdownMenuItem>
-                    </DropdownMenuContent>
-                </DropdownMenu>
             </div>
 
-            {/* Dialogs */}
-            <ProfileDialog open={profileOpen} onOpenChange={setProfileOpen} />
-            <SettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} />
-            <Dialog open={!!pdfPreviewUrl} onOpenChange={(open) => {
-                if (!open && pdfPreviewUrl) { URL.revokeObjectURL(pdfPreviewUrl); setPdfPreviewUrl(null); }
-            }}>
-                <DialogContent className="max-w-5xl w-[90vw] h-[90vh] p-0 overflow-hidden">
-                    {pdfPreviewUrl && <iframe src={pdfPreviewUrl} title="Report preview" className="w-full h-full border-none" />}
+            {/* Tabs (always navigable) */}
+            <div style={{ flex: 1, display: 'flex', justifyContent: 'center' }}>
+                <div style={{ display: 'flex', gap: 2, background: 'var(--surface-3)', padding: 3, borderRadius: 10 }}>
+                    {WS_TABS.map((t) => (
+                        <button
+                            key={t.key}
+                            onClick={() => handleWsTab(t.key)}
+                            style={{
+                                padding: '6px 16px', borderRadius: 8, fontSize: 13, fontWeight: 600,
+                                color: wsTab === t.key ? 'var(--accent)' : 'var(--text-2)',
+                                background: wsTab === t.key ? 'var(--accent-soft)' : 'transparent',
+                                transition: 'all .14s', whiteSpace: 'nowrap',
+                            }}
+                        >
+                            {t.label}
+                        </button>
+                    ))}
+                </div>
+            </div>
+
+            {/* Save status + theme (rightmost) */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '0 12px', flex: '0 1 340px', justifyContent: 'flex-end' }}>
+                {status && (
+                    <div title={status.title} className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground px-2 py-1 rounded-md bg-muted/30 whitespace-nowrap">
+                        {status.icon} {status.text}
+                    </div>
+                )}
+                <ThemeToggle />
+            </div>
+
+            {/* Save failed while leaving */}
+            <Dialog open={!!closeAttemptRoute} onOpenChange={(o) => { if (!o) setCloseAttemptRoute(null); }}>
+                <DialogContent className="sm:max-w-md">
+                    <DialogHeader>
+                        <DialogTitle>Changes not saved</DialogTitle>
+                        <DialogDescription>Your latest changes could not be saved. Retry, or stay and keep editing.</DialogDescription>
+                    </DialogHeader>
+                    <DialogFooter className="gap-2">
+                        <Button variant="outline" onClick={() => setCloseAttemptRoute(null)}>Keep editing</Button>
+                        <Button onClick={() => { const r = closeAttemptRoute!; setCloseAttemptRoute(null); handleClose(routeOf(r)); }}>Retry</Button>
+                    </DialogFooter>
                 </DialogContent>
             </Dialog>
-            <ShareDialog />
 
-            {closeAttemptRoute && (
-                <Dialog open={true} onOpenChange={(open) => { if (!open) setCloseAttemptRoute(null); }}>
-                    <DialogContent className="sm:max-w-md">
-                        <DialogHeader>
-                            <DialogTitle>Sync Failed</DialogTitle>
-                            <DialogDescription>
-                                Changes could not be synced.
-                            </DialogDescription>
-                        </DialogHeader>
-                        <DialogFooter className="gap-2 sm:justify-start">
-                            <Button variant="outline" onClick={() => setCloseAttemptRoute(null)}>Keep Editing</Button>
-                            <Button onClick={() => {
-                                const route = closeAttemptRoute;
-                                setCloseAttemptRoute(null);
-                                handleCloseWorkspace(route);
-                            }}>Retry</Button>
-                        </DialogFooter>
-                    </DialogContent>
-                </Dialog>
-            )}
+            {/* Untitled study: confirm discard */}
+            <Dialog open={!!discardRoute} onOpenChange={(o) => { if (!o) setDiscardRoute(null); }}>
+                <DialogContent className="sm:max-w-md">
+                    <DialogHeader>
+                        <DialogTitle>Discard untitled study?</DialogTitle>
+                        <DialogDescription>
+                            This study isn't saved yet. Add the patient's name in the right panel to save it, or discard the image and measurements.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <DialogFooter className="gap-2">
+                        <Button variant="outline" onClick={() => setDiscardRoute(null)}>Keep editing</Button>
+                        <Button variant="destructive" onClick={() => {
+                            const r = discardRoute!;
+                            setDiscardRoute(null);
+                            useAppStore.getState().resetWorkspace();
+                            leaveWorkspace(routeOf(r));
+                        }}>Discard</Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
         </div>
     );
 };

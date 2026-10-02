@@ -15,8 +15,9 @@ import { Point } from "@/lib/canvas/CanvasManager";
  */
 
 const FILL = 'rgba(255, 255, 255, 0.95)';
-const OUTLINE = 'rgba(0, 0, 0, 0.75)';
-const SELECTED = '#22d3ee';
+/** Implant annotations (selection, handles, size labels) — distinct from the white body. */
+export const IMPLANT_ANNOTATION = '#22d3ee';
+const SELECTED = IMPLANT_ANNOTATION;
 const PREVIEW_FILL = 'rgba(255, 255, 255, 0.45)';
 
 // ── Geometry (local coordinates) ──────────────────────────────────────────
@@ -140,10 +141,8 @@ export function rodPath(points: Point[]): Path2D {
 const isPreview = (color?: string) => !!color && color.startsWith('rgba') && !color.endsWith('1)');
 
 function paint(ctx: CanvasRenderingContext2D, path: Path2D, k: number, preview: boolean, selected = false) {
+    // Pure white silhouette (no dark outline); selection = cyan outline.
     ctx.lineJoin = 'round';
-    ctx.strokeStyle = OUTLINE;
-    ctx.lineWidth = 2.5 / k;
-    ctx.stroke(path);
     ctx.fillStyle = preview ? PREVIEW_FILL : FILL;
     ctx.fill(path, 'evenodd');
     if (selected) {
@@ -218,9 +217,6 @@ export function drawRod(
     ctx.save();
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
-    ctx.strokeStyle = OUTLINE;
-    ctx.lineWidth = diameter + 3 / k;
-    ctx.stroke(path);
     ctx.strokeStyle = isPreview(color) ? PREVIEW_FILL : FILL;
     ctx.lineWidth = diameter;
     ctx.stroke(path);
@@ -324,10 +320,10 @@ export function drawImplantHandles(ctx: CanvasRenderingContext2D, implant: any, 
     handles.forEach((h, i) => {
         ctx.beginPath();
         ctx.arc(h.x, h.y, (i === 0 && implant.type !== 'rod' ? 6 : 5) / k, 0, Math.PI * 2);
-        ctx.fillStyle = i === 0 && implant.type !== 'rod' ? SELECTED : '#ffffff';
+        ctx.fillStyle = i === 0 && implant.type !== 'rod' ? '#0e7490' : IMPLANT_ANNOTATION;
         ctx.fill();
-        ctx.lineWidth = 2 / k;
-        ctx.strokeStyle = '#0e7490';
+        ctx.lineWidth = 1.5 / k;
+        ctx.strokeStyle = '#ffffff';
         ctx.stroke();
     });
     ctx.restore();

@@ -58,7 +58,7 @@ export function ImplantPropertiesPanel({ implant, onUpdate, onDelete, onClose, i
                     <div className="space-y-3">
                         {/* Diameter Control */}
                         <div className="space-y-1.5">
-                            <label className="text-[10px] font-bold text-slate-400 uppercase tracking-tight">Diameter</label>
+                            <label className="text-[10px] font-bold text-[var(--text-3)] uppercase tracking-tight">Diameter</label>
                             {type === 'screw' ? (
                                 <Select
                                     value={(properties.diameter || 6).toString()}
@@ -86,7 +86,7 @@ export function ImplantPropertiesPanel({ implant, onUpdate, onDelete, onClose, i
                                 </Select>
                             ) : (
                                 <>
-                                    <div className="flex justify-between text-[10px] font-bold text-slate-400 uppercase tracking-tight">
+                                    <div className="flex justify-between text-[10px] font-bold text-[var(--text-3)] uppercase tracking-tight">
                                         <span>Diameter</span>
                                         <span className="text-blue-400">{properties.diameter || 6} mm</span>
                                     </div>
@@ -105,7 +105,7 @@ export function ImplantPropertiesPanel({ implant, onUpdate, onDelete, onClose, i
                         {/* Length Control (Screw Only) */}
                         {type === 'screw' && (
                             <div className="space-y-1.5">
-                                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-tight">Length</label>
+                                <label className="text-[10px] font-bold text-[var(--text-3)] uppercase tracking-tight">Length</label>
                                 <Select
                                     value={(properties.length || 40).toString()}
                                     onValueChange={(v) => onUpdate({ length: parseInt(v) })}
@@ -125,7 +125,7 @@ export function ImplantPropertiesPanel({ implant, onUpdate, onDelete, onClose, i
                         )}
                         {type === 'rod' && (
                             <div className="space-y-1.5">
-                                <div className="flex justify-between text-[10px] font-bold text-slate-400 uppercase tracking-tight">
+                                <div className="flex justify-between text-[10px] font-bold text-[var(--text-3)] uppercase tracking-tight">
                                     <span>Length</span>
                                     <span className="text-blue-400">{Math.round(properties.length || 40)} mm</span>
                                 </div>
@@ -146,7 +146,7 @@ export function ImplantPropertiesPanel({ implant, onUpdate, onDelete, onClose, i
                 {type === 'cage' && (
                     <div className="space-y-3">
                         <div className="space-y-1.5">
-                            <div className="flex justify-between text-[10px] font-bold text-slate-400 uppercase tracking-tight">
+                            <div className="flex justify-between text-[10px] font-bold text-[var(--text-3)] uppercase tracking-tight">
                                 <span>Height</span>
                                 <span className="text-blue-400">{properties.height || 10} mm</span>
                             </div>
@@ -160,7 +160,7 @@ export function ImplantPropertiesPanel({ implant, onUpdate, onDelete, onClose, i
                             />
                         </div>
                         <div className="space-y-1.5">
-                            <div className="flex justify-between text-[10px] font-bold text-slate-400 uppercase tracking-tight">
+                            <div className="flex justify-between text-[10px] font-bold text-[var(--text-3)] uppercase tracking-tight">
                                 <span>Lordosis</span>
                                 <span className="text-blue-400">{properties.wedgeAngle || 5}°</span>
                             </div>
@@ -178,7 +178,7 @@ export function ImplantPropertiesPanel({ implant, onUpdate, onDelete, onClose, i
 
                 {/* Compact Color Selector */}
                 <div className="flex items-center gap-2 pt-2 border-t border-white/5">
-                    <span className="text-[10px] font-bold text-slate-500 uppercase mr-auto">Color</span>
+                    <span className="text-[10px] font-bold text-[var(--text-2)] uppercase mr-auto">Color</span>
                     {['#94a3b8', '#3b82f6', '#10b981', '#f59e0b', '#ec4899'].map(c => (
                         <div
                             key={c}
@@ -203,7 +203,7 @@ export function ImplantPropertiesPanel({ implant, onUpdate, onDelete, onClose, i
                     <Button
                         variant="ghost"
                         size="sm"
-                        className="flex-1 h-7 text-xs text-slate-400 hover:text-white"
+                        className="flex-1 h-7 text-xs text-[var(--text-3)] hover:text-white"
                         onClick={onClose}
                     >
                         Done
@@ -249,7 +249,7 @@ export function ImplantPropertiesPanel({ implant, onUpdate, onDelete, onClose, i
                 {(type === 'screw' || type === 'rod') && (
                     <div className="space-y-3">
                         <div className="space-y-1.5">
-                            <label className="text-[10px] font-bold text-slate-400 uppercase tracking-tight">Diameter</label>
+                            <label className="text-[10px] font-bold text-[var(--text-3)] uppercase tracking-tight">Diameter</label>
                             {type === 'screw' ? (
                                 <Select
                                     value={(properties.diameter || 6).toString()}
@@ -277,7 +277,7 @@ export function ImplantPropertiesPanel({ implant, onUpdate, onDelete, onClose, i
                                 </Select>
                             ) : (
                                 <>
-                                    <div className="flex justify-between text-[10px] font-bold text-slate-400 uppercase tracking-tight">
+                                    <div className="flex justify-between text-[10px] font-bold text-[var(--text-3)] uppercase tracking-tight">
                                         <span>Diameter</span>
                                         <span className="text-blue-400">{properties.diameter || 6} mm</span>
                                     </div>
@@ -293,7 +293,7 @@ export function ImplantPropertiesPanel({ implant, onUpdate, onDelete, onClose, i
                         </div>
                         {type === 'screw' && (
                             <div className="space-y-1.5">
-                                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-tight">Length</label>
+                                <label className="text-[10px] font-bold text-[var(--text-3)] uppercase tracking-tight">Length</label>
                                 <Select
                                     value={(properties.length || 40).toString()}
                                     onValueChange={(v) => onUpdate({ length: parseInt(v) })}
@@ -313,7 +313,7 @@ export function ImplantPropertiesPanel({ implant, onUpdate, onDelete, onClose, i
                         )}
                         {type === 'rod' && (
                             <div className="space-y-1.5">
-                                <div className="flex justify-between text-[10px] font-bold text-slate-400 uppercase tracking-tight">
+                                <div className="flex justify-between text-[10px] font-bold text-[var(--text-3)] uppercase tracking-tight">
                                     <span>Length</span>
                                     <span className="text-blue-400">{Math.round(properties.length || 40)} mm</span>
                                 </div>
@@ -333,7 +333,7 @@ export function ImplantPropertiesPanel({ implant, onUpdate, onDelete, onClose, i
                 {type === 'cage' && (
                     <div className="space-y-3">
                         <div className="space-y-1.5">
-                            <div className="flex justify-between text-[10px] font-bold text-slate-400 uppercase tracking-tight">
+                            <div className="flex justify-between text-[10px] font-bold text-[var(--text-3)] uppercase tracking-tight">
                                 <span>Height</span>
                                 <span className="text-blue-400">{properties.height || 10} mm</span>
                             </div>
@@ -346,7 +346,7 @@ export function ImplantPropertiesPanel({ implant, onUpdate, onDelete, onClose, i
                             />
                         </div>
                         <div className="space-y-1.5">
-                            <div className="flex justify-between text-[10px] font-bold text-slate-400 uppercase tracking-tight">
+                            <div className="flex justify-between text-[10px] font-bold text-[var(--text-3)] uppercase tracking-tight">
                                 <span>Lordotic Angle</span>
                                 <span className="text-blue-400">{properties.wedgeAngle || 5}°</span>
                             </div>

@@ -48,7 +48,31 @@ export interface ComparisonSlice {
     setComparisonImplants: (side: 'left' | 'right', implants: any[]) => void;
 }
 
-export const createComparisonSlice: StateCreator<AppState, [], [], ComparisonSlice> = (set) => ({
+/**
+ * Image B (Compare tab) belongs to the case: saved in the context's
+ * toolState.comparisonB and restored on load (caseState.ts). Image A is the
+ * case image itself.
+ */
+export const persistImageB = (get: () => AppState) => {
+    const st = get();
+    if (!st.activeContextId) return;
+    const B = st.comparison.right;
+    const ctx = st.contextStates.find((c) => c.contextId === st.activeContextId);
+    const image = B.image && !B.image.startsWith('blob:') ? B.image : (ctx?.toolState?.comparisonB?.image ?? null);
+    void st.updateContextState(st.activeContextId, {
+        toolState: {
+            ...(ctx?.toolState ?? {}),
+            comparisonB: {
+                image,
+                measurements: B.measurements,
+                implants: B.implants,
+                calibration: { pixelToMm: B.canvas.pixelToMm, calibrationApplied: B.canvas.calibrationApplied, calibrationEnabledAt: B.canvas.calibrationEnabledAt },
+            },
+        },
+    });
+};
+
+export const createComparisonSlice: StateCreator<AppState, [], [], ComparisonSlice> = (set, get) => ({
     isComparisonMode: false,
     activeCanvasSide: 'left',
     comparison: {
@@ -77,31 +101,16 @@ export const createComparisonSlice: StateCreator<AppState, [], [], ComparisonSli
         }
     }),
     setActiveCanvasSide: (side) => set({ activeCanvasSide: side }),
-    setComparisonImage: (side, imageUrl) => set((state) => ({
-        comparison: {
-            ...state.comparison,
-            [side]: {
-                ...state.comparison[side],
-                image: imageUrl,
-            }
-        }
-    })),
-    setComparisonMeasurements: (side, measurements) => set((state) => ({
-        comparison: {
-            ...state.comparison,
-            [side]: {
-                ...state.comparison[side],
-                measurements
-            }
-        }
-    })),
-    setComparisonImplants: (side, implants) => set((state) => ({
-        comparison: {
-            ...state.comparison,
-            [side]: {
-                ...state.comparison[side],
-                implants
-            }
-        }
-    })),
+    setComparisonImage: (side, imageUrl) => {
+        set((state) => ({ comparison: { ...state.comparison, [side]: { ...state.comparison[side], image: imageUrl } } }));
+        if (side === 'right') persistImageB(get);
+    },
+    setComparisonMeasurements: (side, measurements) => {
+        set((state) => ({ comparison: { ...state.comparison, [side]: { ...state.comparison[side], measurements } } }));
+        if (side === 'right') persistImageB(get);
+    },
+    setComparisonImplants: (side, implants) => {
+        set((state) => ({ comparison: { ...state.comparison, [side]: { ...state.comparison[side], implants } } }));
+        if (side === 'right') persistImageB(get);
+    },
 });

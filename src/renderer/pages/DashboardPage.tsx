@@ -37,7 +37,7 @@ const DashboardPage = () => {
       {/* ── Quick Action Cards ─────────────────────────────────────── */}
       {isOrgWorkspace && (
         <section>
-          <h2 className="mb-4 text-sm font-semibold text-[#F5F5F7] uppercase tracking-wide">
+          <h2 className="mb-4 text-sm font-semibold text-[var(--text)] uppercase tracking-wide">
             Get Started
           </h2>
           <div className="grid gap-4 sm:grid-cols-2">

@@ -68,6 +68,22 @@ export function emptyCaseState(state: AppState): Partial<AppState> {
     };
 }
 
+/** Image B of the Compare tab, saved in toolState.comparisonB. */
+function comparisonFromContext(ctx: ContextState) {
+    const b = ctx.toolState?.comparisonB;
+    const base = defaultComparison();
+    if (!b) return base;
+    return {
+        ...base,
+        right: {
+            image: b.image ?? null,
+            measurements: b.measurements ?? [],
+            implants: b.implants ?? [],
+            canvas: { ...defaultCanvas(), ...(b.calibration ?? {}) },
+        },
+    };
+}
+
 /** Full per-case state for a loaded context (every field set, never inherited). */
 export function caseStateFromContext(state: AppState, ctx: ContextState): Partial<AppState> {
     const cal: StoredCalibration | undefined = ctx.toolState?.calibration;
@@ -78,6 +94,7 @@ export function caseStateFromContext(state: AppState, ctx: ContextState): Partia
         implants: ctx.implants ?? [],
         threeDImplants: migrateImplants(ctx.threeDImplants),
         pedicleSimulations: ctx.pedicleSimulations ?? [],
+        comparison: comparisonFromContext(ctx),
         canvas: {
             ...defaultCanvas(),
             ...(cal ? {

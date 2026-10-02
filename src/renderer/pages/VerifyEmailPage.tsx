@@ -116,12 +116,12 @@ const VerifyEmailPage = () => {
 
     return (
         <AuthLayout>
-            <Card className="w-full rounded-2xl border border-[#242427] bg-[#141416] shadow-[0_1px_2px_rgba(0,0,0,.04),0_28px_70px_rgba(0,0,0,0.5)] backdrop-blur-md">
+            <Card className="w-full rounded-2xl border border-[var(--border)] bg-[var(--surface)] shadow-[0_1px_2px_rgba(0,0,0,.04),0_28px_70px_rgba(0,0,0,0.5)] backdrop-blur-md">
                 <CardHeader className="space-y-1 pb-3 pt-7">
-                    <CardTitle className="text-3xl font-semibold text-center tracking-tight text-[#F5F5F7]">
+                    <CardTitle className="text-3xl font-semibold text-center tracking-tight text-[var(--text)]">
                         Verify your email
                     </CardTitle>
-                    <CardDescription className="text-center text-[#9CA3AF] text-sm">
+                    <CardDescription className="text-center text-[var(--text-2)] text-sm">
                         {email
                             ? `We've sent a verification code to ${email}`
                             : "We've sent a verification code to your email"}
@@ -132,7 +132,7 @@ const VerifyEmailPage = () => {
                         <div className="grid gap-2">
                             <Label
                                 htmlFor="otp"
-                                className="text-[#9CA3AF] text-xs tracking-wide uppercase"
+                                className="text-[var(--text-2)] text-xs tracking-wide uppercase"
                             >
                                 Verification Code
                             </Label>
@@ -149,7 +149,7 @@ const VerifyEmailPage = () => {
                                     const val = e.target.value.replace(/\D/g, '');
                                     setOtp(val);
                                 }}
-                                className="h-11 rounded-md border-[#242427] bg-[#1B1B1E] text-[#F5F5F7] placeholder:text-[#9CA3AF]/60 focus-visible:ring-[#FF453A] focus-visible:ring-offset-0 text-center text-lg tracking-[0.3em]"
+                                className="h-11 rounded-md border-[var(--border)] bg-[var(--surface-2)] text-[var(--text)] placeholder:text-[var(--text-2)]/60 focus-visible:ring-[#FF453A] focus-visible:ring-offset-0 text-center text-lg tracking-[0.3em]"
                                 autoComplete="one-time-code"
                                 disabled={loading}
                             />
@@ -175,7 +175,7 @@ const VerifyEmailPage = () => {
 
                         <Button
                             variant="outline"
-                            className="w-full h-11 rounded-md border-[#242427] bg-[#1B1B1E] text-[#F5F5F7] hover:bg-[#242427] hover:text-[#F5F5F7]"
+                            className="w-full h-11 rounded-md border-[var(--border)] bg-[var(--surface-2)] text-[var(--text)] hover:bg-[var(--surface-3)] hover:text-[var(--text)]"
                             type="button"
                             onClick={handleResend}
                             disabled={resendLoading || loading}

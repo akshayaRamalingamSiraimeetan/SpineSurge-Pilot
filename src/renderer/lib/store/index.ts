@@ -7,7 +7,7 @@ import { DicomSlice, createDicomSlice } from './dicomSlice';
 import { ComparisonSlice, createComparisonSlice } from './comparisonSlice';
 import { ShareSlice, createShareSlice } from './shareSlice';
 import { LiveShareSlice, createLiveShareSlice } from './liveShareSlice';
-import { Patient, Study, Scan, Visit, Context, ContextState, UserProfile, ThreeDImplant, DICOMResource, getStudyDisplayName, STUDY_STATUSES, StudyStatus } from './types';
+import { Patient, Study, Scan, Visit, Context, ContextState, UserProfile, ThreeDImplant, DICOMResource, getStudyDisplayName, defaultStudyName, STUDY_STATUSES, StudyStatus } from './types';
 
 export type AppState = AuthSlice & PatientSlice & CanvasSlice & DicomSlice & ComparisonSlice & ShareSlice & LiveShareSlice;
 
@@ -38,4 +38,4 @@ export const useAppStore = create<AppState>()(
 );
 
 export type { Patient, Study, Scan, Visit, Context, ContextState, UserProfile, ThreeDImplant, DICOMResource, StudyStatus };
-export { getStudyDisplayName, STUDY_STATUSES };
+export { getStudyDisplayName, defaultStudyName, STUDY_STATUSES };

@@ -3,6 +3,7 @@ import { Measurement } from './types';
 import type { AppState } from './index';
 import { resolveActiveMeasurements, syncManagerMeasurements } from '@/lib/canvas/measurementSync';
 import { defaultCanvas } from './caseState';
+import { persistImageB } from './comparisonSlice';
 
 export { syncManagerMeasurements } from '@/lib/canvas/measurementSync';
 
@@ -34,6 +35,12 @@ export interface CanvasSlice {
         calibrationEnabledAt: number | null;
     };
     activeTool: string | null;
+    /** VBM plane, chosen inline under the tool: sagittal ('lateral') or coronal ('ap'). */
+    vbmMode: 'lateral' | 'ap';
+    setVbmMode: (mode: 'lateral' | 'ap') => void;
+    /** Instr. Level tool: upper or lower instrumented vertebra. */
+    tiltMode: 'UIV' | 'LIV';
+    setTiltMode: (mode: 'UIV' | 'LIV') => void;
     selection: {
         type: 'point' | 'label' | 'curvatureHandle' | 'implant' | 'implant-point';
         measurementId: string;
@@ -125,13 +132,18 @@ const convertPxResultToMm = (result: unknown, ratio: number): { result: unknown;
 /** Store the active context's calibration in its toolState (BUGS WS-08). */
 const persistCalibration = (get: () => AppState) => {
     const state = get();
-    if (state.isComparisonMode || !state.activeContextId) return;
+    if (isPaneB(state)) { persistImageB(get); return; }
+    if (!state.activeContextId) return;
     const ctx = state.contextStates.find(c => c.contextId === state.activeContextId);
     const { pixelToMm, calibrationApplied, calibrationEnabledAt } = state.canvas;
     state.updateContextState(state.activeContextId, {
         toolState: { ...(ctx?.toolState ?? {}), calibration: { pixelToMm, calibrationApplied, calibrationEnabledAt } },
     });
 };
+
+/** Compare's Image B pane is the only canvas with separate state; Image A is the case. */
+const isPaneB = (s: { isComparisonMode: boolean; activeCanvasSide: 'left' | 'right' }) =>
+    s.isComparisonMode && s.activeCanvasSide === 'right';
 
 export const createCanvasSlice: StateCreator<AppState, [], [], CanvasSlice> = (set, get) => ({
     currentImage: null,
@@ -149,6 +161,10 @@ export const createCanvasSlice: StateCreator<AppState, [], [], CanvasSlice> = (s
         calibrationEnabledAt: null
     },
     activeTool: null,
+    vbmMode: 'lateral',
+    setVbmMode: (vbmMode) => set({ vbmMode }),
+    tiltMode: 'UIV',
+    setTiltMode: (tiltMode) => set({ tiltMode }),
     selection: null,
     measurements: [],
     implants: [],
@@ -185,7 +201,7 @@ export const createCanvasSlice: StateCreator<AppState, [], [], CanvasSlice> = (s
     setActiveTool: (toolId) => set({ activeTool: toolId }),
     setSelection: (selection) => set({ selection }),
     setZoom: (zoom) => set((state) => {
-        if (state.isComparisonMode) {
+        if (isPaneB(state)) {
             const side = state.activeCanvasSide;
             return {
                 comparison: {
@@ -197,7 +213,7 @@ export const createCanvasSlice: StateCreator<AppState, [], [], CanvasSlice> = (s
         return { canvas: { ...state.canvas, zoom } };
     }),
     setRotation: (rotation) => set((state) => {
-        if (state.isComparisonMode) {
+        if (isPaneB(state)) {
             const side = state.activeCanvasSide;
             return {
                 comparison: {
@@ -209,7 +225,7 @@ export const createCanvasSlice: StateCreator<AppState, [], [], CanvasSlice> = (s
         return { canvas: { ...state.canvas, rotation } };
     }),
     setBrightness: (brightness) => set((state) => {
-        if (state.isComparisonMode) {
+        if (isPaneB(state)) {
             const side = state.activeCanvasSide;
             return {
                 comparison: {
@@ -221,7 +237,7 @@ export const createCanvasSlice: StateCreator<AppState, [], [], CanvasSlice> = (s
         return { canvas: { ...state.canvas, brightness } };
     }),
     setContrast: (contrast) => set((state) => {
-        if (state.isComparisonMode) {
+        if (isPaneB(state)) {
             const side = state.activeCanvasSide;
             return {
                 comparison: {
@@ -233,7 +249,7 @@ export const createCanvasSlice: StateCreator<AppState, [], [], CanvasSlice> = (s
         return { canvas: { ...state.canvas, contrast } };
     }),
     setSharpness: (sharpness) => set((state) => {
-        if (state.isComparisonMode) {
+        if (isPaneB(state)) {
             const side = state.activeCanvasSide;
             return {
                 comparison: {
@@ -245,7 +261,7 @@ export const createCanvasSlice: StateCreator<AppState, [], [], CanvasSlice> = (s
         return { canvas: { ...state.canvas, sharpness } };
     }),
     toggleFlipX: () => set((state) => {
-        if (state.isComparisonMode) {
+        if (isPaneB(state)) {
             const side = state.activeCanvasSide;
             return {
                 comparison: {
@@ -257,7 +273,7 @@ export const createCanvasSlice: StateCreator<AppState, [], [], CanvasSlice> = (s
         return { canvas: { ...state.canvas, flipX: !state.canvas.flipX } };
     }),
     setPan: (x, y) => set((state) => {
-        if (state.isComparisonMode) {
+        if (isPaneB(state)) {
             const side = state.activeCanvasSide;
             return {
                 comparison: {
@@ -277,11 +293,11 @@ export const createCanvasSlice: StateCreator<AppState, [], [], CanvasSlice> = (s
             sharpness: 0,
             flipX: false,
             pan: { x: 0, y: 0 },
-            pixelToMm: state.isComparisonMode ? state.comparison[state.activeCanvasSide].canvas.pixelToMm : state.canvas.pixelToMm,
-            calibrationApplied: state.isComparisonMode ? state.comparison[state.activeCanvasSide].canvas.calibrationApplied : state.canvas.calibrationApplied,
-            calibrationEnabledAt: state.isComparisonMode ? state.comparison[state.activeCanvasSide].canvas.calibrationEnabledAt : state.canvas.calibrationEnabledAt
+            pixelToMm: isPaneB(state) ? state.comparison[state.activeCanvasSide].canvas.pixelToMm : state.canvas.pixelToMm,
+            calibrationApplied: isPaneB(state) ? state.comparison[state.activeCanvasSide].canvas.calibrationApplied : state.canvas.calibrationApplied,
+            calibrationEnabledAt: isPaneB(state) ? state.comparison[state.activeCanvasSide].canvas.calibrationEnabledAt : state.canvas.calibrationEnabledAt
         };
-        if (state.isComparisonMode) {
+        if (isPaneB(state)) {
             const side = state.activeCanvasSide;
             return {
                 comparison: {
@@ -295,7 +311,7 @@ export const createCanvasSlice: StateCreator<AppState, [], [], CanvasSlice> = (s
     undo: () => set((state) => ({ undoTrigger: state.undoTrigger + 1 })),
     redo: () => set((state) => ({ redoTrigger: state.redoTrigger + 1 })),
     setMeasurements: (measurements) => set((state) => {
-        if (state.isComparisonMode) {
+        if (isPaneB(state)) {
             const side = state.activeCanvasSide;
             return {
                 comparison: {
@@ -309,7 +325,7 @@ export const createCanvasSlice: StateCreator<AppState, [], [], CanvasSlice> = (s
         };
     }),
     setImplants: (implants) => set((state) => {
-        if (state.isComparisonMode) {
+        if (isPaneB(state)) {
             const side = state.activeCanvasSide;
             return {
                 comparison: {
@@ -322,7 +338,7 @@ export const createCanvasSlice: StateCreator<AppState, [], [], CanvasSlice> = (s
     }),
     deleteMeasurement: (id) => {
         const state = get();
-        if (state.isComparisonMode) {
+        if (isPaneB(state)) {
             const side = state.activeCanvasSide;
             const updated = state.comparison[side].measurements.filter(m => m.id !== id);
             syncManagerMeasurements(state.managers[side], updated);
@@ -332,6 +348,7 @@ export const createCanvasSlice: StateCreator<AppState, [], [], CanvasSlice> = (s
                     [side]: { ...state.comparison[side], measurements: updated },
                 },
             });
+            persistImageB(get); // Image B deletions are saved too
             return;
         }
 
@@ -346,14 +363,16 @@ export const createCanvasSlice: StateCreator<AppState, [], [], CanvasSlice> = (s
     },
     deleteImplant: (id) => {
         const state = get();
-        if (state.isComparisonMode) {
+        if (isPaneB(state)) {
             const side = state.activeCanvasSide;
+            void state.managers.right?.applyOperation?.('DELETE_IMPLANT', { id });
             set({
                 comparison: {
                     ...state.comparison,
                     [side]: { ...state.comparison[side], implants: state.comparison[side].implants.filter(i => i.id !== id) },
                 },
             });
+            persistImageB(get);
             return;
         }
         // Remove from the live manager AND the persisted context (BUGS CV-10).
@@ -371,7 +390,7 @@ export const createCanvasSlice: StateCreator<AppState, [], [], CanvasSlice> = (s
         const mapSelection = (measurements: Measurement[]) =>
             measurements.map(m => m.id === id ? { ...m, selected } : m);
 
-        if (state.isComparisonMode) {
+        if (isPaneB(state)) {
             const side = state.activeCanvasSide;
             const updated = mapSelection(state.comparison[side].measurements);
             set({
@@ -414,7 +433,7 @@ export const createCanvasSlice: StateCreator<AppState, [], [], CanvasSlice> = (s
     },
     setInspectionMode: (mode) => set({ inspectionMode: mode }),
     setCalibration: (ratio) => { set((state) => {
-        const side = state.isComparisonMode ? state.activeCanvasSide : null;
+        const side = isPaneB(state) ? state.activeCanvasSide : null;
         const calibrationEnabledAt = ratio ? Date.now() : null;
 
         const clearConvertedFlag = (measurements: Measurement[]) => measurements.map((m) => {
@@ -426,7 +445,7 @@ export const createCanvasSlice: StateCreator<AppState, [], [], CanvasSlice> = (s
             return { ...m, measurement: nextMeasurement };
         });
 
-        if (state.isComparisonMode && side) {
+        if (isPaneB(state) && side) {
             const cleanedMeasurements = clearConvertedFlag(state.comparison[side].measurements);
             syncManagerMeasurements(state.managers[side], cleanedMeasurements);
             return {
@@ -460,7 +479,7 @@ export const createCanvasSlice: StateCreator<AppState, [], [], CanvasSlice> = (s
         };
     }); persistCalibration(get); },
     setCalibrationApplied: (applied) => { set((state) => {
-        if (state.isComparisonMode) {
+        if (isPaneB(state)) {
             const side = state.activeCanvasSide;
             return {
                 comparison: {
@@ -484,7 +503,7 @@ export const createCanvasSlice: StateCreator<AppState, [], [], CanvasSlice> = (s
         };
     }); persistCalibration(get); },
     applyCalibrationToExistingMeasurements: () => set((state) => {
-        if (state.isComparisonMode) {
+        if (isPaneB(state)) {
             const side = state.activeCanvasSide;
             const converted = state.comparison[side].measurements.map((m) => ({
                 ...m,
@@ -523,7 +542,7 @@ export const createCanvasSlice: StateCreator<AppState, [], [], CanvasSlice> = (s
     }),
     convertLegacyPxMeasurementsToMm: () => {
         const state = get();
-        const ratio = state.isComparisonMode
+        const ratio = isPaneB(state)
             ? state.comparison[state.activeCanvasSide].canvas.pixelToMm
             : state.canvas.pixelToMm;
 
@@ -534,7 +553,7 @@ export const createCanvasSlice: StateCreator<AppState, [], [], CanvasSlice> = (s
         let convertedCount = 0;
 
         set((innerState) => {
-            if (innerState.isComparisonMode) {
+            if (isPaneB(innerState)) {
                 const side = innerState.activeCanvasSide;
                 const converted = innerState.comparison[side].measurements.map((m) => {
                     const convertedResult = convertPxResultToMm(m.result, ratio);

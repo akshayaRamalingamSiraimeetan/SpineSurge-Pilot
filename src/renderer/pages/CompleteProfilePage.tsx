@@ -156,9 +156,9 @@ const CompleteProfilePage = () => {
 
     return (
         <AuthLayout>
-            <Card className="w-full rounded-2xl border border-[#242427] bg-[#141416] shadow-[0_1px_2px_rgba(0,0,0,.04),0_28px_70px_rgba(0,0,0,0.5)] backdrop-blur-md">
+            <Card className="w-full rounded-2xl border border-[var(--border)] bg-[var(--surface)] shadow-[0_1px_2px_rgba(0,0,0,.04),0_28px_70px_rgba(0,0,0,0.5)] backdrop-blur-md">
                 <CardHeader className="space-y-1 pb-3 pt-7">
-                    <CardTitle className="text-3xl font-semibold text-center tracking-tight text-[#F5F5F7]">
+                    <CardTitle className="text-3xl font-semibold text-center tracking-tight text-[var(--text)]">
                         Tell us a little about yourself
                     </CardTitle>
                 </CardHeader>
@@ -171,7 +171,7 @@ const CompleteProfilePage = () => {
                                 type="button"
                                 onClick={handleAvatarClick}
                                 disabled={uploadingAvatar}
-                                className="relative h-24 w-24 rounded-full border-2 border-dashed border-[#3A3A3E] bg-[#1B1B1E] flex items-center justify-center overflow-hidden hover:border-[#FF453A] transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[#FF453A]"
+                                className="relative h-24 w-24 rounded-full border-2 border-dashed border-[var(--border-strong)] bg-[var(--surface-2)] flex items-center justify-center overflow-hidden hover:border-[#FF453A] transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[#FF453A]"
                                 aria-label="Add profile photo"
                             >
                                 {avatarPreview ? (
@@ -181,7 +181,7 @@ const CompleteProfilePage = () => {
                                         className="h-full w-full object-cover"
                                     />
                                 ) : (
-                                    <User className="h-10 w-10 text-[#9CA3AF]" />
+                                    <User className="h-10 w-10 text-[var(--text-2)]" />
                                 )}
                                 {/* Camera icon overlay */}
                                 <span className="absolute bottom-1 right-1 flex h-6 w-6 items-center justify-center rounded-full bg-[#FF453A] shadow">
@@ -189,7 +189,7 @@ const CompleteProfilePage = () => {
                                 </span>
                             </button>
 
-                            <span className="text-xs text-[#9CA3AF]">
+                            <span className="text-xs text-[var(--text-2)]">
                                 {uploadingAvatar ? 'Uploading…' : 'Add Profile Photo'}
                             </span>
 
@@ -212,7 +212,7 @@ const CompleteProfilePage = () => {
                         <div className="grid gap-2">
                             <Label
                                 htmlFor="full-name"
-                                className="text-[#9CA3AF] text-xs tracking-wide uppercase"
+                                className="text-[var(--text-2)] text-xs tracking-wide uppercase"
                             >
                                 Full Name
                             </Label>
@@ -223,7 +223,7 @@ const CompleteProfilePage = () => {
                                 value={fullName}
                                 onChange={(e) => setFullName(e.target.value)}
                                 required
-                                className="h-11 rounded-md border-[#242427] bg-[#1B1B1E] text-[#F5F5F7] placeholder:text-[#9CA3AF]/60 focus-visible:ring-[#FF453A] focus-visible:ring-offset-0"
+                                className="h-11 rounded-md border-[var(--border)] bg-[var(--surface-2)] text-[var(--text)] placeholder:text-[var(--text-2)]/60 focus-visible:ring-[#FF453A] focus-visible:ring-offset-0"
                             />
                         </div>
 
@@ -231,7 +231,7 @@ const CompleteProfilePage = () => {
                         <div className="grid gap-2">
                             <Label
                                 htmlFor="designation"
-                                className="text-[#9CA3AF] text-xs tracking-wide uppercase"
+                                className="text-[var(--text-2)] text-xs tracking-wide uppercase"
                             >
                                 Designation
                             </Label>
@@ -242,7 +242,7 @@ const CompleteProfilePage = () => {
                             >
                                 <SelectTrigger
                                     id="designation"
-                                    className="h-11 rounded-md border-[#242427] bg-[#1B1B1E] text-[#F5F5F7] focus:ring-[#FF453A] focus:ring-offset-0"
+                                    className="h-11 rounded-md border-[var(--border)] bg-[var(--surface-2)] text-[var(--text)] focus:ring-[#FF453A] focus:ring-offset-0"
                                 >
                                     <SelectValue placeholder="Select your designation" />
                                 </SelectTrigger>
@@ -260,7 +260,7 @@ const CompleteProfilePage = () => {
                         <div className="grid gap-2">
                             <Label
                                 htmlFor="country"
-                                className="text-[#9CA3AF] text-xs tracking-wide uppercase"
+                                className="text-[var(--text-2)] text-xs tracking-wide uppercase"
                             >
                                 Country
                             </Label>
@@ -271,7 +271,7 @@ const CompleteProfilePage = () => {
                                 value={country}
                                 onChange={(e) => setCountry(e.target.value)}
                                 required
-                                className="h-11 rounded-md border-[#242427] bg-[#1B1B1E] text-[#F5F5F7] placeholder:text-[#9CA3AF]/60 focus-visible:ring-[#FF453A] focus-visible:ring-offset-0"
+                                className="h-11 rounded-md border-[var(--border)] bg-[var(--surface-2)] text-[var(--text)] placeholder:text-[var(--text-2)]/60 focus-visible:ring-[#FF453A] focus-visible:ring-offset-0"
                             />
                         </div>
 

@@ -18,7 +18,7 @@ const Slider = React.forwardRef<
         {...props}
     >
         <SliderPrimitive.Track className={cn(
-            "relative rounded-full bg-[#242427] grow",
+            "relative rounded-full bg-[var(--surface-3)] grow",
             orientation === "horizontal" ? "h-1.5 w-full" : "h-full w-1.5"
         )}>
             <SliderPrimitive.Range className={cn(

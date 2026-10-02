@@ -5,6 +5,8 @@
  *   npm run db:seed-dev-user
  *
  * Credentials come from DEV_USER_EMAIL / DEV_USER_PASSWORD in .env.
+ * Hosted demo: DEMO_USER_EMAIL / DEMO_USER_PASSWORD (+ DEMO_USER_NAME) are used
+ * instead, and the script is allowed in production only with DEMO_MODE=true.
  */
 import 'dotenv/config';
 import crypto from 'crypto';
@@ -14,10 +16,14 @@ import { db } from './db';
 import { users } from './schema';
 
 async function main() {
-    const email = process.env.DEV_USER_EMAIL;
-    const password = process.env.DEV_USER_PASSWORD;
+    if (process.env.NODE_ENV === 'production' && process.env.DEMO_MODE !== 'true') {
+        throw new Error('Refusing to seed a test login in production (set DEMO_MODE=true for a demo deployment)');
+    }
+    const email = (process.env.DEMO_USER_EMAIL || process.env.DEV_USER_EMAIL || '').trim().toLowerCase();
+    const password = process.env.DEMO_USER_PASSWORD || process.env.DEV_USER_PASSWORD;
+    const fullName = process.env.DEMO_USER_NAME || 'Dev Tester';
     if (!email || !password) {
-        throw new Error('Set DEV_USER_EMAIL and DEV_USER_PASSWORD in .env');
+        throw new Error('Set DEMO_USER_EMAIL/DEMO_USER_PASSWORD (or DEV_USER_*) in the environment');
     }
 
     const passwordHash = await bcrypt.hash(password, 10);
@@ -33,7 +39,7 @@ async function main() {
             id: crypto.randomUUID(),
             email,
             passwordHash,
-            fullName: 'Dev Tester',
+            fullName,
             role: 'surgeon',
             isEmailVerified: true,
             emailVerifiedAt: new Date(),

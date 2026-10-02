@@ -33,12 +33,24 @@ export interface Study {
     organizationId?: string | null;
 }
 
-export function getStudyDisplayName(study: Pick<Study, 'name' | 'modality'>): string {
+/**
+ * Human name for a study: its own name, else "Study · <date>". Modality is
+ * shown separately as a badge — it is not a name (all X-rays were "X-Ray").
+ */
+export function getStudyDisplayName(study: Pick<Study, 'name' | 'modality'> & { acquisitionDate?: string }): string {
     const trimmed = study.name?.trim();
     if (trimmed) return trimmed;
-    const modality = study.modality?.trim();
-    if (modality) return modality;
-    return 'Untitled Study';
+    const d = study.acquisitionDate ? new Date(study.acquisitionDate) : null;
+    if (d && !isNaN(d.getTime())) {
+        return `Study · ${d.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })}`;
+    }
+    return 'Untitled study';
+}
+
+/** Default name for a new study, e.g. "Pre-op" (the date is shown separately). */
+export function defaultStudyName(kind: string, _date = new Date()): string {
+    void _date;
+    return kind;
 }
 
 export interface Context {
@@ -64,10 +76,25 @@ export interface ReportSectionConfig {
     units?: 'Mixed (° / mm)' | 'Degrees (°)' | 'Millimeters (mm)';
 }
 
+/** Document-level formatting (Report tab, right panel). */
+export interface ReportDocumentSettings {
+    title: string;
+    institution: string;
+    department: string;
+    pageSize: 'a4' | 'letter';
+    orientation: 'portrait' | 'landscape';
+    accentColor: string;
+    fontScale: number;
+    showPageNumbers: boolean;
+    footerText: string;
+}
+
 export interface ReportConfig {
     sections: ReportSectionConfig[];
+    document?: ReportDocumentSettings;
+    /** @deprecated the report now always covers Assessment + Planning + Compare */
     reportType?: 'single' | 'comparison';
-    compareStudyId?: string; // which study to compare against
+    compareStudyId?: string;
 }
 
 export interface ContextState {

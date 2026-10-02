@@ -81,12 +81,12 @@ const CreateOrgPage = () => {
 
     return (
         <div className="flex h-full min-h-screen items-center justify-center px-4 py-12">
-            <Card className="w-full max-w-md rounded-2xl border border-[#242427] bg-[#141416] shadow-[0_1px_2px_rgba(0,0,0,.04),0_28px_70px_rgba(0,0,0,0.5)]">
+            <Card className="w-full max-w-md rounded-2xl border border-[var(--border)] bg-[var(--surface)] shadow-[0_1px_2px_rgba(0,0,0,.04),0_28px_70px_rgba(0,0,0,0.5)]">
                 <CardHeader className="space-y-1 pb-3 pt-7">
-                    <CardTitle className="text-2xl font-semibold text-[#F5F5F7] tracking-tight">
+                    <CardTitle className="text-2xl font-semibold text-[var(--text)] tracking-tight">
                         {heading}
                     </CardTitle>
-                    <CardDescription className="text-[#9CA3AF] text-sm">
+                    <CardDescription className="text-[var(--text-2)] text-sm">
                         Create a healthcare planning and research organization.
                     </CardDescription>
                 </CardHeader>
@@ -102,7 +102,7 @@ const CreateOrgPage = () => {
                         <div className="grid gap-2">
                             <Label
                                 htmlFor="org-name"
-                                className="text-[#9CA3AF] text-xs tracking-wide uppercase"
+                                className="text-[var(--text-2)] text-xs tracking-wide uppercase"
                             >
                                 Organization Name
                             </Label>
@@ -113,14 +113,14 @@ const CreateOrgPage = () => {
                                 value={name}
                                 onChange={(e) => setName(e.target.value)}
                                 required
-                                className="h-11 rounded-md border-[#242427] bg-[#1B1B1E] text-[#F5F5F7] placeholder:text-[#9CA3AF]/60 focus-visible:ring-[#FF453A] focus-visible:ring-offset-0"
+                                className="h-11 rounded-md border-[var(--border)] bg-[var(--surface-2)] text-[var(--text)] placeholder:text-[var(--text-2)]/60 focus-visible:ring-[#FF453A] focus-visible:ring-offset-0"
                             />
                         </div>
 
                         <div className="grid gap-2">
                             <Label
                                 htmlFor="org-email"
-                                className="text-[#9CA3AF] text-xs tracking-wide uppercase"
+                                className="text-[var(--text-2)] text-xs tracking-wide uppercase"
                             >
                                 Organization Email
                             </Label>
@@ -131,7 +131,7 @@ const CreateOrgPage = () => {
                                 value={email}
                                 onChange={(e) => setEmail(e.target.value)}
                                 required
-                                className="h-11 rounded-md border-[#242427] bg-[#1B1B1E] text-[#F5F5F7] placeholder:text-[#9CA3AF]/60 focus-visible:ring-[#FF453A] focus-visible:ring-offset-0"
+                                className="h-11 rounded-md border-[var(--border)] bg-[var(--surface-2)] text-[var(--text)] placeholder:text-[var(--text-2)]/60 focus-visible:ring-[#FF453A] focus-visible:ring-offset-0"
                             />
                         </div>
                     </CardContent>

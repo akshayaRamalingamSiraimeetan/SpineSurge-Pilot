@@ -44,7 +44,8 @@ import {
     drawCage,
     drawPlate,
     getImplantHandles,
-    hitTestImplant
+    hitTestImplant,
+    IMPLANT_ANNOTATION
 } from "@/features/measurements/planning/ImplantRenderer";
 
 import { performResectionOnFragment, performOpenOsteotomyOnFragment } from "@/lib/canvas/SurgicalOperations";
@@ -59,6 +60,31 @@ interface ViewTransform {
 interface CanvasWorkspaceProps {
     side?: 'left' | 'right';
 }
+
+/** First-run guide: calibrate before measuring. Disappears once calibrated. */
+const CalibrationPrompt = ({ onStart, onSkip }: { onStart: () => void; onSkip: () => void }) => (
+    <div
+        className="absolute top-4 left-1/2 -translate-x-1/2 z-30 w-[380px] max-w-[calc(100%-32px)] rounded-2xl border border-[var(--border)] bg-[var(--surface)]/95 backdrop-blur-xl shadow-2xl p-4"
+        onMouseDown={(e) => e.stopPropagation()}
+    >
+        <div className="flex items-start gap-3">
+            <div className="h-9 w-9 rounded-xl grid place-items-center bg-[var(--accent-soft)] text-[var(--accent)] shrink-0">
+                <Ruler className="h-4 w-4" />
+            </div>
+            <div className="min-w-0">
+                <div className="text-sm font-semibold text-[var(--text)]">Calibrate this image first</div>
+                <p className="text-xs text-[var(--text-3)] mt-1 leading-relaxed">
+                    Distances are only accurate in millimetres after calibration. Click the two ends of something with a known
+                    length (calibration marker or ruler), then type its real length.
+                </p>
+                <div className="flex gap-2 mt-3">
+                    <Button size="sm" className="h-8 text-xs" onClick={onStart}>Start calibration</Button>
+                    <Button size="sm" variant="ghost" className="h-8 text-xs text-[var(--text-3)]" onClick={onSkip}>Skip for now</Button>
+                </div>
+            </div>
+        </div>
+    </div>
+);
 
 const CanvasWorkspace = ({ side }: CanvasWorkspaceProps) => {
     const store = useAppStore();
@@ -95,14 +121,14 @@ const CanvasWorkspace = ({ side }: CanvasWorkspaceProps) => {
     );
 
     const storeCanvas = useMemo(() => {
-        if (isComparisonMode && side && store.comparison && store.comparison[side]) {
+        if (side === 'right') {
             return store.comparison[side].canvas;
         }
         return store.canvas;
     }, [isComparisonMode, side, store.comparison, store.canvas]);
 
     const currentImage = useMemo(() => {
-        if (isComparisonMode && side && store.comparison && store.comparison[side]) {
+        if (side === 'right') {
             return store.comparison[side].image;
         }
 
@@ -119,7 +145,7 @@ const CanvasWorkspace = ({ side }: CanvasWorkspaceProps) => {
         // Priority 4: Default to first scan of active context's study
         if (activeContext) {
             const patient = store.patients.find(p => p.id === activeContext.patientId);
-            const studyId = side === 'right' ? activeContext.studyIds[1] : activeContext.studyIds[0];
+            const studyId = activeContext.studyIds[0];
             const study = patient?.studies?.find(s => s.id === studyId);
             const studyImage = study?.scans[0]?.imageUrl;
             if (studyImage) return studyImage;
@@ -129,13 +155,13 @@ const CanvasWorkspace = ({ side }: CanvasWorkspaceProps) => {
     }, [isComparisonMode, side, store.comparison, store.currentImage, activeContextState, activeContext, store.patients]);
 
     useEffect(() => {
-        if (!isComparisonMode && currentImage !== store.currentImage) {
+        if (side !== 'right' && currentImage !== store.currentImage) {
             store.setCurrentImage(currentImage);
         }
     }, [currentImage, isComparisonMode, store.currentImage, store]);
 
     const storeMeasurements = useMemo(() => {
-        if (isComparisonMode && side && store.comparison && store.comparison[side]) {
+        if (side === 'right') {
             return store.comparison[side].measurements;
         }
         if (activeContextState) {
@@ -145,7 +171,7 @@ const CanvasWorkspace = ({ side }: CanvasWorkspaceProps) => {
     }, [isComparisonMode, side, store.comparison, store.measurements, activeContextState]);
 
     const storeImplants = useMemo(() => {
-        if (isComparisonMode && side && store.comparison && store.comparison[side]) {
+        if (side === 'right') {
             return store.comparison[side].implants || [];
         }
         if (activeContextState) {
@@ -158,9 +184,9 @@ const CanvasWorkspace = ({ side }: CanvasWorkspaceProps) => {
         // In inspection mode, the admin is viewing a member's study — never write back
         if (store.inspectionMode?.active) return;
 
-        if (isComparisonMode && side) {
-            setComparisonMeasurements(side, measurements);
-            setComparisonImplants(side, implants);
+        if (side === 'right') {
+            setComparisonMeasurements('right', measurements);
+            setComparisonImplants('right', implants);
         } else if (store.activeContextId) {
             // Include currentImage so the active scan URL is persisted alongside measurements
             // Saves are serialized + coalesced per context in the store.
@@ -184,13 +210,13 @@ const CanvasWorkspace = ({ side }: CanvasWorkspaceProps) => {
         }
     };
 
-    const isInteractive = !isComparisonMode || (activeCanvasSide === side);
+    // Image A (left) IS the case; only Image B (right) is a separate pane.
+    const paneSide: 'left' | 'right' = side === 'right' ? 'right' : 'left';
+    const isInteractive = !isComparisonMode || activeCanvasSide === paneSide;
 
     const handleCanvasClick = useCallback(() => {
-        if (isComparisonMode && side) {
-            setActiveCanvasSide(side);
-        }
-    }, [isComparisonMode, side, setActiveCanvasSide]);
+        if (isComparisonMode) setActiveCanvasSide(paneSide);
+    }, [isComparisonMode, paneSide, setActiveCanvasSide]);
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const containerRef = useRef<HTMLDivElement>(null);
     const managerRef = useRef<CanvasManager | null>(null);
@@ -239,27 +265,33 @@ const CanvasWorkspace = ({ side }: CanvasWorkspaceProps) => {
     const [isCalibrationDialogOpen, setIsCalibrationDialogOpen] = useState(false);
     const [calibrationPoints, setCalibrationPoints] = useState<[Point, Point] | null>(null);
     const [calibrationMm, setCalibrationMm] = useState("");
-    const [isVBMDialogOpen, setIsVBMDialogOpen] = useState(false);
-    const [vbmMode, setVbmMode] = useState<VBMMode>('lateral');
+    const isVBMDialogOpen = false; // VBM plane is picked in the sidebar
+
+    // Calibration onboarding: shown until the image is calibrated or the user
+    // skips it (remembered per study in toolState, per image when untitled).
+    const [skippedImages, setSkippedImages] = useState<Set<string>>(new Set());
+    const calibrationSkipped = !!activeContextState?.toolState?.calibrationSkipped
+        || (!!currentImage && skippedImages.has(currentImage));
+    const skipCalibration = () => {
+        const st = useAppStore.getState();
+        if (st.activeContextId) {
+            const ctx = st.contextStates.find(c => c.contextId === st.activeContextId);
+            void st.updateContextState(st.activeContextId, { toolState: { ...(ctx?.toolState ?? {}), calibrationSkipped: true } });
+        }
+        if (currentImage) setSkippedImages((prev) => new Set(prev).add(currentImage));
+    };
+    // VBM plane comes from the sidebar (no dialog) — item 3 of UI batch.
+    const vbmMode = useAppStore(s => s.vbmMode) as VBMMode;
     const mouseWorldPosRef = useRef<Point>({ x: 0, y: 0 });
     const lastWorldPosRef = useRef<Point>({ x: 0, y: 0 });
-    const [isTiltDialogOpen, setIsTiltDialogOpen] = useState(false);
-    const [tiltMode, setTiltMode] = useState<'UIV' | 'LIV' | null>(null);
+    // UIV/LIV is picked inline in the sidebar under "Instr. Level".
+    const isTiltDialogOpen = false;
+    const tiltMode = useAppStore(s => s.tiltMode);
     const [isTextDialogOpen, setIsTextDialogOpen] = useState(false);
     const [textInput, setTextInput] = useState("");
     const [textToolPos, setTextToolPos] = useState<Point | null>(null);
-    const [pendingTiltMode, setPendingTiltMode] = useState<'UIV' | 'LIV' | null>(null);
 
-    // Prompt for Tilt Mode immediately upon selection
-    useEffect(() => {
-        if (activeTool === 'itilt' && !tiltMode && !isTiltDialogOpen) {
-            setActiveDialog('tilt');
-            setIsTiltDialogOpen(true);
-        } else if (activeTool !== 'itilt' && (tiltMode || isTiltDialogOpen)) {
-            setTiltMode(null);
-            setIsTiltDialogOpen(false);
-        }
-    }, [activeTool, tiltMode, isTiltDialogOpen]);
+
 
     const getWorldPos = useCallback((mouseX: number, mouseY: number) => {
         if (!containerRef.current) return { x: 0, y: 0 };
@@ -345,7 +377,7 @@ const CanvasWorkspace = ({ side }: CanvasWorkspaceProps) => {
         let cancelled = false;
         const init = async () => {
             if (currentImage) {
-                const mgrKey = side || 'main';
+                const mgrKey = side === 'right' ? 'right' : 'main';
                 let mgr = managers[mgrKey];
 
                 // Only reuse a manager that this CanvasWorkspace instance already owns.
@@ -713,7 +745,7 @@ const CanvasWorkspace = ({ side }: CanvasWorkspaceProps) => {
             const imp = state.data.implants.find((i: any) => i.id === selection.measurementId);
             if (imp) {
                 ctx.save();
-                ctx.fillStyle = "#fff"; ctx.font = `bold ${14 / ek}px Inter, sans-serif`; ctx.textAlign = "center";
+                ctx.fillStyle = IMPLANT_ANNOTATION; ctx.font = `bold ${14 / ek}px Inter, sans-serif`; ctx.textAlign = "center";
                 ctx.shadowColor = "rgba(0,0,0,0.8)"; ctx.shadowBlur = 4 / ek;
                 const displayRatio = storeCanvas.calibrationApplied ? storeCanvas.pixelToMm : null;
                 const ratio = displayRatio || 1;
@@ -1124,12 +1156,6 @@ const CanvasWorkspace = ({ side }: CanvasWorkspaceProps) => {
                     const data = calculateSlope(newTemp);
                     result = data ? `Slope: ${data.angle.toFixed(1)}°` : '';
                 } else if (activeTool === 'itilt') {
-                    if (!tiltMode) {
-                        setTiltMode('UIV'); // Default to UIV if somehow null
-                        setActiveDialog('tilt');
-                        setIsTiltDialogOpen(true);
-                        return;
-                    }
                     const data = calculateITilt(newTemp);
                     const prefix = tiltMode === 'UIV' ? 'UIV Tilt' : 'LIV Tilt';
                     result = data ? `${prefix}: ${data.angle.toFixed(1)}°` : '';
@@ -2057,11 +2083,7 @@ const CanvasWorkspace = ({ side }: CanvasWorkspaceProps) => {
     };
 
     useEffect(() => {
-        if (activeTool === 'vbm') {
-            setActiveDialog('vbm');
-            setIsVBMDialogOpen(true);
-            setTempPoints([]);
-        }
+        if (activeTool === 'vbm') setTempPoints([]);
     }, [activeTool]);
 
     const handleWheel = useCallback((e: WheelEvent) => {
@@ -2333,24 +2355,15 @@ const CanvasWorkspace = ({ side }: CanvasWorkspaceProps) => {
                 <div className="absolute inset-0 flex items-center justify-center z-20">
                     {/* In comparison mode, left side is auto-populated from the workspace.
                         Show a passive message instead of the import dialog. */}
-                    {isComparisonMode && side === 'left' ? (
-                        <div className="flex flex-col items-center gap-2 opacity-40">
-                            <div className="h-10 w-10 rounded-full bg-[#242427] flex items-center justify-center">
-                                <Plus className="h-5 w-5" />
-                            </div>
-                            <span className="text-xs font-bold uppercase tracking-wider">
-                                Loading workspace image…
-                            </span>
-                        </div>
-                    ) : (
-                        <ImportDialog targetSide={side}>
+                    {(
+                        <ImportDialog targetSide={side === 'right' ? 'right' : undefined}>
                             <Button
                                 variant="outline"
                                 className={cn(
                                     "group gap-2 py-8 px-8 rounded-2xl flex-col transition-all",
                                     isDark
                                         ? "bg-[#141416] border-[#242427] hover:bg-[#1B1B1E] hover:border-[#3a3a3d] text-[#9CA3AF]"
-                                        : "bg-gray-100 border-gray-300 hover:bg-white hover:border-gray-400 text-slate-900"
+                                        : "bg-[var(--surface)] border-[var(--border)] hover:bg-[var(--surface)] hover:border-[var(--border-strong)] text-[var(--text)]"
                                 )}
                                 onClick={(e) => { e.stopPropagation(); handleCanvasClick(); }}
                             >
@@ -2358,11 +2371,11 @@ const CanvasWorkspace = ({ side }: CanvasWorkspaceProps) => {
                                     "h-10 w-10 rounded-full flex items-center justify-center transition-all",
                                     isDark
                                         ? "bg-[#242427] group-hover:scale-110 group-hover:bg-[rgba(255,69,58,0.12)]"
-                                        : "bg-gray-200 text-slate-600 group-hover:scale-110 group-hover:bg-gray-300"
+                                        : "bg-[var(--surface-2)] text-[var(--text-2)] group-hover:scale-110 group-hover:bg-[var(--surface-3)]"
                                 )}>
                                     <Plus className="h-6 w-6" />
                                 </div>
-                                <span className="text-xs font-bold uppercase tracking-wider">Load Scan {side === 'left' ? 'A' : 'B'}</span>
+                                <span className="text-xs font-bold uppercase tracking-wider">{side === 'right' ? 'Load Image B' : 'Import image'}</span>
                             </Button>
                         </ImportDialog>
                     )}
@@ -2382,6 +2395,13 @@ const CanvasWorkspace = ({ side }: CanvasWorkspaceProps) => {
                 className="absolute inset-0 w-full h-full block"
             />
 
+
+            {side !== 'right' && !isComparisonMode && managerReady && currentImage && !storeCanvas.calibrationApplied && activeTool !== 'calibration' && !calibrationSkipped && (
+                <CalibrationPrompt
+                    onStart={() => setActiveTool('calibration')}
+                    onSkip={skipCalibration}
+                />
+            )}
 
             {isInteractive && !isComparisonMode && (
                 <>
@@ -2533,31 +2553,31 @@ const CanvasWorkspace = ({ side }: CanvasWorkspaceProps) => {
                 if (!o) { setTempPoints([]); setCalibrationPoints(null); } // BUGS CV-18
             }}>
                 <DialogContent className={cn(
-                    "sm:max-w-md border shadow-[0_1px_2px_rgba(0,0,0,.04),0_8px_24px_rgba(0,0,0,.12)]",
+                    "sm:max-w-md border",
                     isDark
-                        ? "!bg-[#141416] !text-[#F5F5F7] !border-[#242427]"
-                        : "!bg-[#FFFFFF] !text-slate-900 !border-slate-300"
+                        ? ""
+                        : ""
                 )}>
                     <DialogHeader>
-                        <DialogTitle className={cn("flex items-center gap-2", isDark ? "text-[#F5F5F7]" : "text-slate-900")}>
+                        <DialogTitle className={cn("flex items-center gap-2", isDark ? "" : "")}>
                             <Ruler className="h-5 w-5 text-amber-500" />
                             System Calibration
                         </DialogTitle>
                     </DialogHeader>
                     <div className="space-y-4 py-4">
                         <div className="space-y-2">
-                            <Label htmlFor="mm" className={isDark ? 'text-[#9CA3AF]/80' : 'text-slate-700'}>Known Length (mm)</Label>
+                            <Label htmlFor="mm" className={isDark ? 'text-[#9CA3AF]/80' : 'text-[var(--text-2)]'}>Known Length (mm)</Label>
                             <Input
                                 id="mm"
                                 type="number"
                                 placeholder="Enter length in mm..."
                                 value={calibrationMm}
                                 onChange={(e) => setCalibrationMm(e.target.value)}
-                                className={cn(isDark ? "!bg-[#0A0A0B] !border-[#242427] !text-[#F5F5F7]" : "!bg-white !border-gray-300 !text-slate-900")}
+                                className={cn(isDark ? "!bg-[#0A0A0B] !border-[#242427] !text-[#F5F5F7]" : "!bg-[var(--surface)] !border-[var(--border)] !text-[var(--text)]")}
                                 autoFocus
                             />
                         </div>
-                        <p className={cn("text-[11px] p-2 rounded-lg italic", isDark ? "text-[#9CA3AF]/80 bg-[#0A0A0B]/60" : "text-slate-600 bg-gray-200")}>
+                        <p className={cn("text-[11px] p-2 rounded-lg italic", isDark ? "text-[#9CA3AF]/80 bg-[#0A0A0B]/60" : "text-[var(--text-2)] bg-[var(--surface-2)]")}>
                             This will calibrate all future measurements. The line you just drew will be used as the reference segment.
                         </p>
                     </div>
@@ -2571,7 +2591,7 @@ const CanvasWorkspace = ({ side }: CanvasWorkspaceProps) => {
                                 setCalibrationMm("");
                                 setTempPoints([]);
                             }}
-                            className={isDark ? 'text-[#9CA3AF] hover:text-[#F5F5F7] hover:bg-[#1B1B1E]' : 'text-slate-700 hover:text-slate-900 hover:bg-gray-200'}
+                            className={isDark ? 'text-[#9CA3AF] hover:text-[#F5F5F7] hover:bg-[#1B1B1E]' : 'text-[var(--text-2)] hover:text-[var(--text)] hover:bg-[var(--surface-2)]'}
                         >
                             Cancel
                         </Button>
@@ -2602,117 +2622,13 @@ const CanvasWorkspace = ({ side }: CanvasWorkspaceProps) => {
                 </DialogContent>
             </Dialog>
 
-            <Dialog open={isVBMDialogOpen} onOpenChange={(o) => {
-                setIsVBMDialogOpen(o);
-                setActiveDialog(o ? 'vbm' : null);
-            }}>
-                <DialogContent className={cn("sm:max-w-md", isDark ? "!bg-[#141416] !text-[#F5F5F7] !border-[#242427]" : "!bg-gray-100 !text-slate-900 !border-gray-300")}>
-                    <DialogHeader>
-                        <DialogTitle className={cn("flex items-center gap-2 font-bold", isDark ? "text-[#F5F5F7]" : "text-slate-900")}>
-                            VBM Mode Selection
-                        </DialogTitle>
-                    </DialogHeader>
-                    <div className="py-4 space-y-4">
-                        <p className={cn("text-sm font-semibold", isDark ? "text-[#9CA3AF]" : "text-slate-800")}>Select the scan plane for Vertebral Body Measurement:</p>
-                        <div className="grid grid-cols-2 gap-4">
-                            <Button
-                                variant={vbmMode === 'lateral' ? 'default' : 'outline'}
-                                onClick={() => setVbmMode('lateral')}
-                                className={cn(
-                                    "font-bold h-12 rounded-xl transition-all shadow-sm",
-                                    vbmMode === 'lateral'
-                                        ? 'bg-primary hover:bg-primary/90 text-primary-foreground ring-2 ring-primary/40'
-                                        : isDark
-                                            ? 'border-[#242427] bg-[#1B1B1E] text-[#F5F5F7] hover:bg-[#242427]'
-                                            : 'border-slate-300 bg-slate-50 text-slate-900 hover:bg-slate-100'
-                                )}
-                            >
-                                Sagittal (Lateral)
-                            </Button>
-                            <Button
-                                variant={vbmMode === 'ap' ? 'default' : 'outline'}
-                                onClick={() => setVbmMode('ap')}
-                                className={cn(
-                                    "font-bold h-12 rounded-xl transition-all shadow-sm",
-                                    vbmMode === 'ap'
-                                        ? 'bg-primary hover:bg-primary/90 text-primary-foreground ring-2 ring-primary/40'
-                                        : isDark
-                                            ? 'border-[#242427] bg-[#1B1B1E] text-[#F5F5F7] hover:bg-[#242427]'
-                                            : 'border-slate-300 bg-slate-50 text-slate-900 hover:bg-slate-100'
-                                )}
-                            >
-                                Coronal (AP)
-                            </Button>
-                        </div>
-                        <div className={cn("text-[11px] italic p-2 rounded-lg border", isDark ? 'text-[#9CA3AF] bg-[#0A0A0B] border-[#242427]' : 'text-slate-700 bg-slate-100 border-slate-200')}>
-                            {vbmMode === 'lateral'
-                                ? "Measures: Anterior/Posterior heights, Wedge angle, Endplate lengths, Body depth."
-                                : "Measures: Left/Right heights, Endplate widths, Body width."}
-                        </div>
-                    </div>
-                    <DialogFooter>
-                        <Button className="w-full bg-primary hover:bg-primary/90 text-primary-foreground font-bold h-11 rounded-xl shadow-[0_1px_2px_rgba(0,0,0,.04),0_8px_24px_rgba(0,0,0,.08)]" onClick={() => setIsVBMDialogOpen(false)}>Start Placement</Button>
-                    </DialogFooter>
-                </DialogContent>
-            </Dialog>
-            <Dialog open={isTiltDialogOpen} onOpenChange={(open) => {
-                if (!open && !tiltMode) setActiveTool(null);
-                setIsTiltDialogOpen(open);
-                setActiveDialog(open ? 'tilt' : null);
-            }}>
-                <DialogContent className={cn("sm:max-w-md", isDark ? "!bg-[#141416] !text-[#F5F5F7] !border-[#242427]" : "!bg-gray-100 !text-slate-900 !border-gray-300")} onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                        // Confirm selection
-                        setTiltMode(pendingTiltMode || 'UIV');
-                        setIsTiltDialogOpen(false);
-                    }
-                }}>
-                    <DialogHeader>
-                        <DialogTitle className={cn("flex items-center gap-2", isDark ? 'text-blue-400' : 'text-slate-900')}>
-                            Instrumented Tilt Classification
-                        </DialogTitle>
-                    </DialogHeader>
-                    <div className="py-4 space-y-4">
-                        <p className={cn("text-sm text-center", isDark ? 'text-slate-300' : 'text-slate-700')}>Select the type for Instrumented Tilt measurement:</p>
-                        <div className="flex gap-4 justify-center">
-                            <Button
-                                className={cn("w-32 font-bold transition-all", pendingTiltMode === 'UIV' ? 'bg-blue-600 hover:bg-blue-700 ring-2 ring-blue-400 text-white' : isDark ? 'bg-slate-800 hover:bg-slate-700 text-white' : 'bg-gray-200 hover:bg-gray-300 text-slate-900 border border-gray-300')}
-                                onClick={() => setPendingTiltMode('UIV')}
-                            >
-                                UIV (Upper)
-                            </Button>
-                            <Button
-                                className={cn("w-32 font-bold transition-all", pendingTiltMode === 'LIV' ? 'bg-blue-600 hover:bg-blue-700 ring-2 ring-blue-400 text-white' : isDark ? 'bg-slate-800 hover:bg-slate-700 text-white' : 'bg-gray-200 hover:bg-gray-300 text-slate-900 border border-gray-300')}
-                                onClick={() => setPendingTiltMode('LIV')}
-                            >
-                                LIV (Lower)
-                            </Button>
-                        </div>
-                        <p className={cn("text-[10px] text-center", isDark ? 'text-slate-500' : 'text-slate-600')}>
-                            UIV: Upper Instrumented Vertebra | LIV: Lower Instrumented Vertebra
-                        </p>
-                    </div>
-                    <DialogFooter>
-                        <Button
-                            className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold"
-                            onClick={() => {
-                                setTiltMode(pendingTiltMode || 'UIV');
-                                setIsTiltDialogOpen(false);
-                            }}
-                        >
-                            Start Placement
-                        </Button>
-                    </DialogFooter>
-                </DialogContent>
-            </Dialog>
-
             <Dialog open={isTextDialogOpen} onOpenChange={(open) => {
                 setIsTextDialogOpen(open);
                 setActiveDialog(open ? 'text' : null);
             }}>
-                <DialogContent className={cn(isDark ? "!bg-[#141416] !text-[#F5F5F7] !border-[#242427]" : "!bg-gray-100 !text-slate-900 !border-gray-300")}>
+                <DialogContent className={cn(isDark ? "" : "")}>
                     <DialogHeader>
-                        <DialogTitle className={isDark ? 'text-[#F5F5F7]' : 'text-slate-900'}>Enter Text Label</DialogTitle>
+                        <DialogTitle className={isDark ? '' : ''}>Enter Text Label</DialogTitle>
                     </DialogHeader>
                     <div className="py-4">
                         <Input

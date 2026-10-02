@@ -7,7 +7,7 @@ import {
     DialogTitle,
     DialogTrigger,
 } from "@/components/ui/dialog";
-import { FileText, Loader2, ExternalLink } from "lucide-react";
+import { FileText, FileDown, Loader2, ExternalLink } from "lucide-react";
 import { api } from "@/lib/api";
 import { useAppStore } from "@/lib/store/index";
 
@@ -33,8 +33,8 @@ export function ReportsListDialog({ studyId }: { studyId: string }) {
         <>
             <Dialog open={open} onOpenChange={setOpen}>
                 <DialogTrigger asChild>
-                    <Button variant="outline" size="sm" className="h-8 border-border text-muted-foreground hover:bg-muted select-none font-bold rounded-lg transition-all" onPointerDown={(e) => e.stopPropagation()}>
-                        <FileText className="h-3.5 w-3.5 mr-2 text-primary" /> View Reports
+                    <Button variant="ghost" size="icon" title="Reports — open or download" className="h-8 w-8 text-[var(--text-2)] hover:text-[var(--text)] hover:bg-[var(--surface-3)]" onPointerDown={(e) => e.stopPropagation()}>
+                        <FileDown className="h-4 w-4" />
                     </Button>
                 </DialogTrigger>
                 <DialogContent className="sm:max-w-[425px]">
@@ -81,7 +81,7 @@ export function ReportsListDialog({ studyId }: { studyId: string }) {
                 <Dialog open={!!selectedReportUrl} onOpenChange={(o) => !o && setSelectedReportUrl(null)}>
                     <DialogContent className="sm:max-w-[500px] max-h-[90vh] overflow-y-auto">
                         <DialogHeader className="px-5 py-3 bg-card border-b border-border flex flex-row items-center justify-between">
-                            <DialogTitle className="text-sm font-bold text-foreground">Report Viewer</DialogTitle>
+                            <DialogTitle className="text-sm font-bold">Report Viewer</DialogTitle>
                             <Button size="sm" variant="ghost" onClick={() => setSelectedReportUrl(null)} className="text-muted-foreground hover:text-foreground hover:bg-muted font-bold rounded-lg h-8">Close</Button>
                         </DialogHeader>
                         <div className="flex-1 bg-muted/40">

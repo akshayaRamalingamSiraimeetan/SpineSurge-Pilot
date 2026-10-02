@@ -1,0 +1,16 @@
+node_modules
+dist
+dist-ssr
+.git
+.env
+.env.*
+!.env.example
+server/uploads
+server/node_modules
+SpineSurge-Rebuild
+documentation
+docs
+*.png
+*.sql
+.agents
+.github

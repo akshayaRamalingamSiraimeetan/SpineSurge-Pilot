@@ -49,7 +49,7 @@ const UnfinishedStudiesSection = () => {
   return (
     <section>
       <div className="mb-4 flex items-center justify-between">
-        <h2 className="text-sm font-semibold text-[#F5F5F7] uppercase tracking-wide">
+        <h2 className="text-sm font-semibold text-[var(--text)] uppercase tracking-wide">
           Unfinished Studies
         </h2>
       </div>
@@ -61,11 +61,11 @@ const UnfinishedStudiesSection = () => {
           description="You're all caught up. Start a new study to begin planning."
         />
       ) : (
-        <div className="overflow-hidden rounded-xl border border-[#242427] bg-[#141416]">
+        <div className="overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--surface)]">
           {/* Table header */}
-          <div className="grid grid-cols-[2fr_2fr_1.5fr_1fr_auto] gap-4 border-b border-[#242427] px-5 py-3">
+          <div className="grid grid-cols-[2fr_2fr_1.5fr_1fr_auto] gap-4 border-b border-[var(--border)] px-5 py-3">
             {['Study Name', 'Diagnosis', 'Last Edited', 'Status', 'Action'].map((col) => (
-              <span key={col} className="text-xs font-medium text-[#6B7280] uppercase tracking-wide">
+              <span key={col} className="text-xs font-medium text-[var(--text-3)] uppercase tracking-wide">
                 {col}
               </span>
             ))}
@@ -76,20 +76,20 @@ const UnfinishedStudiesSection = () => {
             <div
               key={row.id}
               className={[
-                'grid grid-cols-[2fr_2fr_1.5fr_1fr_auto] gap-4 items-center px-5 py-3.5 transition-colors hover:bg-[#1B1B1E]',
-                idx < rows.length - 1 ? 'border-b border-[#1E1E21]' : '',
+                'grid grid-cols-[2fr_2fr_1.5fr_1fr_auto] gap-4 items-center px-5 py-3.5 transition-colors hover:bg-[var(--surface-2)]',
+                idx < rows.length - 1 ? 'border-b border-[var(--border)]' : '',
               ].join(' ')}
             >
               {/* Study Name */}
-              <span className="truncate text-sm font-medium text-[#F5F5F7]">
+              <span className="truncate text-sm font-medium text-[var(--text)]">
                 {row.studyName}
               </span>
 
               {/* Diagnosis */}
-              <span className="truncate text-sm text-[#9CA3AF]">{row.diagnosis}</span>
+              <span className="truncate text-sm text-[var(--text-2)]">{row.diagnosis}</span>
 
               {/* Last Edited */}
-              <span className="text-sm text-[#9CA3AF]">{row.lastEdited}</span>
+              <span className="text-sm text-[var(--text-2)]">{row.lastEdited}</span>
 
               {/* Status badge */}
               <span className="inline-flex items-center gap-1.5 rounded-full bg-[#FF453A]/10 px-2.5 py-0.5 text-xs font-medium text-[#FF453A]">
@@ -103,7 +103,7 @@ const UnfinishedStudiesSection = () => {
                   await openStudy(row.patientId, row.studyId);
                   navigate('/workspace');
                 }}
-                className="flex items-center gap-1.5 rounded-md border border-[#242427] bg-[#1B1B1E] px-3 py-1.5 text-xs text-[#9CA3AF] transition-colors hover:bg-[#242427] hover:text-[#F5F5F7]"
+                className="flex items-center gap-1.5 rounded-md border border-[var(--border)] bg-[var(--surface-2)] px-3 py-1.5 text-xs text-[var(--text-2)] transition-colors hover:bg-[var(--surface-3)] hover:text-[var(--text)]"
               >
                 <CheckCircle2 className="h-3.5 w-3.5" />
                 Resume

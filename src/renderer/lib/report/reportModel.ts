@@ -1,6 +1,6 @@
 import type { AppState } from '@/lib/store';
-import type { Measurement, Patient, ReportSectionConfig, Visit } from '@/lib/store/types';
-import { getDefaultReportConfig } from '@/features/report/defaultConfig';
+import type { Measurement, Patient, ReportDocumentSettings, ReportSectionConfig, Visit } from '@/lib/store/types';
+import { getReportConfig } from './useReportConfig';
 import { renderCaseImage, isReportMeasurement, type RenderedImage } from './renderCaseImage';
 import { screwLength, trajectoryAngles } from '@/features/planning3d/implantModel';
 
@@ -15,8 +15,12 @@ export interface ComparisonRow { parameter: string; a: string; b: string; diff: 
 export interface MeasurementRow { parameter: string; level: string; value: string }
 export interface ImplantRow { type: string; location: string; size: string }
 
+/**
+ * The report covers the whole case: Assessment (measurements), Planning
+ * (2D + 3D implants), Compare (Image B). A section is only rendered when its
+ * source has data.
+ */
 export interface ReportModel {
-    kind: 'single' | 'comparison' | 'planning3d';
     refNo: string;
     planDate: string;
     patient: Patient | null;
@@ -26,12 +30,14 @@ export interface ReportModel {
     visitId: string | null;
     studyId: string | null;
     surgeon: { name: string; title: string; department: string };
+    doc: ReportDocumentSettings;
     sections: ReportSectionConfig[];
     images: ReportImage[];
     measurementRows: MeasurementRow[];
     comparisonRows: ComparisonRow[];
     implantRows: ImplantRow[];
     notes: string;
+    hasComparison: boolean;
     preOpDate: string | null;
     postOpDate: string | null;
 }
@@ -96,7 +102,7 @@ export interface BuildOptions { withImages?: boolean }
 export async function buildReportModel(state: AppState, opts: BuildOptions = { withImages: true }): Promise<ReportModel> {
     const ctx = state.contexts.find((c) => c.id === state.activeContextId) ?? null;
     const ctxState = state.contextStates.find((s) => s.contextId === state.activeContextId);
-    const reportConfig = ctxState?.reportConfig ?? getDefaultReportConfig();
+    const config = getReportConfig(state);
     const patient = state.patients.find((p) => p.id === state.activePatientId) ?? null;
     const studyId = ctx?.studyIds?.[0] ?? null;
     const study = patient?.studies.find((s) => s.id === studyId)
@@ -104,13 +110,13 @@ export async function buildReportModel(state: AppState, opts: BuildOptions = { w
     const visitId = ctx?.visitId ?? study?.visitId ?? null;
     const visit = patient?.visits.find((v) => v.id === visitId) ?? null;
 
-    const kind: ReportModel['kind'] = state.isDicomMode
-        ? 'planning3d'
-        : state.isComparisonMode && reportConfig.reportType !== 'single' ? 'comparison' : 'single';
-
     const now = new Date();
+    const measurements = ctxState?.measurements ?? state.measurements;
+    const implants2D = ctxState?.implants ?? state.implants;
+    const B = state.comparison.right;
+    const hasComparison = !!B.image || B.measurements.length > 0;
+
     const model: ReportModel = {
-        kind,
         refNo: `SS-${dateStamp(now)}-${(state.activeContextId ?? state.activePatientId ?? 'LOCAL').replace(/[^a-z0-9]/gi, '').slice(-6).toUpperCase()}`,
         planDate: now.toLocaleDateString(),
         patient,
@@ -121,83 +127,77 @@ export async function buildReportModel(state: AppState, opts: BuildOptions = { w
         surgeon: {
             name: state.user?.name || '—',
             title: state.user?.title || state.user?.designation || '—',
-            department: state.user?.subsection || 'Spine Surgery',
+            department: config.document!.department || state.user?.subsection || 'Spine Surgery',
         },
-        sections: [...reportConfig.sections].filter((s) => s.enabled).sort((a, b) => a.order - b.order),
+        doc: config.document!,
+        sections: [...config.sections].filter((s) => s.enabled).sort((a, b) => a.order - b.order),
         images: [],
-        measurementRows: [],
-        comparisonRows: [],
+        measurementRows: measurements.filter(isReportMeasurement).map((m) => ({
+            parameter: m.toolKey.toUpperCase(),
+            level: [m.measurement?.level, m.measurement?.comments].filter(Boolean).join(' — ') || '—',
+            value: firstLine(m.result),
+        })),
+        comparisonRows: hasComparison ? buildComparisonRows(measurements, B.measurements) : [],
         implantRows: [],
         notes: ctxState?.toolState?.clinicalNotes ?? '',
+        hasComparison,
         preOpDate: null,
         postOpDate: null,
     };
 
-    if (kind === 'comparison') {
-        const { left, right } = state.comparison;
-        model.comparisonRows = buildComparisonRows(left.measurements, right.measurements);
-        const scanDate = (url: string | null) =>
-            url ? patient?.studies.flatMap((s) => s.scans).find((sc) => sc.imageUrl === url)?.date ?? null : null;
-        model.preOpDate = scanDate(left.image);
-        model.postOpDate = scanDate(right.image);
-        if (opts.withImages) {
-            for (const [side, label] of [['left', 'PRE-OPERATIVE'], ['right', 'POST-OPERATIVE']] as const) {
-                const pane = state.comparison[side];
-                if (!pane.image) continue;
-                const img = await renderCaseImage({
-                    image: pane.image, measurements: pane.measurements, implants: pane.implants,
-                    canvas: { ...pane.canvas }, manager: state.managers[side],
-                });
-                model.images.push({ ...img, label });
-            }
-        }
-    } else if (kind === 'single') {
-        const measurements = ctxState?.measurements ?? state.measurements;
-        const implants = ctxState?.implants ?? state.implants;
-        model.measurementRows = measurements.filter(isReportMeasurement).map((m) => ({
-            parameter: m.toolKey.toUpperCase(),
-            level: [m.measurement?.level, m.measurement?.comments].filter(Boolean).join(' — ') || '—',
-            value: firstLine(m.result),
-        }));
-        const ratio = state.canvas.calibrationApplied ? state.canvas.pixelToMm : null;
-        const mm = (px: number) => (ratio ? `${(px * ratio).toFixed(1)} mm` : `${px.toFixed(0)} px`);
-        model.implantRows = implants.map((i: any) => ({
-            type: String(i.type),
+    // Planning: 2D implants (px → mm with calibration) + 3D plan
+    const ratio = state.canvas.calibrationApplied ? state.canvas.pixelToMm : null;
+    const mm = (px: number) => (ratio ? `${(px * ratio).toFixed(1)} mm` : `${px.toFixed(0)} px`);
+    for (const i of implants2D as any[]) {
+        model.implantRows.push({
+            type: i.type === 'screw' ? 'Screw (2D)' : i.type === 'cage' ? 'Cage (2D)' : i.type === 'rod' ? 'Rod (2D)' : String(i.type),
             location: i.properties?.level ?? '—',
             size: i.type === 'screw' ? `${mm(i.properties?.diameter ?? 0)} × ${mm(i.properties?.length ?? 0)}`
                 : i.type === 'cage' ? `${mm(i.properties?.width ?? 0)} × ${mm(i.properties?.height ?? 0)}`
                 : i.type === 'rod' ? `Ø ${mm(i.properties?.diameter ?? 0)}` : '—',
-        }));
-        const image = state.currentImage ?? ctxState?.currentImage ?? null;
-        if (opts.withImages && image) {
-            const img = await renderCaseImage({
-                image, measurements, implants, canvas: { ...state.canvas }, manager: state.managers.main,
-            });
-            model.images.push({ ...img, label: 'PLANNING IMAGE' });
-        }
-    } else {
-        model.implantRows = state.threeDImplants.map((i) => {
-            if (i.type === 'screw') {
-                const a = trajectoryAngles(i);
-                return {
-                    type: 'Pedicle screw',
-                    location: `${i.level ?? '—'} ${i.side === 'L' ? 'Left' : i.side === 'R' ? 'Right' : ''}`.trim(),
-                    size: `${i.diameter} × ${screwLength(i).toFixed(1)} mm · ${a.transverse.toFixed(0)}° / ${a.sagittal.toFixed(0)}°`,
-                };
-            }
-            if (i.type === 'rod') {
-                const length = i.points.slice(1).reduce((acc, p, k) => acc + Math.hypot(p[0] - i.points[k][0], p[1] - i.points[k][1], p[2] - i.points[k][2]), 0);
-                return { type: 'Rod', location: '—', size: `Ø ${i.diameter} × ${length.toFixed(0)} mm` };
-            }
-            return { type: 'Interbody cage', location: i.level ?? '—', size: `${i.size.map((v) => v.toFixed(0)).join(' × ')} mm` };
         });
+    }
+    for (const i of state.threeDImplants) {
+        if (i.type === 'screw') {
+            const a = trajectoryAngles(i);
+            model.implantRows.push({
+                type: 'Pedicle screw',
+                location: `${i.level ?? '—'} ${i.side === 'L' ? 'Left' : i.side === 'R' ? 'Right' : ''}`.trim(),
+                size: `${i.diameter} × ${screwLength(i).toFixed(1)} mm · ${a.transverse.toFixed(0)}° / ${a.sagittal.toFixed(0)}°`,
+            });
+        } else if (i.type === 'rod') {
+            const length = i.points.slice(1).reduce((acc, p, k) => acc + Math.hypot(p[0] - i.points[k][0], p[1] - i.points[k][1], p[2] - i.points[k][2]), 0);
+            model.implantRows.push({ type: 'Rod', location: '—', size: `Ø ${i.diameter} × ${length.toFixed(0)} mm` });
+        } else {
+            model.implantRows.push({ type: 'Interbody cage', location: i.level ?? '—', size: `${i.size.map((v) => v.toFixed(0)).join(' × ')} mm` });
+        }
+    }
+
+    const scanDate = (url: string | null | undefined) =>
+        url ? patient?.studies.flatMap((s) => s.scans).find((sc) => sc.imageUrl === url)?.date ?? null : null;
+    const imageA = state.currentImage ?? ctxState?.currentImage ?? null;
+    model.preOpDate = scanDate(imageA);
+    model.postOpDate = scanDate(B.image);
+
+    if (opts.withImages) {
+        if (imageA && !state.isDicomMode) {
+            const img = await renderCaseImage({
+                image: imageA, measurements, implants: implants2D, canvas: { ...state.canvas },
+                manager: state.managers.main ?? state.managers.left,
+            });
+            model.images.push({ ...img, label: hasComparison && B.image ? 'IMAGE A' : 'ANNOTATED IMAGE' });
+        }
+        if (B.image) {
+            const img = await renderCaseImage({
+                image: B.image, measurements: B.measurements, implants: B.implants, canvas: { ...B.canvas }, manager: state.managers.right,
+            });
+            model.images.push({ ...img, label: 'IMAGE B' });
+        }
     }
     return model;
 }
 
 /** Can a report be produced from this model? (shared by preview + export button) */
 export function reportHasContent(m: ReportModel): boolean {
-    if (m.kind === 'planning3d') return m.implantRows.length > 0;
-    if (m.kind === 'comparison') return m.comparisonRows.length > 0 || m.images.length > 0;
-    return m.measurementRows.length > 0 || m.implantRows.length > 0 || m.images.length > 0;
+    return m.images.length > 0 || m.measurementRows.length > 0 || m.implantRows.length > 0 || m.comparisonRows.length > 0;
 }

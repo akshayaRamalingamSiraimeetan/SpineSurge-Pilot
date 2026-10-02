@@ -28,7 +28,7 @@ import { useLocation } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea/dnd';
 import { GripVertical, Eye, EyeOff, LayoutTemplate } from 'lucide-react';
-import { getDefaultReportConfig } from '../report/defaultConfig';
+import { useReportConfig } from '@/lib/report/useReportConfig';
 import { useTheme } from '@/components/theme-provider';
 
 /* ── Planning sub-tab ──────────────────────────────────────── */
@@ -267,7 +267,7 @@ const TABS: TabDef[] = [
           { id: 'imp-screw', abbr: 'Screw',   label: 'Screw',     desc: 'Place pedicle screw' },
           { id: 'imp-rod',   abbr: 'Rod',     label: 'Rod',       desc: 'Place spinal rod' },
           { id: 'imp-cage',  abbr: 'Cage',    label: 'Cage',      desc: 'Place interbody cage' },
-          { id: 'itilt',     abbr: 'UIV/LIV', label: 'UIV/LIV',   desc: 'Instrumented Tilt (UIV/LIV)' },
+          { id: 'itilt',     abbr: 'INSTR', label: 'Instr. Level', desc: 'Instrumented vertebra tilt (UIV / LIV)' },
         ],
       },
     ],
@@ -275,6 +275,54 @@ const TABS: TabDef[] = [
 ];
 
 /* ── Single tool row ─────────────────────────────────────────── */
+/** VBM plane chosen inline under the tool (replaces the old dialog). */
+function VbmPlanePicker({ onPick }: { onPick: () => void }) {
+  const vbmMode = useAppStore(s => s.vbmMode);
+  const setVbmMode = useAppStore(s => s.setVbmMode);
+  return (
+    <div style={{ display: 'flex', gap: 4, padding: '2px 12px 8px 60px' }}>
+      {([['lateral', 'Sagittal'], ['ap', 'Coronal']] as const).map(([m, label]) => (
+        <button
+          key={m}
+          onClick={() => { setVbmMode(m); onPick(); }}
+          style={{
+            flex: 1, padding: '4px 0', borderRadius: 6, fontSize: 11, fontWeight: 600,
+            border: '1px solid ' + (vbmMode === m ? 'var(--accent)' : 'var(--border-2)'),
+            background: vbmMode === m ? 'var(--accent-soft)' : 'transparent',
+            color: vbmMode === m ? 'var(--accent)' : 'var(--text-3)',
+          }}
+        >
+          {label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/** UIV / LIV chosen inline under "Instr. Level" (replaces the old dialog). */
+function TiltLevelPicker({ onPick }: { onPick: () => void }) {
+  const tiltMode = useAppStore(s => s.tiltMode);
+  const setTiltMode = useAppStore(s => s.setTiltMode);
+  return (
+    <div style={{ display: 'flex', gap: 4, padding: '2px 12px 8px 60px' }}>
+      {([['UIV', 'UIV (upper)'], ['LIV', 'LIV (lower)']] as const).map(([m, label]) => (
+        <button
+          key={m}
+          onClick={() => { setTiltMode(m); onPick(); }}
+          style={{
+            flex: 1, padding: '4px 0', borderRadius: 6, fontSize: 11, fontWeight: 600,
+            border: '1px solid ' + (tiltMode === m ? 'var(--accent)' : 'var(--border-2)'),
+            background: tiltMode === m ? 'var(--accent-soft)' : 'transparent',
+            color: tiltMode === m ? 'var(--accent)' : 'var(--text-3)',
+          }}
+        >
+          {label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 function ToolRow({ tool, active, onClick }: { tool: ToolDef; active: boolean; onClick: () => void }) {
   return (
     <button
@@ -464,7 +512,7 @@ const DicomLeftSidebar = () => {
     >
       {/* ── Tools ─────────────────────────────────────────────── */}
       <div>
-        <p className="text-[10px] font-bold tracking-[0.15em] uppercase text-white/25 mb-3">
+        <p className="text-[10px] font-bold tracking-[0.15em] uppercase text-[var(--text-3)] mb-3">
           Tools
         </p>
         <div className="flex flex-col gap-2">
@@ -475,7 +523,7 @@ const DicomLeftSidebar = () => {
               'flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-semibold transition-all duration-200 border',
               !isSegMode
                 ? 'bg-primary/10 text-primary border-primary/20'
-                : 'text-white/40 hover:text-white/70 hover:bg-white/5 border-transparent',
+                : 'text-[var(--text-3)] hover:text-[var(--text)] hover:bg-[var(--surface-2)] border-transparent',
             )}
           >
             <Box className="w-4 h-4 flex-shrink-0" />
@@ -489,7 +537,7 @@ const DicomLeftSidebar = () => {
               'flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-semibold transition-all duration-200 border',
               isSegMode
                 ? 'bg-primary/10 text-primary border-primary/20'
-                : 'text-white/40 hover:text-white/70 hover:bg-white/5 border-transparent',
+                : 'text-[var(--text-3)] hover:text-[var(--text)] hover:bg-[var(--surface-2)] border-transparent',
             )}
           >
             <Layers className="w-4 h-4 flex-shrink-0" />
@@ -501,20 +549,20 @@ const DicomLeftSidebar = () => {
       {/* ── HU Threshold ──────────────────────────────────────── */}
       <div>
         <div className="flex items-center gap-1.5 mb-3">
-          <p className="text-[10px] font-bold tracking-[0.15em] uppercase text-white/25">
+          <p className="text-[10px] font-bold tracking-[0.15em] uppercase text-[var(--text-3)]">
             HU Threshold
           </p>
-          <HelpCircle className="w-3.5 h-3.5 text-white/20" />
+          <HelpCircle className="w-3.5 h-3.5 text-[var(--text-3)]" />
         </div>
 
-        <div className="flex justify-between text-[9px] font-mono text-white/30 mb-2">
+        <div className="flex justify-between text-[9px] font-mono text-[var(--text-3)] mb-2">
           <span>-1024 HU</span>
           <span>3071 HU</span>
         </div>
 
         {/* Gradient histogram background */}
         <div
-          className="h-14 rounded-lg mb-3 relative overflow-hidden border border-white/[0.06]"
+          className="h-14 rounded-lg mb-3 relative overflow-hidden border border-[var(--border)]"
           style={{
             background: `linear-gradient(to right,
               #000 0%, #111 10%, #1c1c1c 20%,
@@ -547,7 +595,7 @@ const DicomLeftSidebar = () => {
         />
 
         <div className="flex justify-between items-center mt-2">
-          <span className="text-[10px] text-white/30">
+          <span className="text-[10px] text-[var(--text-3)]">
             {isSegMode ? 'Seg. Threshold' : 'Vis. Threshold'}
           </span>
           <span className="text-[10px] font-mono font-bold text-primary">
@@ -558,7 +606,7 @@ const DicomLeftSidebar = () => {
 
       {/* ── Instrumentation ───────────────────────────────────── */}
       <div>
-        <p className="text-[10px] font-bold tracking-[0.15em] uppercase text-white/25 mb-3">
+        <p className="text-[10px] font-bold tracking-[0.15em] uppercase text-[var(--text-3)] mb-3">
           Instrumentation
         </p>
         <div className="flex flex-col gap-2">
@@ -569,8 +617,8 @@ const DicomLeftSidebar = () => {
             className={cn(
               'flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-semibold transition-all duration-200 border text-left',
               dicom3D.interactionMode === 'place_screw'
-                ? 'bg-cyan-500/10 text-cyan-400 border-cyan-500/25'
-                : 'text-white/50 hover:text-white/80 hover:bg-white/5 border-transparent',
+                ? 'bg-cyan-500/10 text-cyan-600 dark:text-cyan-400 border-cyan-500/25'
+                : 'text-[var(--text-2)] hover:text-[var(--text)] hover:bg-[var(--surface-2)] border-transparent',
             )}
           >
             <div className={cn(
@@ -580,7 +628,7 @@ const DicomLeftSidebar = () => {
             <ScrewIcon className="w-3.5 h-3.5 flex-shrink-0" />
             Screw
             {dicom3D.interactionMode === 'place_screw' && (
-              <span className="ml-auto text-[9px] text-cyan-400/70 animate-pulse">Active</span>
+              <span className="ml-auto text-[9px] text-cyan-600/80 dark:text-cyan-400/70 animate-pulse">Active</span>
             )}
           </button>
 
@@ -590,15 +638,15 @@ const DicomLeftSidebar = () => {
             className={cn(
               'flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-semibold transition-all duration-200 border text-left',
               dicom3D.interactionMode === 'place_rod'
-                ? 'bg-emerald-500/10 text-emerald-300 border-emerald-500/25'
-                : 'text-white/50 hover:text-white/80 hover:bg-white/5 border-transparent',
+                ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/25'
+                : 'text-[var(--text-2)] hover:text-[var(--text)] hover:bg-[var(--surface-2)] border-transparent',
             )}
           >
             <div className="w-2 h-2 rounded-full bg-emerald-400/60 flex-shrink-0" />
             <RodIcon className="w-3.5 h-3.5 flex-shrink-0" />
             Rod
             {dicom3D.interactionMode === 'place_rod' && (
-              <span className="ml-auto text-[9px] text-emerald-300/70 animate-pulse">Active</span>
+              <span className="ml-auto text-[9px] text-emerald-700/80 dark:text-emerald-300/70 animate-pulse">Active</span>
             )}
           </button>
 
@@ -608,15 +656,15 @@ const DicomLeftSidebar = () => {
             className={cn(
               'flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-semibold transition-all duration-200 border text-left',
               dicom3D.interactionMode === 'place_cage'
-                ? 'bg-amber-500/10 text-amber-300 border-amber-500/25'
-                : 'text-white/50 hover:text-white/80 hover:bg-white/5 border-transparent',
+                ? 'bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/25'
+                : 'text-[var(--text-2)] hover:text-[var(--text)] hover:bg-[var(--surface-2)] border-transparent',
             )}
           >
             <div className="w-2 h-2 rounded-full bg-amber-400/60 flex-shrink-0" />
             <CageIcon className="w-3.5 h-3.5 flex-shrink-0" />
             Cage
             {dicom3D.interactionMode === 'place_cage' && (
-              <span className="ml-auto text-[9px] text-amber-300/70 animate-pulse">Active</span>
+              <span className="ml-auto text-[9px] text-amber-700/80 dark:text-amber-300/70 animate-pulse">Active</span>
             )}
           </button>
         </div>
@@ -625,11 +673,11 @@ const DicomLeftSidebar = () => {
       {/* ── Crop (3D) ─────────────────────────────────────────── */}
       <div>
         <div className="flex items-center justify-between mb-2">
-          <p className="text-[10px] font-bold tracking-[0.15em] uppercase text-white/25">Crop 3D</p>
+          <p className="text-[10px] font-bold tracking-[0.15em] uppercase text-[var(--text-3)]">Crop 3D</p>
           <button
             onClick={() => setDicomCroppingActive(!dicom3D.isCroppingActive)}
             className={cn('text-[10px] px-2 py-0.5 rounded border',
-              dicom3D.isCroppingActive ? 'border-primary/40 text-primary bg-primary/10' : 'border-white/10 text-white/40')}
+              dicom3D.isCroppingActive ? 'border-primary/40 text-primary bg-primary/10' : 'border-[var(--border)] text-[var(--text-3)]')}
           >
             {dicom3D.isCroppingActive ? 'On' : 'Off'}
           </button>
@@ -641,7 +689,7 @@ const DicomLeftSidebar = () => {
               const hi = dicom3D.roiCrop[`${axis}1` as const];
               return (
                 <div key={axis}>
-                  <div className="text-[9px] text-white/30 mb-1">{name}</div>
+                  <div className="text-[9px] text-[var(--text-3)] mb-1">{name}</div>
                   <div className="flex gap-2">
                     <input type="range" min={0} max={100} value={Math.round(lo * 100)} className="w-full"
                       onChange={(e) => updateRoiCrop({ [`${axis}0`]: Math.min(parseInt(e.target.value) / 100, hi - 0.02) })} />
@@ -652,7 +700,7 @@ const DicomLeftSidebar = () => {
               );
             })}
             <button onClick={() => updateRoiCrop({ x0: 0, x1: 1, y0: 0, y1: 1, z0: 0, z1: 1 })}
-              className="text-[10px] text-white/40 hover:text-white/70">Reset crop</button>
+              className="text-[10px] text-[var(--text-3)] hover:text-[var(--text)]">Reset crop</button>
           </div>
         )}
       </div>
@@ -660,28 +708,28 @@ const DicomLeftSidebar = () => {
       {/* ── Screw configuration form ──────────────────────────── */}
       {dicom3D.interactionMode === 'place_screw' && (
         <div className="p-3 bg-cyan-950/5 border border-cyan-500/10 rounded-xl space-y-3">
-          <p className="text-[9px] font-bold tracking-[0.15em] uppercase text-cyan-400/50">
+          <p className="text-[9px] font-bold tracking-[0.15em] uppercase text-cyan-700/70 dark:text-cyan-400/50">
             Screw Settings
           </p>
 
           <div>
-            <label htmlFor="screw-level-sidebar" className="text-[9px] text-white/30 mb-1 block">
+            <label htmlFor="screw-level-sidebar" className="text-[9px] text-[var(--text-3)] mb-1 block">
               Level
             </label>
             <select
               id="screw-level-sidebar"
               value={dicom3D.screwLevel}
               onChange={e => setScrewConfig({ screwLevel: e.target.value })}
-              className="w-full bg-white/5 border border-white/10 rounded-lg px-2 py-1.5 text-xs text-white/70 focus:outline-none focus:border-cyan-500/50 appearance-none cursor-pointer"
+              className="w-full bg-[var(--surface-2)] border border-[var(--border)] rounded-lg px-2 py-1.5 text-xs text-[var(--text)] focus:outline-none focus:border-cyan-500/50 appearance-none cursor-pointer"
             >
               {SPINAL_LEVELS.map(l => (
-                <option key={l} value={l} className="bg-[#0f0f11]">{l}</option>
+                <option key={l} value={l} className="bg-[var(--sidebar)]">{l}</option>
               ))}
             </select>
           </div>
 
           <div>
-            <label className="text-[9px] text-white/30 mb-1 block">Side</label>
+            <label className="text-[9px] text-[var(--text-3)] mb-1 block">Side</label>
             <div className="flex gap-1.5">
               {(['L', 'R'] as const).map(s => (
                 <button
@@ -690,8 +738,8 @@ const DicomLeftSidebar = () => {
                   className={cn(
                     'flex-1 py-1.5 text-xs font-semibold rounded-lg transition-all border',
                     dicom3D.screwSide === s
-                      ? 'bg-cyan-500/20 text-cyan-400 border-cyan-500/30'
-                      : 'text-white/30 border-white/10 hover:border-white/25 hover:text-white/50',
+                      ? 'bg-cyan-500/20 text-cyan-600 dark:text-cyan-400 border-cyan-500/30'
+                      : 'text-[var(--text-3)] border-[var(--border)] hover:border-[var(--border)] hover:text-[var(--text-2)]',
                   )}
                 >
                   {s === 'L' ? 'Left' : 'Right'}
@@ -701,7 +749,7 @@ const DicomLeftSidebar = () => {
           </div>
 
           <div>
-            <label htmlFor="screw-diameter-sidebar" className="text-[9px] text-white/30 mb-1 block">
+            <label htmlFor="screw-diameter-sidebar" className="text-[9px] text-[var(--text-3)] mb-1 block">
               Diameter (mm)
             </label>
             <input
@@ -712,12 +760,12 @@ const DicomLeftSidebar = () => {
               step={0.5}
               value={dicom3D.screwDiameter}
               onChange={e => setScrewConfig({ screwDiameter: parseFloat(e.target.value) })}
-              className="w-full bg-white/5 border border-white/10 rounded-lg px-2 py-1.5 text-xs text-white/70 focus:outline-none focus:border-cyan-500/50"
+              className="w-full bg-[var(--surface-2)] border border-[var(--border)] rounded-lg px-2 py-1.5 text-xs text-[var(--text)] focus:outline-none focus:border-cyan-500/50"
             />
           </div>
 
           <div>
-            <label htmlFor="screw-length-sidebar" className="text-[9px] text-white/30 mb-1 block">
+            <label htmlFor="screw-length-sidebar" className="text-[9px] text-[var(--text-3)] mb-1 block">
               Length (mm)
             </label>
             <input
@@ -728,7 +776,7 @@ const DicomLeftSidebar = () => {
               step={5}
               value={dicom3D.screwLength}
               onChange={e => setScrewConfig({ screwLength: parseInt(e.target.value) })}
-              className="w-full bg-white/5 border border-white/10 rounded-lg px-2 py-1.5 text-xs text-white/70 focus:outline-none focus:border-cyan-500/50"
+              className="w-full bg-[var(--surface-2)] border border-[var(--border)] rounded-lg px-2 py-1.5 text-xs text-[var(--text)] focus:outline-none focus:border-cyan-500/50"
             />
           </div>
         </div>
@@ -806,7 +854,7 @@ const NormalLeftSidebarContent = () => {
             marginBottom: 4,
           }}>
             {([
-              { key: 'target' as PlanningTab, num: 1, label: 'Target Correction' },
+              { key: 'target' as PlanningTab, num: 1, label: 'Targets' },
               { key: 'simulation' as PlanningTab, num: 2, label: 'Simulation' },
             ] as const).map((t) => {
               const active = planningTab === t.key;
@@ -933,7 +981,7 @@ const NormalLeftSidebarContent = () => {
       {/* ── Scrollable content ────────────────────────────────── */}
       <ScrollArea style={{ flex: 1 }}>
 
-        {/* ── Target Correction panel (planning mode only) ───── */}
+        {/* ── Targets panel (planning mode only) ───── */}
         {isPlanningMode && planningTab === 'target' && (
           <div style={{ padding: '12px 12px 16px' }}>
 
@@ -959,7 +1007,6 @@ const NormalLeftSidebarContent = () => {
                 alignItems: 'center',
                 gap: 8,
               }}>
-                <div style={{ fontSize: 26, opacity: 0.4 }}>🎯</div>
                 <div style={{ fontWeight: 600, fontSize: 12.5, color: 'var(--text)' }}>
                   No measurements selected
                 </div>
@@ -1098,12 +1145,15 @@ const NormalLeftSidebarContent = () => {
                   </div>
                 )}
                 {section.tools.map((tool) => (
-                  <ToolRow
-                    key={tool.id}
-                    tool={tool}
-                    active={activeTool === tool.id}
-                    onClick={() => handleTool(tool.id)}
-                  />
+                  <div key={tool.id}>
+                    <ToolRow
+                      tool={tool}
+                      active={activeTool === tool.id}
+                      onClick={() => handleTool(tool.id)}
+                    />
+                    {tool.id === 'vbm' && <VbmPlanePicker onPick={() => { if (activeTool !== 'vbm') handleTool('vbm'); }} />}
+                    {tool.id === 'itilt' && <TiltLevelPicker onPick={() => { if (activeTool !== 'itilt') handleTool('itilt'); }} />}
+                  </div>
                 ))}
               </div>
             ))}
@@ -1182,46 +1232,20 @@ const NormalLeftSidebarContent = () => {
 
 /* ── Report LeftSidebar ─────────────────────────────────────── */
 const ReportLeftSidebar = () => {
-  const { activeContextId, contextStates, updateContextState, isComparisonMode } = useAppStore();
-  const { resolvedTheme } = useTheme();
-  const isDark = resolvedTheme === "dark";
-  
-  const activeState = contextStates.find((s) => s.contextId === activeContextId);
-  // Missing config = defaults; the first edit persists it (no init-on-mount write — RPT-10).
-  const reportConfig = activeState?.reportConfig ?? getDefaultReportConfig();
-
-  if (!reportConfig) return null;
+  const [reportConfig, saveConfig] = useReportConfig();
 
   const handleDragEnd = (result: DropResult) => {
-    if (!result.destination || !activeContextId) return;
-
-    const items = Array.from(reportConfig.sections);
-    const [reorderedItem] = items.splice(result.source.index, 1);
-    items.splice(result.destination.index, 0, reorderedItem);
-
-    const updatedItems = items.map((item, index) => ({
-      ...item,
-      order: index
-    }));
-
-    updateContextState(activeContextId, {
-      reportConfig: {
-        ...reportConfig,
-        sections: updatedItems
-      }
-    });
+    if (!result.destination) return;
+    const items = [...reportConfig.sections].sort((a, b) => a.order - b.order);
+    const [moved] = items.splice(result.source.index, 1);
+    items.splice(result.destination.index, 0, moved);
+    saveConfig({ ...reportConfig, sections: items.map((item, index) => ({ ...item, order: index })) });
   };
 
   const toggleSection = (sectionId: string) => {
-    if (!activeContextId) return;
-    const updatedSections = reportConfig.sections.map(s => 
-      s.id === sectionId ? { ...s, enabled: !s.enabled } : s
-    );
-    updateContextState(activeContextId, {
-      reportConfig: {
-        ...reportConfig,
-        sections: updatedSections
-      }
+    saveConfig({
+      ...reportConfig,
+      sections: reportConfig.sections.map(s => s.id === sectionId ? { ...s, enabled: !s.enabled } : s),
     });
   };
 
@@ -1229,54 +1253,20 @@ const ReportLeftSidebar = () => {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-      {/* Header */}
-      <div style={{ padding: '20px 20px 16px' }}>
+      <div style={{ padding: '20px 20px 6px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
           <div style={{ width: 32, height: 32, borderRadius: 8, background: 'linear-gradient(135deg, var(--val-good) 0%, #10b981 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff' }}>
             <LayoutTemplate size={18} />
           </div>
           <span style={{ fontSize: '15px', fontWeight: 600, color: 'var(--text-1)' }}>
-            Report Sections
+            Report Contents
           </span>
         </div>
+        <p style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 10, lineHeight: 1.45 }}>
+          The report updates live from Assessment, Planning and Compare. Sections without data are left out.
+          Drag to reorder, eye to show/hide.
+        </p>
       </div>
-      
-      {isComparisonMode && (
-        <div style={{ padding: '0 16px 16px' }}>
-          <div className={cn(
-              "flex flex-col gap-2 p-3 rounded-lg border",
-              isDark ? "bg-[#141416]/80 border-white/10" : "bg-white/80 border-black/10"
-          )}>
-              <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-3)' }}>REPORT TYPE</span>
-              <button
-                  onClick={() => {
-                      if (activeContextId) updateContextState(activeContextId, { reportConfig: { ...reportConfig, reportType: 'single' } as any });
-                  }}
-                  className={cn(
-                      "px-3 py-1.5 text-xs font-medium rounded-md transition-all text-left",
-                      reportConfig?.reportType === 'single' 
-                          ? "bg-[#FF453A] text-white shadow-sm" 
-                          : "text-muted-foreground hover:bg-black/5 dark:hover:bg-white/5"
-                  )}
-              >
-                  Current Study Only
-              </button>
-              <button
-                  onClick={() => {
-                      if (activeContextId) updateContextState(activeContextId, { reportConfig: { ...reportConfig, reportType: 'comparison' } as any });
-                  }}
-                  className={cn(
-                      "px-3 py-1.5 text-xs font-medium rounded-md transition-all text-left",
-                      reportConfig?.reportType !== 'single' 
-                          ? "bg-[#FF453A] text-white shadow-sm" 
-                          : "text-muted-foreground hover:bg-black/5 dark:hover:bg-white/5"
-                  )}
-              >
-                  Comparison Report
-              </button>
-          </div>
-        </div>
-      )}
 
       <ScrollArea style={{ flex: 1 }}>
         <div style={{ padding: '0 16px 20px' }}>
@@ -1307,8 +1297,9 @@ const ReportLeftSidebar = () => {
                             <GripVertical size={16} />
                           </div>
                           
-                          <span className="flex-1 text-sm font-medium leading-none">
-                            {section.title}
+                          <span className="flex-1 min-w-0">
+                            <span className="block text-sm font-medium leading-tight">{section.title}</span>
+                            {section.description && <span className="block text-[10px] text-muted-foreground mt-0.5 truncate">{section.description}</span>}
                           </span>
                           
                           <button 
@@ -1337,7 +1328,8 @@ const ReportLeftSidebar = () => {
 
 /* ── Main LeftSidebar ────────────────────────────────────────── */
 const LeftSidebar = () => {
-  const { isDicomMode, isLeftSidebarOpen, toggleLeftSidebar } = useAppStore();
+  const isDicomMode = useAppStore(s => s.isDicomMode);
+  const isLeftSidebarOpen = useAppStore(s => s.isLeftSidebarOpen);
   const location = useLocation();
   const isReportTab = new URLSearchParams(location.search).get('tab') === 'report';
 
@@ -1348,7 +1340,8 @@ const LeftSidebar = () => {
         borderRight: isLeftSidebarOpen ? '1px solid var(--border)' : 'none',
         display: 'flex',
         flexDirection: 'column',
-        width: isLeftSidebarOpen ? '272px' : '0px',
+        // Report contents need more room for section titles + descriptions.
+        width: isLeftSidebarOpen ? (isReportTab ? '340px' : '272px') : '0px',
         overflow: 'hidden',
         transition: 'width .3s',
         position: 'relative',
@@ -1356,34 +1349,8 @@ const LeftSidebar = () => {
         flexShrink: 0,
       }}
     >
-      {/* Reveal button when closed */}
-      {!isLeftSidebarOpen && (
-        <div style={{ position: 'fixed', left: 0, top: '50%', transform: 'translateY(-50%)', zIndex: 61 }}>
-          <Button
-            variant="secondary"
-            size="icon"
-            style={{ width: 22, height: 40, borderRadius: '0 6px 6px 0', border: '1px solid var(--border)' }}
-            onClick={() => toggleLeftSidebar(true)}
-          >
-            <ChevronRight className="h-4 w-4" />
-          </Button>
-        </div>
-      )}
-
       {isLeftSidebarOpen && (
         <>
-          {/* Collapse button when open */}
-          <div style={{ position: 'absolute', right: 0, top: '50%', transform: 'translateX(50%) translateY(-50%)', zIndex: 61 }}>
-            <Button
-              variant="secondary"
-              size="icon"
-              style={{ width: 22, height: 40, borderRadius: '0 6px 6px 0', border: '1px solid var(--border)', borderLeft: 'none', background: 'var(--surface-2)' }}
-              onClick={() => toggleLeftSidebar(false)}
-            >
-              <ChevronLeft className="h-4 w-4" />
-            </Button>
-          </div>
-
           <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', height: '100%', width: '100%' }}>
             {isReportTab ? <ReportLeftSidebar /> : isDicomMode ? <DicomLeftSidebar /> : <NormalLeftSidebarContent />}
           </div>

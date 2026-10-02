@@ -86,6 +86,12 @@ const RegisterPage = () => {
                 return;
             }
 
+            // Hosted demo: account is verified immediately → go to sign in.
+            if ((res.data as { autoVerified?: boolean })?.autoVerified) {
+                navigate("/login", { replace: true, state: { email, registered: true } });
+                return;
+            }
+
             setPendingEmail(email);
             sessionStorage.setItem("pendingEmail", email);
             navigate("/verify-email", { state: { email } });
@@ -103,12 +109,12 @@ const RegisterPage = () => {
 
     return (
         <AuthLayout>
-            <Card className="w-full rounded-2xl border border-[#242427] bg-[#141416] shadow-[0_1px_2px_rgba(0,0,0,.04),0_28px_70px_rgba(0,0,0,0.5)] backdrop-blur-md">
+            <Card className="w-full rounded-2xl border border-[var(--border)] bg-[var(--surface)] shadow-[0_1px_2px_rgba(0,0,0,.04),0_28px_70px_rgba(0,0,0,0.5)] backdrop-blur-md">
                 <CardHeader className="space-y-1 pb-3 pt-7">
-                    <CardTitle className="text-3xl font-semibold text-center tracking-tight text-[#F5F5F7]">
+                    <CardTitle className="text-3xl font-semibold text-center tracking-tight text-[var(--text)]">
                         Create account
                     </CardTitle>
-                    <CardDescription className="text-center text-[#9CA3AF] text-sm">
+                    <CardDescription className="text-center text-[var(--text-2)] text-sm">
                         Register to access your SpineSurge workspace
                     </CardDescription>
                 </CardHeader>
@@ -117,7 +123,7 @@ const RegisterPage = () => {
                     <CardContent className="grid gap-4 pb-4">
                         {/* Email */}
                         <div className="grid gap-2">
-                            <Label htmlFor="email" className="text-[#9CA3AF] text-xs tracking-wide uppercase">
+                            <Label htmlFor="email" className="text-[var(--text-2)] text-xs tracking-wide uppercase">
                                 Email
                             </Label>
                             <Input
@@ -126,7 +132,7 @@ const RegisterPage = () => {
                                 placeholder="doctor@spine.com"
                                 value={email}
                                 onChange={(e) => setEmail(e.target.value)}
-                                className="h-11 rounded-md border-[#242427] bg-[#1B1B1E] text-[#F5F5F7] placeholder:text-[#9CA3AF]/60 focus-visible:ring-[#FF453A] focus-visible:ring-offset-0"
+                                className="h-11 rounded-md border-[var(--border)] bg-[var(--surface-2)] text-[var(--text)] placeholder:text-[var(--text-2)]/60 focus-visible:ring-[#FF453A] focus-visible:ring-offset-0"
                             />
                             {errors.email && (
                                 <p className="text-xs text-[#FF453A]">{errors.email}</p>
@@ -135,7 +141,7 @@ const RegisterPage = () => {
 
                         {/* Password */}
                         <div className="grid gap-2">
-                            <Label htmlFor="password" className="text-[#9CA3AF] text-xs tracking-wide uppercase">
+                            <Label htmlFor="password" className="text-[var(--text-2)] text-xs tracking-wide uppercase">
                                 Password
                             </Label>
                             <div className="relative">
@@ -145,12 +151,12 @@ const RegisterPage = () => {
                                     placeholder="Min. 8 characters"
                                     value={password}
                                     onChange={(e) => setPassword(e.target.value)}
-                                    className="h-11 rounded-md border-[#242427] bg-[#1B1B1E] text-[#F5F5F7] placeholder:text-[#9CA3AF]/60 focus-visible:ring-[#FF453A] focus-visible:ring-offset-0 pr-10"
+                                    className="h-11 rounded-md border-[var(--border)] bg-[var(--surface-2)] text-[var(--text)] placeholder:text-[var(--text-2)]/60 focus-visible:ring-[#FF453A] focus-visible:ring-offset-0 pr-10"
                                 />
                                 <button
                                     type="button"
                                     onClick={() => setShowPassword((v) => !v)}
-                                    className="absolute right-3 top-1/2 -translate-y-1/2 text-[#9CA3AF] hover:text-[#F5F5F7] transition-colors"
+                                    className="absolute right-3 top-1/2 -translate-y-1/2 text-[var(--text-2)] hover:text-[var(--text)] transition-colors"
                                     aria-label={showPassword ? "Hide password" : "Show password"}
                                 >
                                     {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
@@ -163,7 +169,7 @@ const RegisterPage = () => {
 
                         {/* Confirm Password */}
                         <div className="grid gap-2">
-                            <Label htmlFor="confirmPassword" className="text-[#9CA3AF] text-xs tracking-wide uppercase">
+                            <Label htmlFor="confirmPassword" className="text-[var(--text-2)] text-xs tracking-wide uppercase">
                                 Confirm Password
                             </Label>
                             <div className="relative">
@@ -173,12 +179,12 @@ const RegisterPage = () => {
                                     placeholder="Repeat your password"
                                     value={confirmPassword}
                                     onChange={(e) => setConfirmPassword(e.target.value)}
-                                    className="h-11 rounded-md border-[#242427] bg-[#1B1B1E] text-[#F5F5F7] placeholder:text-[#9CA3AF]/60 focus-visible:ring-[#FF453A] focus-visible:ring-offset-0 pr-10"
+                                    className="h-11 rounded-md border-[var(--border)] bg-[var(--surface-2)] text-[var(--text)] placeholder:text-[var(--text-2)]/60 focus-visible:ring-[#FF453A] focus-visible:ring-offset-0 pr-10"
                                 />
                                 <button
                                     type="button"
                                     onClick={() => setShowConfirmPassword((v) => !v)}
-                                    className="absolute right-3 top-1/2 -translate-y-1/2 text-[#9CA3AF] hover:text-[#F5F5F7] transition-colors"
+                                    className="absolute right-3 top-1/2 -translate-y-1/2 text-[var(--text-2)] hover:text-[var(--text)] transition-colors"
                                     aria-label={showConfirmPassword ? "Hide confirm password" : "Show confirm password"}
                                 >
                                     {showConfirmPassword ? <EyeOff size={16} /> : <Eye size={16} />}
@@ -200,14 +206,14 @@ const RegisterPage = () => {
                             />
                             <Label
                                 htmlFor="terms"
-                                className="text-[#9CA3AF] text-xs leading-relaxed cursor-pointer"
+                                className="text-[var(--text-2)] text-xs leading-relaxed cursor-pointer"
                             >
                                 I agree to the{" "}
-                                <span className="text-[#F5F5F7] underline hover:text-[#FF453A] transition-colors">
+                                <span className="text-[var(--text)] underline hover:text-[#FF453A] transition-colors">
                                     Terms of Service
                                 </span>{" "}
                                 and{" "}
-                                <span className="text-[#F5F5F7] underline hover:text-[#FF453A] transition-colors">
+                                <span className="text-[var(--text)] underline hover:text-[#FF453A] transition-colors">
                                     Clinical Use Disclaimer
                                 </span>
                             </Label>
@@ -231,11 +237,11 @@ const RegisterPage = () => {
                 </form>
             </Card>
 
-            <div className="text-center text-sm text-[#9CA3AF]">
+            <div className="text-center text-sm text-[var(--text-2)]">
                 Already have an account?{" "}
                 <Link
                     to="/login"
-                    className="text-[#F5F5F7] underline hover:text-[#FF453A] transition-colors"
+                    className="text-[var(--text)] underline hover:text-[#FF453A] transition-colors"
                 >
                     Sign In
                 </Link>

@@ -1,14 +1,18 @@
 import { useEffect, useRef, useState } from 'react';
+import { FileText } from 'lucide-react';
 import { useAppStore } from '@/lib/store/index';
 import { cn } from '@/lib/utils';
 import { useTheme } from '@/components/theme-provider';
-import { buildReportModel, type ReportModel } from '@/lib/report/reportModel';
+import { buildReportModel, reportHasContent, type ReportModel } from '@/lib/report/reportModel';
+import { useReportConfig } from '@/lib/report/useReportConfig';
 
 /**
- * On-screen report preview. Renders the SAME ReportModel the PDF is built
- * from (lib/report/reportModel.ts), so preview and export always match.
- * The model is rebuilt (debounced, stale results dropped) when its inputs change.
+ * On-screen report preview — renders the SAME ReportModel the PDF uses, as a
+ * page with the chosen size/orientation/accent. Live: rebuilt (debounced,
+ * stale results dropped) whenever Assessment, Planning or Compare data change.
  */
+const PAGE_MM = { a4: [210, 297], letter: [216, 279] } as const;
+
 export default function ReportBuilderWorkspace() {
     const { resolvedTheme } = useTheme();
     const isDark = resolvedTheme === "dark";
@@ -20,10 +24,11 @@ export default function ReportBuilderWorkspace() {
     const threeDImplants     = useAppStore(s => s.threeDImplants);
     const currentImage       = useAppStore(s => s.currentImage);
     const comparison         = useAppStore(s => s.comparison);
-    const isComparisonMode   = useAppStore(s => s.isComparisonMode);
     const canvas             = useAppStore(s => s.canvas);
     const patients           = useAppStore(s => s.patients);
     const updateContextState = useAppStore(s => s.updateContextState);
+    const [config] = useReportConfig();
+    const configKey = JSON.stringify(config);
 
     const activeState = contextStates.find((s) => s.contextId === activeContextId);
 
@@ -49,80 +54,81 @@ export default function ReportBuilderWorkspace() {
             }
         }, 250);
         return () => clearTimeout(timer);
-    }, [activeContextId, activeState?.reportConfig, activeState?.measurements, activeState?.implants,
-        measurements, implants, threeDImplants, currentImage, comparison, isComparisonMode, canvas, patients]);
+    }, [activeContextId, activeState?.measurements, activeState?.implants, configKey,
+        measurements, implants, threeDImplants, currentImage, comparison, canvas, patients]);
 
-    // Notes: controlled + keyed per context so late-loaded notes show (RPT-21).
+    // Notes: controlled + per context so late-loaded notes show (RPT-21).
     const savedNotes: string = activeState?.toolState?.clinicalNotes ?? '';
     const [notes, setNotes] = useState(savedNotes);
     useEffect(() => { setNotes(savedNotes); }, [activeContextId, savedNotes]);
-
     const saveNotes = () => {
         if (!activeContextId || notes === savedNotes) return;
-        void updateContextState(activeContextId, {
-            toolState: { ...(activeState?.toolState || {}), clinicalNotes: notes },
-        });
+        void updateContextState(activeContextId, { toolState: { ...(activeState?.toolState || {}), clinicalNotes: notes } });
     };
 
     if (!model) {
         return (
             <div className="flex w-full h-full items-center justify-center">
-                <div className="text-muted-foreground text-sm">
-                    {error ?? 'Preparing report preview…'}
-                </div>
+                <div className="text-muted-foreground text-sm">{error ?? 'Preparing report preview…'}</div>
             </div>
         );
     }
 
+    const d = model.doc;
+    const [pw, ph] = PAGE_MM[d.pageSize] ?? PAGE_MM.a4;
+    const [wMm, hMm] = d.orientation === 'landscape' ? [ph, pw] : [pw, ph];
     const p = model.patient;
-    const card = isDark ? "bg-[#141416] text-[#F5F5F7]" : "bg-white text-slate-900";
+    const empty = !reportHasContent(model);
+    const card = isDark ? "bg-[var(--surface)] text-[var(--text)]" : "bg-[var(--surface)] text-[var(--text)]";
+
+    const Title = ({ text }: { text: string }) => (
+        <div>
+            <h2 className="font-bold uppercase tracking-wider" style={{ color: d.accentColor, fontSize: `${1.05 * d.fontScale}rem` }}>{text}</h2>
+            <div className="h-0.5 w-full mt-2 mb-4" style={{ backgroundColor: d.accentColor, opacity: 0.25 }} />
+        </div>
+    );
 
     return (
-        <div className={cn("w-full h-full overflow-y-auto p-8 flex flex-col items-center gap-6", isDark ? "bg-[#0A0A0B]" : "bg-gray-100")}>
-            {(building || error) && (
-                <div className="text-xs text-muted-foreground">{error ?? 'Updating preview…'}</div>
-            )}
-            <div className={cn("w-full max-w-[210mm] min-h-[297mm] p-[16mm] shadow-xl rounded-sm shrink-0", card)}>
-                <header className="flex justify-between items-start border-b pb-6 mb-8" style={{ borderColor: 'rgba(255, 69, 58, 0.3)' }}>
+        <div className={cn("w-full h-full overflow-y-auto p-8 flex flex-col items-center gap-4", isDark ? "bg-[var(--bg)]" : "bg-[var(--surface)]")}>
+            <div className="text-xs text-muted-foreground h-4">{error ?? (building ? 'Updating preview…' : 'Live preview — updates as you work')}</div>
+            <div
+                className={cn("shadow-xl rounded-sm shrink-0 overflow-hidden", card)}
+                style={{ width: `${wMm}mm`, minHeight: `${hMm}mm`, maxWidth: '100%', fontSize: `${0.875 * d.fontScale}rem` }}
+            >
+                <header className="flex justify-between items-start px-[14mm] py-[8mm] text-white" style={{ background: d.accentColor }}>
                     <div>
-                        <h1 className="text-3xl font-bold tracking-tight mb-1" style={{ color: '#FF453A' }}>SPINESURGE</h1>
-                        <p className="text-sm opacity-70">Department of Spine Surgery · Plan Documentation</p>
+                        <h1 className="font-bold tracking-tight" style={{ fontSize: `${1.5 * d.fontScale}rem` }}>{d.title || 'Surgical Planning Report'}</h1>
+                        <p className="opacity-90 mt-1">{[d.institution, d.department].filter(Boolean).join(' · ')}</p>
                     </div>
-                    <div className="text-right text-sm space-y-1 opacity-80">
-                        <p>REF: {model.refNo}</p>
-                        <p>PLAN DATE: {model.planDate}</p>
-                        {model.kind === 'comparison' ? (
-                            <>
-                                <p>PRE-OP: {model.preOpDate ?? '—'}</p>
-                                <p>POST-OP: {model.postOpDate ?? '—'}</p>
-                            </>
-                        ) : (
-                            <p>SURGERY DATE: {model.visit?.surgeryDate || 'TBD'}</p>
-                        )}
+                    <div className="text-right text-xs space-y-1 opacity-95">
+                        <p>REF {model.refNo}</p>
+                        <p>Plan date {model.planDate}</p>
+                        <p>Surgery date {model.visit?.surgeryDate || 'TBD'}</p>
                     </div>
                 </header>
 
-                <div className="space-y-10">
+                <div className="px-[14mm] py-[8mm] space-y-8">
+                    {empty && (
+                        <div className="flex flex-col items-center gap-2 py-16 text-muted-foreground text-sm">
+                            <FileText className="w-8 h-8 opacity-40" />
+                            Nothing to report yet. Import an image and take measurements in Assessment, plan implants in Planning,
+                            or add Image B in Compare — they appear here automatically.
+                        </div>
+                    )}
                     {model.sections.map((section) => {
-                        const title = (
-                            <div>
-                                <h2 className="text-lg font-bold uppercase tracking-wider" style={{ color: '#FF453A' }}>{section.title}</h2>
-                                <div className="h-0.5 w-full mt-2 mb-5" style={{ backgroundColor: 'rgba(255, 69, 58, 0.2)' }} />
-                            </div>
-                        );
                         switch (section.type) {
                             case 'patient_summary':
                                 return (
                                     <section key={section.id}>
-                                        {title}
-                                        <div className="grid grid-cols-2 gap-8 text-sm">
-                                            <dl className="grid grid-cols-3 gap-y-2">
+                                        <Title text={section.title} />
+                                        <div className="grid grid-cols-2 gap-8">
+                                            <dl className="grid grid-cols-3 gap-y-1.5">
                                                 <dt className="opacity-70">Name</dt><dd className="col-span-2 font-medium">{p?.name || '—'}</dd>
-                                                <dt className="opacity-70">Age / Sex</dt><dd className="col-span-2 font-medium">{p?.age ?? '—'} / {p?.gender ?? '—'}</dd>
+                                                <dt className="opacity-70">Age / Sex</dt><dd className="col-span-2 font-medium">{p?.age || '—'} / {p?.gender ?? '—'}</dd>
                                                 <dt className="opacity-70">Patient ID</dt><dd className="col-span-2 font-medium">{p?.id || '—'}</dd>
                                                 <dt className="opacity-70">Diagnosis</dt><dd className="col-span-2 font-medium">{model.visit?.diagnosis || '—'}</dd>
                                             </dl>
-                                            <dl className="grid grid-cols-3 gap-y-2">
+                                            <dl className="grid grid-cols-3 gap-y-1.5">
                                                 <dt className="opacity-70">Surgeon</dt><dd className="col-span-2 font-medium">{model.surgeon.name}</dd>
                                                 <dt className="opacity-70">Title</dt><dd className="col-span-2 font-medium">{model.surgeon.title}</dd>
                                                 <dt className="opacity-70">Department</dt><dd className="col-span-2 font-medium">{model.surgeon.department}</dd>
@@ -134,11 +140,11 @@ export default function ReportBuilderWorkspace() {
                                 if (model.images.length === 0) return null;
                                 return (
                                     <section key={section.id}>
-                                        {title}
+                                        <Title text={section.title} />
                                         <div className={cn("grid gap-4", model.images.length > 1 ? "grid-cols-2" : "grid-cols-1")}>
                                             {model.images.map((im) => (
                                                 <figure key={im.label} className="flex flex-col items-center gap-2">
-                                                    <img src={im.dataUrl} alt={im.label} className="max-w-full max-h-[420px] object-contain rounded shadow" />
+                                                    <img src={im.dataUrl} alt={im.label} className="max-w-full max-h-[420px] object-contain rounded" />
                                                     <figcaption className="text-xs uppercase opacity-70">{im.label}</figcaption>
                                                 </figure>
                                             ))}
@@ -146,21 +152,10 @@ export default function ReportBuilderWorkspace() {
                                     </section>
                                 );
                             case 'measurement_table':
-                            case 'compare_table':
-                                if (model.kind === 'comparison') {
-                                    if (model.comparisonRows.length === 0) return null;
-                                    return (
-                                        <section key={section.id}>
-                                            {title}
-                                            <Table head={['Parameter', 'Image A', 'Image B', 'Difference']}
-                                                rows={model.comparisonRows.map(r => [r.parameter, r.a, r.b, r.diff])} />
-                                        </section>
-                                    );
-                                }
-                                if (section.type !== 'measurement_table' || model.measurementRows.length === 0) return null;
+                                if (model.measurementRows.length === 0) return null;
                                 return (
                                     <section key={section.id}>
-                                        {title}
+                                        <Title text={section.title} />
                                         <Table head={['#', 'Parameter', 'Level / Comments', 'Value']}
                                             rows={model.measurementRows.map((r, i) => [String(i + 1), r.parameter, r.level, r.value])} />
                                     </section>
@@ -170,21 +165,31 @@ export default function ReportBuilderWorkspace() {
                                 if (model.implantRows.length === 0) return null;
                                 return (
                                     <section key={section.id}>
-                                        {title}
-                                        <Table head={['#', 'Implant', 'Location', 'Size']}
+                                        <Title text={section.title} />
+                                        <Table head={['#', 'Implant', 'Location', 'Size / Trajectory']}
                                             rows={model.implantRows.map((r, i) => [String(i + 1), r.type, r.location, r.size])} />
                                     </section>
                                 );
-                            case 'notes':
+                            case 'compare_table':
+                                if (model.comparisonRows.length === 0) return null;
                                 return (
                                     <section key={section.id}>
-                                        {title}
+                                        <Title text={section.title} />
+                                        <Table head={['Parameter', 'Image A', 'Image B', 'Difference']} diffCol
+                                            rows={model.comparisonRows.map(r => [r.parameter, r.a, r.b, r.diff])} />
+                                    </section>
+                                );
+                            case 'notes':
+                                if (empty) return null;
+                                return (
+                                    <section key={section.id}>
+                                        <Title text={section.title} />
                                         <textarea
                                             className={cn(
-                                                "w-full min-h-[100px] p-4 rounded-lg border resize-y outline-none focus:border-[#FF453A]",
-                                                isDark ? "bg-black/20 border-gray-800" : "bg-gray-50 border-gray-200",
+                                                "w-full min-h-[90px] p-3 rounded-lg border resize-y outline-none",
+                                                isDark ? "bg-black/20 border-gray-800" : "bg-[var(--surface-2)] border-[var(--border)]",
                                             )}
-                                            placeholder={activeContextId ? "Add clinical notes…" : "Save this case as a study to add notes"}
+                                            placeholder={activeContextId ? "Add clinical notes…" : "Save this study (add patient details) to keep notes"}
                                             disabled={!activeContextId}
                                             value={notes}
                                             onChange={(e) => setNotes(e.target.value)}
@@ -197,23 +202,28 @@ export default function ReportBuilderWorkspace() {
                         }
                     })}
                 </div>
+                <footer className="flex justify-between px-[14mm] py-[5mm] text-[10px] opacity-60 border-t" style={{ borderColor: 'var(--border)' }}>
+                    <span>{d.footerText}</span>
+                    <span>{model.refNo}</span>
+                    {d.showPageNumbers ? <span>Page 1</span> : <span />}
+                </footer>
             </div>
         </div>
     );
 }
 
-function Table({ head, rows }: { head: string[]; rows: string[][] }) {
+function Table({ head, rows, diffCol }: { head: string[]; rows: string[][]; diffCol?: boolean }) {
     return (
         <div className="w-full rounded-lg border overflow-hidden" style={{ borderColor: 'var(--border)' }}>
-            <table className="w-full text-sm text-left">
+            <table className="w-full text-left">
                 <thead className="text-xs uppercase" style={{ backgroundColor: 'var(--surface-2)' }}>
-                    <tr>{head.map(h => <th key={h} className="px-4 py-3 font-semibold">{h}</th>)}</tr>
+                    <tr>{head.map(h => <th key={h} className="px-3 py-2 font-semibold">{h}</th>)}</tr>
                 </thead>
                 <tbody>
                     {rows.map((r, i) => (
                         <tr key={i} className="border-t" style={{ borderColor: 'var(--border)' }}>
                             {r.map((c, j) => (
-                                <td key={j} className="px-4 py-2.5" style={j === 3 && head[3] === 'Difference'
+                                <td key={j} className="px-3 py-2" style={diffCol && j === 3
                                     ? { color: c.startsWith('+') ? '#34C759' : c.startsWith('-') ? '#FF453A' : undefined } : undefined}>
                                     {c}
                                 </td>

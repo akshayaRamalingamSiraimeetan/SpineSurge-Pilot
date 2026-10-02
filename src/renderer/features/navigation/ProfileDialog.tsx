@@ -81,14 +81,14 @@ export function ProfileDialog({ open, onOpenChange }: { open: boolean, onOpenCha
         <Dialog open={open} onOpenChange={onOpenChange}>
             <DialogContent className={cn(
                 "sm:max-w-[425px]",
-                isDark ? "!bg-[#141416] !text-[#F5F5F7] !border-[#242427]" : "!bg-gray-100 !text-slate-900 !border-gray-300"
+                isDark ? "" : ""
             )}>
                 <DialogHeader>
-                    <DialogTitle className={cn("text-2xl font-bold flex items-center gap-2", isDark ? "text-[#F5F5F7]" : "text-slate-900")}>
+                    <DialogTitle className={cn("text-2xl font-bold flex items-center gap-2", isDark ? "" : "")}>
                         <User className="h-6 w-6 text-[#FF453A]" />
                         Edit Profile
                     </DialogTitle>
-                    <DialogDescription className={isDark ? "text-[#9CA3AF]/80" : "text-slate-600"}>
+                    <DialogDescription className={isDark ? "text-[var(--text-2)]/80" : ""}>
                         Modify your professional profile details.
                     </DialogDescription>
                 </DialogHeader>
@@ -99,76 +99,76 @@ export function ProfileDialog({ open, onOpenChange }: { open: boolean, onOpenCha
                     </Avatar>
                     <div className="w-full space-y-2 px-4">
                         <div className="grid gap-1">
-                            <Label className={cn("text-[10px] uppercase font-bold text-center", isDark ? "text-[#9CA3AF]/70" : "text-slate-500")}>Full Name</Label>
+                            <Label className={cn("text-[10px] uppercase font-bold text-center", isDark ? "text-[var(--text-2)]/70" : "text-[var(--text-2)]")}>Full Name</Label>
                             <Input
                                 value={localProfile.name}
                                 onChange={e => setLocalProfile({ ...localProfile, name: e.target.value })}
-                                className={cn("text-center font-bold text-lg border-none h-8 font-inherit", isDark ? "!bg-transparent !text-[#F5F5F7] hover:!bg-[#0A0A0B] focus:!bg-[#0A0A0B]" : "!bg-transparent !text-slate-900 hover:!bg-gray-200 focus:!bg-gray-200")}
+                                className={cn("text-center font-bold text-lg border-none h-8 font-inherit", isDark ? "!bg-transparent !text-[var(--text)] hover:!bg-[var(--bg)] focus:!bg-[var(--bg)]" : "!bg-transparent !text-[var(--text)] hover:!bg-[var(--surface-2)] focus:!bg-[var(--surface-2)]")}
                             />
                         </div>
                         <Input
                             value={localProfile.title}
                             onChange={e => setLocalProfile({ ...localProfile, title: e.target.value })}
-                            className={cn("text-center text-sm border-none h-7", isDark ? "!text-[#9CA3AF] !bg-transparent hover:!bg-[#0A0A0B] focus:!bg-[#0A0A0B]" : "!text-slate-600 !bg-transparent hover:!bg-gray-200 focus:!bg-gray-200")}
+                            className={cn("text-center text-sm border-none h-7", isDark ? "!text-[var(--text-2)] !bg-transparent hover:!bg-[var(--bg)] focus:!bg-[var(--bg)]" : "!text-[var(--text-2)] !bg-transparent hover:!bg-[var(--surface-2)] focus:!bg-[var(--surface-2)]")}
                         />
                     </div>
                 </div>
 
                 <div className="space-y-4 py-2">
                     <div className="grid gap-2">
-                        <Label className={cn("text-xs font-bold uppercase tracking-wider ml-1", isDark ? "text-[#9CA3AF]/70" : "text-slate-500")}>Email Address</Label>
+                        <Label className={cn("text-xs font-bold uppercase tracking-wider ml-1", isDark ? "text-[var(--text-2)]/70" : "text-[var(--text-2)]")}>Email Address</Label>
                         <div className="relative">
-                            <Mail className="absolute left-3 top-3 h-4 w-4 text-slate-400" />
+                            <Mail className="absolute left-3 top-3 h-4 w-4 text-[var(--text-3)]" />
                             <Input
                                 value={localProfile.email}
                                 onChange={e => setLocalProfile({ ...localProfile, email: e.target.value })}
-                                className={cn("pl-9", isDark ? "!bg-[#0A0A0B] !border-[#242427] !text-[#F5F5F7]" : "!bg-white !border-gray-300 !text-slate-900")}
+                                className={cn("pl-9", isDark ? "!bg-[var(--bg)] !border-[var(--border)] !text-[var(--text)]" : "!bg-[var(--surface)] !border-[var(--border)] !text-[var(--text)]")}
                             />
                         </div>
                     </div>
 
                     <div className="grid grid-cols-2 gap-4">
                         <div className="grid gap-2">
-                            <Label className={cn("text-xs font-bold uppercase tracking-wider ml-1", isDark ? "text-[#9CA3AF]/70" : "text-slate-500")}>Specialty</Label>
+                            <Label className={cn("text-xs font-bold uppercase tracking-wider ml-1", isDark ? "text-[var(--text-2)]/70" : "text-[var(--text-2)]")}>Specialty</Label>
                             <div className="relative">
-                                <Shield className="absolute left-3 top-3 h-4 w-4 text-slate-400" />
+                                <Shield className="absolute left-3 top-3 h-4 w-4 text-[var(--text-3)]" />
                                 <Input
                                     value={localProfile.specialty}
                                     onChange={e => setLocalProfile({ ...localProfile, specialty: e.target.value })}
-                                    className={cn("pl-9", isDark ? "!bg-[#0A0A0B] !border-[#242427] !text-[#F5F5F7]" : "!bg-white !border-gray-300 !text-slate-900")}
+                                    className={cn("pl-9", isDark ? "!bg-[var(--bg)] !border-[var(--border)] !text-[var(--text)]" : "!bg-[var(--surface)] !border-[var(--border)] !text-[var(--text)]")}
                                 />
                             </div>
                         </div>
                         <div className="grid gap-2">
-                            <Label className={cn("text-xs font-bold uppercase tracking-wider ml-1", isDark ? "text-[#9CA3AF]/70" : "text-slate-500")}>Joined</Label>
+                            <Label className={cn("text-xs font-bold uppercase tracking-wider ml-1", isDark ? "text-[var(--text-2)]/70" : "text-[var(--text-2)]")}>Joined</Label>
                             <div className="relative">
-                                <Calendar className="absolute left-3 top-3 h-4 w-4 text-slate-400" />
+                                <Calendar className="absolute left-3 top-3 h-4 w-4 text-[var(--text-3)]" />
                                 <Input
                                     type="date"
                                     value={localProfile.joined}
                                     onChange={e => setLocalProfile({ ...localProfile, joined: e.target.value })}
-                                    className={cn("pl-9", isDark ? "!bg-[#0A0A0B] !border-[#242427] !text-[#F5F5F7]" : "!bg-white !border-gray-300 !text-slate-900")}
+                                    className={cn("pl-9", isDark ? "!bg-[var(--bg)] !border-[var(--border)] !text-[var(--text)]" : "!bg-[var(--surface)] !border-[var(--border)] !text-[var(--text)]")}
                                 />
                             </div>
                         </div>
                     </div>
 
                     <div className="grid gap-2">
-                        <Label className={cn("text-xs font-bold uppercase tracking-wider ml-1", isDark ? "text-[#9CA3AF]/70" : "text-slate-500")}>Subsection</Label>
+                        <Label className={cn("text-xs font-bold uppercase tracking-wider ml-1", isDark ? "text-[var(--text-2)]/70" : "text-[var(--text-2)]")}>Subsection</Label>
                         <div className="relative">
-                            <Layers className="absolute left-3 top-3 h-4 w-4 text-slate-400" />
+                            <Layers className="absolute left-3 top-3 h-4 w-4 text-[var(--text-3)]" />
                             <Input
                                 placeholder="e.g. Lumbar, Cervical..."
                                 value={localProfile.subsection}
                                 onChange={e => setLocalProfile({ ...localProfile, subsection: e.target.value })}
-                                className={cn("pl-9", isDark ? "!bg-[#0A0A0B] !border-[#242427] !text-[#F5F5F7]" : "!bg-white !border-gray-300 !text-slate-900")}
+                                className={cn("pl-9", isDark ? "!bg-[var(--bg)] !border-[var(--border)] !text-[var(--text)]" : "!bg-[var(--surface)] !border-[var(--border)] !text-[var(--text)]")}
                             />
                         </div>
                     </div>
                 </div>
 
                 <div className="flex justify-end pt-6 gap-3">
-                    <Button variant="ghost" onClick={() => onOpenChange(false)} className={isDark ? "text-[#9CA3AF] hover:text-[#F5F5F7] hover:bg-[#1B1B1E]" : "text-slate-700 hover:text-slate-900 hover:bg-gray-200"}>Cancel</Button>
+                    <Button variant="ghost" onClick={() => onOpenChange(false)} className={isDark ? "text-[var(--text-2)] hover:text-[var(--text)] hover:bg-[var(--surface-2)]" : "text-[var(--text-2)] hover:text-[var(--text)] hover:bg-[var(--surface-2)]"}>Cancel</Button>
                     <Button onClick={handleSave} disabled={saving} className="bg-[#FF453A] hover:bg-[#e03d33] text-white gap-2 px-8 shadow-lg shadow-[rgba(0,0,0,0.2)]">
                         <Check className="h-4 w-4" />
                         Save Changes

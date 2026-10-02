@@ -18,7 +18,7 @@ import {
     TrackballRotateTool,
 } from '@cornerstonejs/tools';
 import { useShallow } from 'zustand/react/shallow';
-import { Loader2, Maximize2, Minimize2 } from 'lucide-react';
+import { Loader2, Maximize2, Minimize2, Grid2X2, LayoutTemplate, Target } from 'lucide-react';
 import { initCornerstone, releaseSeriesMemory } from '@/lib/cornerstone/initCornerstone';
 import { useAppStore } from '@/lib/store';
 import type { PlanImplant } from '@/lib/store/types';
@@ -347,6 +347,27 @@ export function PlanningViewer({ fileList }: { fileList: (File | string)[] }) {
                     );
                 })}
             </div>
+
+            {status.phase === 'ready' && (
+                <div className="absolute top-2 left-1/2 -translate-x-1/2 z-20 flex items-center gap-1 p-1 rounded-lg bg-black/70 border border-white/10 backdrop-blur">
+                    {([
+                        ['grid', 'Four views', <Grid2X2 key="g" className="w-3.5 h-3.5" />],
+                        ['focus-3d', '3D large', <LayoutTemplate key="f" className="w-3.5 h-3.5" />],
+                        ['axial-sagittal', 'Sagittal large', <LayoutTemplate key="s" className="w-3.5 h-3.5 rotate-90" />],
+                    ] as const).map(([m, title, icon]) => (
+                        <button key={m} title={title}
+                            onClick={() => { setMaximized(null); store().setDicomLayoutMode(m); }}
+                            className={cn('h-7 w-8 grid place-items-center rounded-md', layout === m && !maximized ? 'bg-[var(--accent)] text-white' : 'text-white/60 hover:text-white hover:bg-white/10')}>
+                            {icon}
+                        </button>
+                    ))}
+                    <div className="w-px h-5 bg-white/15 mx-0.5" />
+                    <button title="Re-centre 3D view" onClick={() => store().triggerFocusCrop()}
+                        className="h-7 w-8 grid place-items-center rounded-md text-white/60 hover:text-white hover:bg-white/10">
+                        <Target className="w-3.5 h-3.5" />
+                    </button>
+                </div>
+            )}
 
             {placeHint && status.phase === 'ready' && (
                 <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-20 px-3 py-1.5 rounded-full bg-cyan-500/15 border border-cyan-400/30 text-cyan-200 text-xs pointer-events-none">

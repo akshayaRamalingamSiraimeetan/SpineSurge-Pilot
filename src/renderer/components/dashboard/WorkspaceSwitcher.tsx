@@ -14,16 +14,16 @@ interface SwitchConfirmModalProps {
 /** Confirmation modal shown before switching to an org workspace. */
 const SwitchConfirmModal = ({ orgName, orgId, onCancel, onSwitch }: SwitchConfirmModalProps) => (
   <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 backdrop-blur-sm">
-    <div className="w-full max-w-sm rounded-2xl border border-[#242427] bg-[#141416] p-6 shadow-2xl">
-      <h3 className="text-base font-semibold text-[#F5F5F7]">Switch Workspace</h3>
-      <p className="mt-2 text-sm text-[#9CA3AF]">
+    <div className="w-full max-w-sm rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-6 shadow-2xl">
+      <h3 className="text-base font-semibold text-[var(--text)]">Switch Workspace</h3>
+      <p className="mt-2 text-sm text-[var(--text-2)]">
         Do you want to switch to{' '}
-        <span className="font-medium text-[#F5F5F7]">{orgName}</span> workspace?
+        <span className="font-medium text-[var(--text)]">{orgName}</span> workspace?
       </p>
       <div className="mt-5 flex gap-3">
         <button
           onClick={onCancel}
-          className="flex-1 rounded-lg border border-[#242427] bg-transparent py-2 text-sm font-medium text-[#9CA3AF] hover:bg-[#242427] hover:text-[#F5F5F7] transition-colors"
+          className="flex-1 rounded-lg border border-[var(--border)] bg-transparent py-2 text-sm font-medium text-[var(--text-2)] hover:bg-[var(--surface-3)] hover:text-[var(--text)] transition-colors"
         >
           Cancel
         </button>
@@ -173,7 +173,7 @@ const WorkspaceSwitcher = ({ isOpen, onClose }: WorkspaceSwitcherProps) => {
         aria-label="Workspace Switcher"
         className={[
           'fixed left-0 top-0 z-[110] flex h-full w-72 flex-col',
-          'bg-[#0F0F11] border-r border-[#242427] shadow-2xl',
+          'bg-[var(--sidebar)] border-r border-[var(--border)] shadow-2xl',
           'transition-transform duration-[250ms] ease-out',
           isOpen ? 'translate-x-0' : '-translate-x-full',
         ].join(' ')}
@@ -181,14 +181,14 @@ const WorkspaceSwitcher = ({ isOpen, onClose }: WorkspaceSwitcherProps) => {
         {/* Close button */}
         <button
           onClick={onClose}
-          className="absolute right-3 top-3 flex h-7 w-7 items-center justify-center rounded-md text-[#6B7280] hover:bg-[#242427] hover:text-[#F5F5F7] transition-colors"
+          className="absolute right-3 top-3 flex h-7 w-7 items-center justify-center rounded-md text-[var(--text-3)] hover:bg-[var(--surface-3)] hover:text-[var(--text)] transition-colors"
           aria-label="Close workspace switcher"
         >
           <X className="h-4 w-4" />
         </button>
 
         {/* ── Profile card ────────────────────────────────────── */}
-        <div className="flex items-center gap-3 border-b border-[#242427] px-4 py-5 pr-10">
+        <div className="flex items-center gap-3 border-b border-[var(--border)] px-4 py-5 pr-10">
           <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-[#FF453A] text-white font-semibold text-sm overflow-hidden">
             {avatarUrl ? (
               <img
@@ -201,8 +201,8 @@ const WorkspaceSwitcher = ({ isOpen, onClose }: WorkspaceSwitcherProps) => {
             )}
           </div>
           <div className="min-w-0">
-            <p className="truncate text-sm font-semibold text-[#F5F5F7]">{displayName}</p>
-            <p className="truncate text-xs text-[#6B7280]">{displayEmail}</p>
+            <p className="truncate text-sm font-semibold text-[var(--text)]">{displayName}</p>
+            <p className="truncate text-xs text-[var(--text-3)]">{displayEmail}</p>
           </div>
         </div>
 
@@ -211,7 +211,7 @@ const WorkspaceSwitcher = ({ isOpen, onClose }: WorkspaceSwitcherProps) => {
 
           {/* WORKSPACES header */}
           <div className="px-4 pt-2 pb-1">
-            <p className="text-[10px] font-semibold uppercase tracking-wider text-[#4B5563]">
+            <p className="text-[10px] font-semibold uppercase tracking-wider text-[var(--text-3)]">
               Workspaces
             </p>
           </div>
@@ -222,12 +222,12 @@ const WorkspaceSwitcher = ({ isOpen, onClose }: WorkspaceSwitcherProps) => {
             className={[
               'flex w-full items-center gap-3 px-4 py-2.5 text-sm transition-colors',
               isPersonal
-                ? 'bg-[#1C1C1F] text-[#F5F5F7]'
-                : 'text-[#9CA3AF] hover:bg-[#1C1C1F] hover:text-[#F5F5F7]',
+                ? 'bg-[var(--surface-2)] text-[var(--text)]'
+                : 'text-[var(--text-2)] hover:bg-[var(--surface-2)] hover:text-[var(--text)]',
             ].join(' ')}
           >
-            <div className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md bg-[#242427]">
-              <User className="h-3.5 w-3.5 text-[#9CA3AF]" />
+            <div className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md bg-[var(--surface-3)]">
+              <User className="h-3.5 w-3.5 text-[var(--text-2)]" />
             </div>
             <span className="flex-1 text-left truncate">Personal Workspace</span>
             {isPersonal && <Check className="h-3.5 w-3.5 flex-shrink-0 text-[#FF453A]" />}
@@ -237,7 +237,7 @@ const WorkspaceSwitcher = ({ isOpen, onClose }: WorkspaceSwitcherProps) => {
           {joinedOnly.length > 0 && (
             <>
               <div className="mt-3 px-4 pt-2 pb-1">
-                <p className="text-[10px] font-semibold uppercase tracking-wider text-[#4B5563]">
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-[var(--text-3)]">
                   Joined Organizations
                 </p>
               </div>
@@ -257,7 +257,7 @@ const WorkspaceSwitcher = ({ isOpen, onClose }: WorkspaceSwitcherProps) => {
           {createdOrgs.length > 0 && (
             <>
               <div className="mt-3 px-4 pt-2 pb-1">
-                <p className="text-[10px] font-semibold uppercase tracking-wider text-[#4B5563]">
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-[var(--text-3)]">
                   Created Organizations
                 </p>
               </div>
@@ -275,14 +275,14 @@ const WorkspaceSwitcher = ({ isOpen, onClose }: WorkspaceSwitcherProps) => {
         </div>
 
         {/* ── Footer ──────────────────────────────────────────── */}
-        <div className="border-t border-[#242427] py-2">
+        <div className="border-t border-[var(--border)] py-2">
 
           {/* Add / Create Organization */}
           <button
             onClick={() => { onClose(); navigate('/create-org'); }}
-            className="flex w-full items-center gap-3 px-4 py-2.5 text-sm text-[#9CA3AF] hover:bg-[#1C1C1F] hover:text-[#F5F5F7] transition-colors"
+            className="flex w-full items-center gap-3 px-4 py-2.5 text-sm text-[var(--text-2)] hover:bg-[var(--surface-2)] hover:text-[var(--text)] transition-colors"
           >
-            <div className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md bg-[#242427]">
+            <div className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md bg-[var(--surface-3)]">
               <Plus className="h-3.5 w-3.5" />
             </div>
             {addOrgLabel}
@@ -291,9 +291,9 @@ const WorkspaceSwitcher = ({ isOpen, onClose }: WorkspaceSwitcherProps) => {
           {/* Pending Invitations */}
           <button
             onClick={() => { onClose(); navigate('/pending-invitations'); }}
-            className="flex w-full items-center gap-3 px-4 py-2.5 text-sm text-[#9CA3AF] hover:bg-[#1C1C1F] hover:text-[#F5F5F7] transition-colors"
+            className="flex w-full items-center gap-3 px-4 py-2.5 text-sm text-[var(--text-2)] hover:bg-[var(--surface-2)] hover:text-[var(--text)] transition-colors"
           >
-            <div className="relative flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md bg-[#242427]">
+            <div className="relative flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md bg-[var(--surface-3)]">
               <Mail className="h-3.5 w-3.5" />
               {pendingCount > 0 && (
                 <span className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-[#FF453A] text-[9px] font-bold text-white">
@@ -312,9 +312,9 @@ const WorkspaceSwitcher = ({ isOpen, onClose }: WorkspaceSwitcherProps) => {
           {/* Logout */}
           <button
             onClick={handleLogout}
-            className="flex w-full items-center gap-3 px-4 py-2.5 text-sm text-[#9CA3AF] hover:bg-[#1C1C1F] hover:text-[#FF453A] transition-colors"
+            className="flex w-full items-center gap-3 px-4 py-2.5 text-sm text-[var(--text-2)] hover:bg-[var(--surface-2)] hover:text-[#FF453A] transition-colors"
           >
-            <div className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md bg-[#242427]">
+            <div className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md bg-[var(--surface-3)]">
               <LogOut className="h-3.5 w-3.5" />
             </div>
             Logout
@@ -349,12 +349,12 @@ const OrgRow = ({ orgId: _orgId, orgName, isActive, onClick }: OrgRowProps) => (
     className={[
       'flex w-full items-center gap-3 px-4 py-2.5 text-sm transition-colors',
       isActive
-        ? 'bg-[#1C1C1F] text-[#F5F5F7]'
-        : 'text-[#9CA3AF] hover:bg-[#1C1C1F] hover:text-[#F5F5F7]',
+        ? 'bg-[var(--surface-2)] text-[var(--text)]'
+        : 'text-[var(--text-2)] hover:bg-[var(--surface-2)] hover:text-[var(--text)]',
     ].join(' ')}
   >
-    <div className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md bg-[#242427]">
-      <Building2 className="h-3.5 w-3.5 text-[#9CA3AF]" />
+    <div className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md bg-[var(--surface-3)]">
+      <Building2 className="h-3.5 w-3.5 text-[var(--text-2)]" />
     </div>
     <span className="flex-1 text-left truncate">{orgName}</span>
     {isActive && <Check className="h-3.5 w-3.5 flex-shrink-0 text-[#FF453A]" />}

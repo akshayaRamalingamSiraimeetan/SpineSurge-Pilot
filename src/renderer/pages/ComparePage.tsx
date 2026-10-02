@@ -1,9 +1,11 @@
+import { Search, Upload, Image as ImageIcon, ChevronRight, FolderOpen, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { X, Search, Upload, Image as ImageIcon, ChevronRight, FolderOpen } from "lucide-react";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useAppStore } from "@/lib/store/index";
 import { useNavigate, useLocation } from "react-router-dom";
 import CanvasWorkspace from "@/features/canvas/CanvasWorkspace";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { EmptyImport } from "@/pages/MainPage";
 import { ImportDialog } from "@/features/import-export/ImportDialog";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -29,7 +31,9 @@ const PanePicker = ({ side, label }: PanePickerProps) => {
     const { resolvedTheme } = useTheme();
     const isDark = resolvedTheme === "dark";
 
-    const { patients, setComparisonImage, comparison } = useAppStore();
+    const patients = useAppStore((s) => s.patients);
+    const setComparisonImage = useAppStore((s) => s.setComparisonImage);
+    const comparison = useAppStore((s) => s.comparison);
 
     const [step, setStep] = useState<PickerStep>("ROOT");
     const [query, setQuery] = useState("");
@@ -71,28 +75,28 @@ const PanePicker = ({ side, label }: PanePickerProps) => {
     const card = cn(
         "rounded-2xl border p-5 transition-all",
         isDark
-            ? "bg-[#141416] border-[#242427] text-[#F5F5F7]"
-            : "bg-white border-gray-200 text-slate-900",
+            ? "bg-[var(--surface)] border-[var(--border)] text-[var(--text)]"
+            : "bg-[var(--surface)] border-[var(--border)] text-[var(--text)]",
     );
 
     const btn = cn(
         "w-full flex items-center gap-3 rounded-xl p-3 text-left transition-all cursor-pointer",
         isDark
-            ? "hover:bg-[#1B1B1E] text-[#9CA3AF] hover:text-[#F5F5F7]"
-            : "hover:bg-gray-50 text-slate-600 hover:text-slate-900",
+            ? "hover:bg-[var(--surface-2)] text-[var(--text-2)] hover:text-[var(--text)]"
+            : "hover:bg-[var(--surface-2)] text-[var(--text-2)] hover:text-[var(--text)]",
     );
 
     return (
         <div className="absolute inset-0 z-30 flex items-center justify-center bg-black/60 backdrop-blur-sm">
             <div className={cn(
                 "w-[420px] max-h-[560px] flex flex-col shadow-2xl rounded-2xl border overflow-hidden",
-                isDark ? "bg-[#0A0A0B] border-[#242427]" : "bg-gray-50 border-gray-300",
+                isDark ? "bg-[var(--bg)] border-[var(--border)]" : "bg-[var(--surface-2)] border-[var(--border)]",
             )}>
 
                 {/* Header */}
                 <div className={cn(
                     "flex items-center justify-between px-5 py-4 border-b",
-                    isDark ? "border-[#242427]" : "border-gray-200",
+                    isDark ? "border-[var(--border)]" : "border-[var(--border)]",
                 )}>
                     <div>
                         {step !== "ROOT" && (
@@ -114,7 +118,7 @@ const PanePicker = ({ side, label }: PanePickerProps) => {
                             {step === "PATIENTS" && "Select Patient"}
                             {step === "STUDIES" && (selectedPatient?.name || "Select Study")}
                         </h3>
-                        <p className={cn("text-xs mt-0.5", isDark ? "text-[#6B7280]" : "text-slate-400")}>
+                        <p className={cn("text-xs mt-0.5", isDark ? "text-[var(--text-3)]" : "text-[var(--text-3)]")}>
                             {step === "ROOT" && `Choose a source for ${label}`}
                             {step === "PATIENTS" && "Pick a patient to browse their studies"}
                             {step === "STUDIES" && `Pick a scan to load into ${label}`}
@@ -122,7 +126,7 @@ const PanePicker = ({ side, label }: PanePickerProps) => {
                     </div>
                     <div className={cn(
                         "text-[10px] font-bold uppercase tracking-widest px-2 py-1 rounded-full",
-                        isDark ? "bg-[#242427] text-[#6B7280]" : "bg-gray-200 text-slate-400",
+                        isDark ? "bg-[var(--surface-3)] text-[var(--text-3)]" : "bg-[var(--surface-2)] text-[var(--text-3)]",
                     )}>
                         {label}
                     </div>
@@ -142,17 +146,17 @@ const PanePicker = ({ side, label }: PanePickerProps) => {
                                 <div className="flex items-center gap-3">
                                     <div className={cn(
                                         "h-10 w-10 rounded-xl flex items-center justify-center flex-shrink-0",
-                                        isDark ? "bg-[#242427] group-hover:bg-[rgba(255,69,58,0.12)]" : "bg-gray-100 group-hover:bg-red-50",
+                                        isDark ? "bg-[var(--surface-3)] group-hover:bg-[rgba(255,69,58,0.12)]" : "bg-[var(--surface)] group-hover:bg-red-50",
                                     )}>
                                         <FolderOpen className={cn("h-5 w-5", isDark ? "text-[#FF453A]" : "text-red-600")} />
                                     </div>
                                     <div className="flex-1 min-w-0">
                                         <div className="font-bold text-sm">Choose Existing Study</div>
-                                        <div className={cn("text-xs mt-0.5", isDark ? "text-[#6B7280]" : "text-slate-400")}>
+                                        <div className={cn("text-xs mt-0.5", isDark ? "text-[var(--text-3)]" : "text-[var(--text-3)]")}>
                                             Browse from patients already in the system
                                         </div>
                                     </div>
-                                    <ChevronRight className={cn("h-4 w-4 flex-shrink-0", isDark ? "text-[#6B7280]" : "text-slate-300")} />
+                                    <ChevronRight className={cn("h-4 w-4 flex-shrink-0", isDark ? "text-[var(--text-3)]" : "text-[var(--text-3)]")} />
                                 </div>
                             </button>
 
@@ -162,20 +166,20 @@ const PanePicker = ({ side, label }: PanePickerProps) => {
                                     <div className="flex items-center gap-3">
                                         <div className={cn(
                                             "h-10 w-10 rounded-xl flex items-center justify-center flex-shrink-0",
-                                            isDark ? "bg-[#242427] group-hover:bg-[rgba(255,69,58,0.12)]" : "bg-gray-100 group-hover:bg-red-50",
+                                            isDark ? "bg-[var(--surface-3)] group-hover:bg-[rgba(255,69,58,0.12)]" : "bg-[var(--surface)] group-hover:bg-red-50",
                                         )}>
                                             <Upload className={cn("h-5 w-5", isDark ? "text-[#FF453A]" : "text-red-600")} />
                                         </div>
                                         <div className="flex-1 min-w-0">
                                             <div className="font-bold text-sm">Import Local Image</div>
-                                            <div className={cn("text-xs mt-0.5", isDark ? "text-[#6B7280]" : "text-slate-400")}>
+                                            <div className={cn("text-xs mt-0.5", isDark ? "text-[var(--text-3)]" : "text-[var(--text-3)]")}>
                                                 Upload a file from your computer
-                                                <span className={cn("ml-2 text-[10px] font-bold", isDark ? "text-[#4B5563]" : "text-slate-300")}>
+                                                <span className={cn("ml-2 text-[10px] font-bold", isDark ? "text-[var(--text-3)]" : "text-[var(--text-3)]")}>
                                                     DICOM · JPG · PNG · TIFF
                                                 </span>
                                             </div>
                                         </div>
-                                        <ChevronRight className={cn("h-4 w-4 flex-shrink-0", isDark ? "text-[#6B7280]" : "text-slate-300")} />
+                                        <ChevronRight className={cn("h-4 w-4 flex-shrink-0", isDark ? "text-[var(--text-3)]" : "text-[var(--text-3)]")} />
                                     </div>
                                 </button>
                             </ImportDialog>
@@ -193,14 +197,14 @@ const PanePicker = ({ side, label }: PanePickerProps) => {
                                     placeholder="Search patients…"
                                     className={cn(
                                         "pl-9 h-8 text-sm",
-                                        isDark ? "bg-[#141416] border-[#242427]" : "bg-white border-gray-200",
+                                        isDark ? "bg-[var(--surface)] border-[var(--border)]" : "bg-[var(--surface)] border-[var(--border)]",
                                     )}
                                     autoFocus
                                 />
                             </div>
 
                             {filteredPatients.length === 0 && (
-                                <div className={cn("text-center py-8 text-sm", isDark ? "text-[#4B5563]" : "text-slate-400")}>
+                                <div className={cn("text-center py-8 text-sm", isDark ? "text-[var(--text-3)]" : "text-[var(--text-3)]")}>
                                     No patients found
                                 </div>
                             )}
@@ -221,13 +225,13 @@ const PanePicker = ({ side, label }: PanePickerProps) => {
                                     >
                                         <div className={cn(
                                             "h-8 w-8 rounded-full flex items-center justify-center font-bold text-sm flex-shrink-0",
-                                            isDark ? "bg-[#242427] text-[#FF453A]" : "bg-red-50 text-red-600",
+                                            isDark ? "bg-[var(--surface-3)] text-[#FF453A]" : "bg-red-50 text-red-600",
                                         )}>
                                             {(p.name || "?")[0].toUpperCase()}
                                         </div>
                                         <div className="flex-1 min-w-0">
                                             <div className="font-semibold text-sm truncate">{p.name}</div>
-                                            <div className={cn("text-xs", isDark ? "text-[#4B5563]" : "text-slate-400")}>
+                                            <div className={cn("text-xs", isDark ? "text-[var(--text-3)]" : "text-[var(--text-3)]")}>
                                                 {p.id} · {scanCount} scan{scanCount !== 1 ? "s" : ""}
                                             </div>
                                         </div>
@@ -242,7 +246,7 @@ const PanePicker = ({ side, label }: PanePickerProps) => {
                     {step === "STUDIES" && (
                         <div className="flex flex-col gap-3">
                             {allStudiesWithScans.length === 0 && (
-                                <div className={cn("text-center py-8 text-sm", isDark ? "text-[#4B5563]" : "text-slate-400")}>
+                                <div className={cn("text-center py-8 text-sm", isDark ? "text-[var(--text-3)]" : "text-[var(--text-3)]")}>
                                     No scans available for this patient
                                 </div>
                             )}
@@ -251,7 +255,7 @@ const PanePicker = ({ side, label }: PanePickerProps) => {
                                 <div key={study.id}>
                                     <div className={cn(
                                         "text-[10px] font-bold uppercase tracking-widest mb-1.5 px-1",
-                                        isDark ? "text-[#4B5563]" : "text-slate-300",
+                                        isDark ? "text-[var(--text-3)]" : "text-[var(--text-3)]",
                                     )}>
                                         {getStudyDisplayName(study)} · {study.acquisitionDate}
                                     </div>
@@ -263,13 +267,13 @@ const PanePicker = ({ side, label }: PanePickerProps) => {
                                         >
                                             <div className={cn(
                                                 "h-8 w-8 rounded-lg flex items-center justify-center flex-shrink-0",
-                                                isDark ? "bg-[#242427]" : "bg-gray-100",
+                                                isDark ? "bg-[var(--surface-3)]" : "bg-[var(--surface)]",
                                             )}>
                                                 <ImageIcon className={cn("h-4 w-4", isDark ? "text-[#FF453A]" : "text-red-600")} />
                                             </div>
                                             <div className="flex-1 min-w-0">
                                                 <div className="font-semibold text-sm truncate">{sc.type} · {sc.date}</div>
-                                                <div className={cn("text-[10px] font-mono truncate", isDark ? "text-[#4B5563]" : "text-slate-300")}>
+                                                <div className={cn("text-[10px] font-mono truncate", isDark ? "text-[var(--text-3)]" : "text-[var(--text-3)]")}>
                                                     {sc.id}
                                                 </div>
                                             </div>
@@ -287,40 +291,21 @@ const PanePicker = ({ side, label }: PanePickerProps) => {
 };
 
 /* ─────────────────────────────────────────────────────────────────────────────
-   ComparePage
+   ComparePage — Image A is the case (same image + measurements as Assessment
+   and Planning); Image B is the only separate pane and is saved with the case.
 ───────────────────────────────────────────────────────────────────────────── */
 const ComparePage = () => {
     const navigate = useNavigate();
     const location = useLocation();
-    const {
-        setComparisonMode,
-        toggleRightSidebar,
-        setActivePatient,
-        setActiveContextId,
-        setComparisonImage,
-        setComparisonMeasurements,
-        setComparisonImplants,
-        currentImage,
-        contextStates,
-        activeContextId,
-        comparison,
-        measurements,
-        implants
-    } = useAppStore();
+    const setComparisonMode  = useAppStore((s) => s.setComparisonMode);
+    const setActivePatient   = useAppStore((s) => s.setActivePatient);
+    const setActiveContextId = useAppStore((s) => s.setActiveContextId);
+    const currentImage       = useAppStore((s) => s.currentImage);
+    const isDicomMode        = useAppStore((s) => s.isDicomMode);
+    const imageB             = useAppStore((s) => s.comparison.right.image);
+    const [confirmReplace, setConfirmReplace] = useState(false);
 
-    // Resolve workspace image — mirrors CanvasWorkspace priority logic
-    const workspaceImage = useMemo(() => {
-        if (currentImage) return currentImage;
-        if (activeContextId) {
-            const ctxState = contextStates.find((s) => s.contextId === activeContextId);
-            if (ctxState?.currentImage) return ctxState.currentImage;
-        }
-        return null;
-    }, [currentImage, activeContextId, contextStates]);
-
-    // Deep link (?patientId=&contextId=): load the case FIRST, with its
-    // context, before anything is copied into the comparison panes (RPT-03/04).
-    const [deepLinkLoading, setDeepLinkLoading] = useState(false);
+    // Deep link (?patientId=&contextId=): load the case, then strip the params.
     useEffect(() => {
         const params = new URLSearchParams(location.search);
         const pId = params.get("patientId");
@@ -330,88 +315,75 @@ const ComparePage = () => {
         params.delete("contextId");
         const rest = params.toString();
         navigate({ pathname: location.pathname, search: rest ? `?${rest}` : "" }, { replace: true });
-        if (pId) {
-            setDeepLinkLoading(true);
-            void setActivePatient(pId, cId || undefined).finally(() => setDeepLinkLoading(false));
-        } else if (cId) {
-            setActiveContextId(cId);
-        }
+        if (pId) void setActivePatient(pId, cId || undefined);
+        else if (cId) setActiveContextId(cId);
     }, [location.search, location.pathname, navigate, setActivePatient, setActiveContextId]);
 
-    // Seed the LEFT pane from the active case — once per context. Switching
-    // patient/context clears `comparison` (caseState) so stale panes can't
-    // survive into another case.
-    const seededForRef = useRef<string | null>(null);
-    useEffect(() => {
-        if (deepLinkLoading || !workspaceImage) return;
-        const key = `${activeContextId ?? "untitled"}|${workspaceImage}`;
-        if (seededForRef.current === key) return;
-        seededForRef.current = key;
-        setComparisonImage("left", workspaceImage);
-        setComparisonMeasurements("left", measurements);
-        setComparisonImplants("left", implants);
-    }, [deepLinkLoading, workspaceImage, activeContextId, measurements, implants, setComparisonImage, setComparisonMeasurements, setComparisonImplants]);
-
-    // Comparison mode only lives on this page. Turning it off on unmount
-    // stops /workspace edits going into comparison panes (BUGS WS-14).
+    // Comparison mode lives only on this page.
     useEffect(() => {
         setComparisonMode(true);
-        return () => {
-            // Exception: going to the report tab keeps it for comparison reports.
-            if (!window.location.hash.includes("tab=report")) setComparisonMode(false);
-        };
+        return () => setComparisonMode(false);
     }, [setComparisonMode]);
 
-    const handleClose = () => {
-        setComparisonMode(false);
-        navigate("/dashboard");
-    };
+    if (isDicomMode) {
+        return (
+            <div className="h-full w-full flex items-center justify-center text-sm text-muted-foreground p-8 text-center">
+                Compare works with X-ray images. This case is a CT/MR series — use Planning for 3D work.
+            </div>
+        );
+    }
+
+    const paneLabel = (text: string, hint: string) => (
+        <div className="absolute top-2 left-2 z-20 flex items-center gap-1.5 px-2 py-1 rounded-lg bg-black/60 backdrop-blur-sm pointer-events-none">
+            <span className="text-[10px] font-bold uppercase tracking-widest text-white/80">{text}</span>
+            <span className="text-[9px] text-white/50">· {hint}</span>
+        </div>
+    );
 
     return (
-        <div id="comparison-container" className="flex flex-col h-full bg-background relative">
-            {/* Exit Button */}
-            <div className="absolute top-4 right-4 z-[100]">
-                <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-8 w-8 rounded-full bg-card/80 backdrop-blur-md border border-border/50 hover:bg-destructive hover:text-destructive-foreground hover:border-destructive text-muted-foreground transition-all shadow-lg"
-                    onClick={handleClose}
-                >
-                    <X className="h-4 w-4" />
-                </Button>
-            </div>
-
-            {/* Split Canvas Area */}
-            <div className="flex-1 flex overflow-hidden relative p-2 gap-2 mt-2">
-
-                {/* ── Left (View A) ───────────────────────────────────────── */}
-                <div className="flex-1 flex flex-col relative rounded-xl overflow-hidden border border-white/5">
-                    <div className="absolute top-2 left-2 z-20 flex items-center gap-1.5 px-2 py-1 rounded-lg bg-black/60 backdrop-blur-sm">
-                        <span className="text-[10px] font-bold uppercase tracking-widest text-white/70">View A</span>
-                        <span className="text-[9px] text-white/40">
-                            {workspaceImage ? "· Workspace" : "· Select image"}
-                        </span>
-                    </div>
+        <div className="flex h-full bg-background relative p-2 gap-2">
+            <div className="flex-1 flex flex-col relative rounded-xl overflow-hidden border border-[var(--border)]">
+                {paneLabel("Image A", "case image")}
+                {currentImage ? (
                     <CanvasWorkspace side="left" />
-                    {/*
-                        When the workspace has NO image, show the picker so the
-                        user can choose any study/file as Image A.
-                        When the workspace DOES have an image, the useEffect
-                        above auto-loads it — no picker needed.
-                    */}
-                    {!workspaceImage && <PanePicker side="left" label="View A" />}
-                </div>
-
-                {/* ── Right (View B) — always picker until image selected ── */}
-                <div className="flex-1 flex flex-col relative rounded-xl overflow-hidden border border-white/5">
-                    <div className="absolute top-2 left-2 z-20 flex items-center gap-1.5 px-2 py-1 rounded-lg bg-black/60 backdrop-blur-sm">
-                        <span className="text-[10px] font-bold uppercase tracking-widest text-white/70">View B</span>
-                        <span className="text-[9px] text-white/40">· Comparison</span>
+                ) : (
+                    <div className="flex-1 flex items-center justify-center">
+                        <EmptyImport title="No case image yet" hint="Image A is the case image shared with Assessment and Planning. Import it here or in Assessment." />
                     </div>
-                    <CanvasWorkspace side="right" />
-                    <PanePicker side="right" label="View B" />
-                </div>
+                )}
             </div>
+            <div className="flex-1 flex flex-col relative rounded-xl overflow-hidden border border-[var(--border)]">
+                {paneLabel("Image B", imageB ? "comparison" : "choose an image")}
+                {imageB && (
+                    <button
+                        onClick={() => setConfirmReplace(true)}
+                        className="absolute top-2 right-2 z-20 flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-black/60 hover:bg-black/80 text-[11px] font-semibold text-white/80 hover:text-white backdrop-blur-sm"
+                    >
+                        <RefreshCw className="h-3 w-3" /> Replace image
+                    </button>
+                )}
+                <CanvasWorkspace side="right" />
+                <PanePicker side="right" label="Image B" />
+            </div>
+
+            <Dialog open={confirmReplace} onOpenChange={setConfirmReplace}>
+                <DialogContent className="sm:max-w-sm">
+                    <DialogHeader>
+                        <DialogTitle>Replace Image B?</DialogTitle>
+                        <DialogDescription>Image B and its measurements will be removed so you can choose another image.</DialogDescription>
+                    </DialogHeader>
+                    <DialogFooter className="gap-2">
+                        <Button variant="outline" onClick={() => setConfirmReplace(false)}>Cancel</Button>
+                        <Button onClick={() => {
+                            const st = useAppStore.getState();
+                            st.setComparisonMeasurements('right', []);
+                            st.setComparisonImplants('right', []);
+                            st.setComparisonImage('right', null);
+                            setConfirmReplace(false);
+                        }}>Replace</Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
         </div>
     );
 };

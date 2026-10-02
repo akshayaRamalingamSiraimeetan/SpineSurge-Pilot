@@ -24,6 +24,7 @@ import {
 } from "lucide-react"
 import { useRef, useState, useMemo } from "react"
 import { useNavigate } from "react-router-dom"
+import { defaultStudyName } from "@/lib/store/types";
 import { useAppStore, Patient, Visit } from "@/lib/store/index";
 import { useTheme } from "@/components/theme-provider";
 import { cn } from "@/lib/utils";
@@ -49,9 +50,11 @@ interface ImportDialogProps {
     targetSide?: 'left' | 'right';
     resetOnOpen?: boolean;
     navigateOnImport?: boolean;
+    /** Start the wizard for this patient (Patients page "Add New Study"). */
+    presetPatientId?: string;
 }
 
-export function ImportDialog({ children, targetSide, resetOnOpen, navigateOnImport }: ImportDialogProps) {
+export function ImportDialog({ children, targetSide, resetOnOpen, navigateOnImport, presetPatientId }: ImportDialogProps) {
     const navigate = useNavigate();
     const { resolvedTheme } = useTheme();
     const isDark = resolvedTheme === "dark";
@@ -91,7 +94,9 @@ export function ImportDialog({ children, targetSide, resetOnOpen, navigateOnImpo
     const [isNewVisit, setIsNewVisit] = useState(false)
     const [importing, setImporting] = useState(false)
 
-    const importSide = isComparisonMode ? (targetSide || activeCanvasSide) : null;
+    // Only an explicit Image B import goes to the comparison pane; everything
+    // else is the case image (shared by Assessment, Planning and Compare A).
+    const importSide = isComparisonMode && targetSide === 'right' ? 'right' : null;
 
     const goToWorkspace = () => {
         if (navigateOnImport) navigate('/workspace');
@@ -139,10 +144,24 @@ export function ImportDialog({ children, targetSide, resetOnOpen, navigateOnImpo
         // Reset so picking the same file again still fires onChange.
         event.target.value = '';
 
-        if (isComparisonMode && importSide) {
-            setComparisonImage(importSide, URL.createObjectURL(file));
+        if (importSide === 'right') {
+            // Image B: upload to the open study so it is saved with the case.
+            const st = useAppStore.getState();
+            const studyId = st.contexts.find(c => c.id === st.activeContextId)?.studyIds?.[0];
+            if (st.activePatientId && studyId) {
+                try {
+                    const url = await addScan(st.activePatientId, studyId, {
+                        id: `scan-${crypto.randomUUID()}`, type: 'Post-op', date: format(new Date(), 'yyyy-MM-dd'),
+                    }, file);
+                    setComparisonImage('right', url);
+                } catch (err) {
+                    alert(`Could not upload Image B: ${err instanceof Error ? err.message : 'server error'}`);
+                    return;
+                }
+            } else {
+                setComparisonImage('right', URL.createObjectURL(file));
+            }
             handleClose();
-            goToWorkspace();
             return;
         }
 
@@ -151,10 +170,22 @@ export function ImportDialog({ children, targetSide, resetOnOpen, navigateOnImpo
         const activeCtx = contexts.find(c => c.id === activeContextId);
         const studyId = activeCtx?.studyIds?.[0];
 
-        if (activePatientId && activeCtx && studyId) {
-            // Inside an open study: the new image gets its OWN session in the
-            // same study, so the previous image's measurements never end up
-            // drawn on this one (BUGS CV-19).
+        const ctxImage = useAppStore.getState().contextStates.find(c => c.contextId === activeContextId)?.currentImage;
+        if (activePatientId && activeCtx && studyId && !ctxImage) {
+            // Open study without an image yet: attach the image to it.
+            try {
+                const imageUrl = await addScan(activePatientId, studyId, {
+                    id: `scan-${crypto.randomUUID()}`, type: 'Pre-op', date: format(new Date(), 'yyyy-MM-dd'),
+                }, file);
+                await updateContextState(activeCtx.id, { currentImage: imageUrl });
+                useAppStore.getState().loadImage(imageUrl);
+            } catch (err) {
+                alert(`Could not save this image to the study: ${err instanceof Error ? err.message : 'server error'}. Please try again.`);
+                return;
+            }
+        } else if (activePatientId && activeCtx && studyId) {
+            // Inside a study that already has an image: the new image gets its
+            // OWN session so measurements never move between images (CV-19).
             try {
                 const imageUrl = await addScan(activePatientId, studyId, {
                     id: `scan-${crypto.randomUUID()}`,
@@ -262,7 +293,8 @@ export function ImportDialog({ children, targetSide, resetOnOpen, navigateOnImpo
                 visitId: selectedVisit.id,
                 modality: 'X-Ray',
                 source: 'Import',
-                acquisitionDate: scanData.date
+                acquisitionDate: scanData.date,
+                name: defaultStudyName(scanData.type, new Date(scanData.date)),
             });
 
             const imageUrl = await addScan(selectedPatient.id, studyId, {
@@ -306,30 +338,34 @@ export function ImportDialog({ children, targetSide, resetOnOpen, navigateOnImpo
             setOpen(val);
             setActiveDialog(val ? 'import' : null);
             if (!val) resetWizard();
+            if (val && presetPatientId) {
+                const p = useAppStore.getState().patients.find((x) => x.id === presetPatientId);
+                if (p) { setSelectedPatient(p); setIsNewPatient(false); setStep('VISIT_CHOICE'); }
+            }
         }}>
             <DialogTrigger asChild>
                 {children}
             </DialogTrigger>
             <DialogContent className={cn(
-                "sm:max-w-[500px] p-0 overflow-hidden border shadow-[0_25px_50px_-12px_rgba(0,0,0,0.5)]",
+                "sm:max-w-[500px] p-0 overflow-hidden border",
                 isDark
-                    ? '!bg-[#141416] !text-[#F5F5F7] !border-[#242427]'
-                    : '!bg-gray-100 !text-slate-900 !border-gray-300'
+                    ? ''
+                    : ''
             )}>
                 {/* Header Section */}
                 <div className={cn(
                     "p-6 border-b",
                     isDark
-                        ? 'border-[#242427] bg-[#0A0A0B]'
-                        : 'border-gray-300 bg-gray-200'
+                        ? 'border-[var(--border)] bg-[var(--bg)]'
+                        : 'border-[var(--border)] bg-[var(--surface-2)]'
                 )}>
                     <div className="flex items-center gap-2 mb-1">
-                        {step !== 'MODE' && (
+                        {step !== 'MODE' && !(presetPatientId && step === 'VISIT_CHOICE') && (
                             <Button variant="ghost" size="icon" className={cn(
                                 "h-6 w-6",
                                 isDark
-                                    ? 'text-[#9CA3AF] hover:text-[#F5F5F7]'
-                                    : 'text-slate-600 hover:text-slate-900'
+                                    ? 'text-[var(--text-2)] hover:text-[var(--text)]'
+                                    : 'text-[var(--text-2)] hover:text-[var(--text)]'
                             )} onClick={() => {
                                 if (step === 'NEW_PATIENT' || step === 'SEARCH_PATIENT') setStep('MODE')
                                 else if (step === 'VISIT_CHOICE') setStep('SEARCH_PATIENT')
@@ -342,7 +378,7 @@ export function ImportDialog({ children, targetSide, resetOnOpen, navigateOnImpo
                                 <ChevronLeft className="h-4 w-4" />
                             </Button>
                         )}
-                        <DialogTitle className={cn("text-xl font-bold", isDark ? 'text-[#F5F5F7]' : 'text-slate-900')}>
+                        <DialogTitle className={cn("text-xl font-bold", isDark ? '' : '')}>
                             {step === 'MODE' && "Create New Study"}
                             {step === 'NEW_PATIENT' && "New Patient Record"}
                             {step === 'SEARCH_PATIENT' && "Select Patient"}
@@ -352,7 +388,7 @@ export function ImportDialog({ children, targetSide, resetOnOpen, navigateOnImpo
                             {step === 'SCAN_UPLOAD' && "Upload & Categorize"}
                         </DialogTitle>
                     </div>
-                    <DialogDescription className={isDark ? 'text-[#9CA3AF]/80' : 'text-slate-600'}>
+                    <DialogDescription className={isDark ? 'text-[var(--text-2)]/80' : ''}>
                         {step === 'MODE' && (isComparisonMode ? `Importing scan for View ${(importSide || 'left') === 'left' ? 'A' : 'B'}` : "Import images to create a new study and start planning.")}
                         {step === 'SEARCH_PATIENT' && "Find an existing patient record."}
                         {step === 'VISIT_CHOICE' && `Patient: ${selectedPatient?.name}`}
@@ -386,7 +422,7 @@ export function ImportDialog({ children, targetSide, resetOnOpen, navigateOnImpo
                             {/* Section label */}
                             <p className={cn(
                                 "text-xs font-bold uppercase tracking-widest pb-2",
-                                isDark ? "text-[#9CA3AF]/50" : "text-slate-400"
+                                isDark ? "text-[var(--text-2)]/50" : "text-[var(--text-3)]"
                             )}>
                                 Choose Import Source
                             </p>
@@ -438,11 +474,11 @@ export function ImportDialog({ children, targetSide, resetOnOpen, navigateOnImpo
                             {/* Footer info + cancel */}
                             <div className={cn(
                                 "flex items-center justify-between pt-4 mt-2 border-t",
-                                isDark ? "border-[#242427]" : "border-gray-200"
+                                isDark ? "border-[var(--border)]" : "border-[var(--border)]"
                             )}>
                                 <div className="flex items-center gap-1.5">
-                                    <HelpCircle className={cn("h-3.5 w-3.5 flex-shrink-0", isDark ? "text-[#9CA3AF]/40" : "text-slate-400")} />
-                                    <span className={cn("text-[11px]", isDark ? "text-[#9CA3AF]/50" : "text-slate-500")}>
+                                    <HelpCircle className={cn("h-3.5 w-3.5 flex-shrink-0", isDark ? "text-[var(--text-2)]/40" : "text-[var(--text-3)]")} />
+                                    <span className={cn("text-[11px]", isDark ? "text-[var(--text-2)]/50" : "text-[var(--text-2)]")}>
                                         Supported: DICOM, JPG, PNG, TIFF, BMP and more.
                                     </span>
                                 </div>
@@ -452,8 +488,8 @@ export function ImportDialog({ children, targetSide, resetOnOpen, navigateOnImpo
                                     className={cn(
                                         "text-xs rounded-xl h-8 px-4",
                                         isDark
-                                            ? "border-[#242427] text-[#9CA3AF] hover:bg-[#1B1B1E] hover:text-[#F5F5F7]"
-                                            : "border-gray-300 text-slate-600 hover:bg-gray-100"
+                                            ? "border-[var(--border)] text-[var(--text-2)] hover:bg-[var(--surface-2)] hover:text-[var(--text)]"
+                                            : "border-[var(--border)] text-[var(--text-2)] hover:bg-[var(--surface)]"
                                     )}
                                     onClick={handleClose}
                                 >
@@ -468,25 +504,25 @@ export function ImportDialog({ children, targetSide, resetOnOpen, navigateOnImpo
                         <div className="space-y-4">
                             <div className="grid grid-cols-2 gap-4">
                                 <FormItem label="Full Name" placeholder="Dr. John Doe">
-                                    <Input value={patientData.name} onChange={e => setPatientData({ ...patientData, name: e.target.value })} className={cn("h-10 rounded-xl font-bold", isDark ? "bg-[#0A0A0B]/70 border-[#242427] text-[#F5F5F7] placeholder:text-[#9CA3AF] focus:ring-[#FF453A]/20 focus:border-[#FF453A]/50" : "bg-gray-100 border-gray-300 text-slate-900 placeholder:text-slate-400 focus:ring-blue-400/20 focus:border-blue-400/50")} />
+                                    <Input value={patientData.name} onChange={e => setPatientData({ ...patientData, name: e.target.value })} className={cn("h-10 rounded-xl font-bold", isDark ? "bg-[var(--bg)]/70 border-[var(--border)] text-[var(--text)] placeholder:text-[var(--text-2)] focus:ring-[#FF453A]/20 focus:border-[#FF453A]/50" : "bg-[var(--surface)] border-[var(--border)] text-[var(--text)] placeholder:text-[var(--text-3)] focus:ring-blue-400/20 focus:border-blue-400/50")} />
                                 </FormItem>
                                 <FormItem label="Patient ID (Optional)" placeholder="Auto-generated">
-                                    <Input value={patientData.id} onChange={e => setPatientData({ ...patientData, id: e.target.value })} className={cn("h-10 rounded-xl font-bold", isDark ? "bg-[#0A0A0B]/70 border-[#242427] text-[#F5F5F7] placeholder:text-[#9CA3AF] focus:ring-[#FF453A]/20 focus:border-[#FF453A]/50" : "bg-gray-100 border-gray-300 text-slate-900 placeholder:text-slate-400 focus:ring-blue-400/20 focus:border-blue-400/50")} />
+                                    <Input value={patientData.id} onChange={e => setPatientData({ ...patientData, id: e.target.value })} className={cn("h-10 rounded-xl font-bold", isDark ? "bg-[var(--bg)]/70 border-[var(--border)] text-[var(--text)] placeholder:text-[var(--text-2)] focus:ring-[#FF453A]/20 focus:border-[#FF453A]/50" : "bg-[var(--surface)] border-[var(--border)] text-[var(--text)] placeholder:text-[var(--text-3)] focus:ring-blue-400/20 focus:border-blue-400/50")} />
                                 </FormItem>
                             </div>
                             <div className="grid grid-cols-3 gap-4">
                                 <FormItem label="Age">
-                                    <Input type="number" value={patientData.age} onChange={e => setPatientData({ ...patientData, age: e.target.value })} className={cn("h-10 rounded-xl font-bold", isDark ? "bg-[#0A0A0B]/70 border-[#242427] text-[#F5F5F7] placeholder:text-[#9CA3AF] focus:ring-[#FF453A]/20 focus:border-[#FF453A]/50" : "bg-gray-100 border-gray-300 text-slate-900 placeholder:text-slate-400 focus:ring-blue-400/20 focus:border-blue-400/50")} />
+                                    <Input type="number" value={patientData.age} onChange={e => setPatientData({ ...patientData, age: e.target.value })} className={cn("h-10 rounded-xl font-bold", isDark ? "bg-[var(--bg)]/70 border-[var(--border)] text-[var(--text)] placeholder:text-[var(--text-2)] focus:ring-[#FF453A]/20 focus:border-[#FF453A]/50" : "bg-[var(--surface)] border-[var(--border)] text-[var(--text)] placeholder:text-[var(--text-3)] focus:ring-blue-400/20 focus:border-blue-400/50")} />
                                 </FormItem>
                                 <FormItem label="Sex">
-                                    <select value={patientData.gender} onChange={e => setPatientData({ ...patientData, gender: e.target.value })} className={cn("w-full border rounded-xl h-10 px-3 text-sm outline-none font-bold", isDark ? "bg-[#0A0A0B]/70 border-[#242427] text-[#F5F5F7] focus:ring-1 focus:ring-[#FF453A]/30" : "bg-gray-100 border-gray-300 text-slate-900 focus:ring-1 focus:ring-blue-400/30")}>
+                                    <select value={patientData.gender} onChange={e => setPatientData({ ...patientData, gender: e.target.value })} className={cn("w-full border rounded-xl h-10 px-3 text-sm outline-none font-bold", isDark ? "bg-[var(--bg)]/70 border-[var(--border)] text-[var(--text)] focus:ring-1 focus:ring-[#FF453A]/30" : "bg-[var(--surface)] border-[var(--border)] text-[var(--text)] focus:ring-1 focus:ring-blue-400/30")}>
                                         <option value="M">Male</option>
                                         <option value="F">Female</option>
                                         <option value="O">Other</option>
                                     </select>
                                 </FormItem>
                                 <FormItem label="DOB">
-                                    <Input type="date" value={patientData.dob} onChange={e => setPatientData({ ...patientData, dob: e.target.value })} className={cn("h-10 rounded-xl font-bold", isDark ? "bg-[#0A0A0B]/70 border-[#242427] text-[#F5F5F7] focus:ring-[#FF453A]/20 focus:border-[#FF453A]/50" : "bg-gray-100 border-gray-300 text-slate-900 focus:ring-blue-400/20 focus:border-blue-400/50")} />
+                                    <Input type="date" value={patientData.dob} onChange={e => setPatientData({ ...patientData, dob: e.target.value })} className={cn("h-10 rounded-xl font-bold", isDark ? "bg-[var(--bg)]/70 border-[var(--border)] text-[var(--text)] focus:ring-[#FF453A]/20 focus:border-[#FF453A]/50" : "bg-[var(--surface)] border-[var(--border)] text-[var(--text)] focus:ring-blue-400/20 focus:border-blue-400/50")} />
                                 </FormItem>
                             </div>
                             <Button className="w-full bg-[#FF453A] hover:bg-[#e03d33] mt-4 h-11 text-white font-bold rounded-xl shadow-[0_1px_2px_rgba(0,0,0,.04),0_8px_24px_rgba(0,0,0,.08)]" onClick={handleCreatePatient} disabled={!patientData.name || !patientData.age}>
@@ -499,18 +535,18 @@ export function ImportDialog({ children, targetSide, resetOnOpen, navigateOnImpo
                     {step === 'SEARCH_PATIENT' && (
                         <div className="space-y-4">
                             <div className="relative">
-                                <SearchIcon className={cn("absolute left-3 top-3 h-4 w-4", isDark ? "text-[#9CA3AF]/50" : "text-slate-500/70")} />
+                                <SearchIcon className={cn("absolute left-3 top-3 h-4 w-4", isDark ? "text-[var(--text-2)]/50" : "text-[var(--text-2)]/70")} />
                                 <Input
                                     placeholder="Search by name or ID..."
-                                    className={cn("pl-9", isDark ? "bg-[#0A0A0B]/70 border-[#242427] text-[#F5F5F7] placeholder:text-[#9CA3AF] focus:border-[#FF453A]/50 focus:ring-[#FF453A]/20" : "bg-gray-100 border-gray-300 text-slate-900 placeholder:text-slate-400 focus:border-blue-400/50 focus:ring-blue-400/20")}
+                                    className={cn("pl-9", isDark ? "bg-[var(--bg)]/70 border-[var(--border)] text-[var(--text)] placeholder:text-[var(--text-2)] focus:border-[#FF453A]/50 focus:ring-[#FF453A]/20" : "bg-[var(--surface)] border-[var(--border)] text-[var(--text)] placeholder:text-[var(--text-3)] focus:border-blue-400/50 focus:ring-blue-400/20")}
                                     value={searchQuery}
                                     onChange={e => setSearchQuery(e.target.value)}
                                     autoFocus
                                 />
                             </div>
-                            <ScrollArea className={cn("h-[280px] rounded-xl border p-2", isDark ? "border-[#242427] bg-[#0A0A0B]/40" : "border-gray-300 bg-gray-100")}>
+                            <ScrollArea className={cn("h-[280px] rounded-xl border p-2", isDark ? "border-[var(--border)] bg-[var(--bg)]/40" : "border-[var(--border)] bg-[var(--surface)]")}>
                                 {filteredPatients.length === 0 ? (
-                                    <div className={cn("flex flex-col items-center justify-center h-full opacity-50", isDark ? "text-[#9CA3AF]/40" : "text-slate-500")}>
+                                    <div className={cn("flex flex-col items-center justify-center h-full opacity-50", isDark ? "text-[var(--text-2)]/40" : "text-[var(--text-2)]")}>
                                         <Users className="h-8 w-8 mb-2" />
                                         <p className="text-xs">No patients found</p>
                                     </div>
@@ -519,14 +555,14 @@ export function ImportDialog({ children, targetSide, resetOnOpen, navigateOnImpo
                                         {filteredPatients.map(p => (
                                             <button
                                                 key={p.id}
-                                                className="flex items-center justify-between p-3 rounded-lg hover:bg-[#1B1B1E] hover:border-[#3a3a3d] border border-transparent transition-all text-left"
+                                                className="flex items-center justify-between p-3 rounded-lg hover:bg-[var(--surface-2)] hover:border-[var(--border-strong)] border border-transparent transition-all text-left"
                                                 onClick={() => { setSelectedPatient(p); setIsNewPatient(false); setStep('VISIT_CHOICE'); }}
                                             >
                                                 <div>
-                                                    <div className="text-sm font-bold text-[#F5F5F7]">{p.name || 'Unknown Patient'}</div>
-                                                    <div className="text-[10px] text-[#9CA3AF]/50 font-mono">{p.id || 'N/A'} • {p.age ?? '--'}y {p.gender || 'O'}</div>
+                                                    <div className="text-sm font-bold text-[var(--text)]">{p.name || 'Unknown Patient'}</div>
+                                                    <div className="text-[10px] text-[var(--text-2)]/50 font-mono">{p.id || 'N/A'} • {p.age ?? '--'}y {p.gender || 'O'}</div>
                                                 </div>
-                                                <div className="text-[10px] text-[#9CA3AF]/50">Last: {p.lastVisit || 'N/A'}</div>
+                                                <div className="text-[10px] text-[var(--text-2)]/50">Last: {p.lastVisit || 'N/A'}</div>
                                             </button>
                                         ))}
                                     </div>
@@ -560,18 +596,18 @@ export function ImportDialog({ children, targetSide, resetOnOpen, navigateOnImpo
                     {step === 'NEW_VISIT' && (
                         <div className="space-y-4">
                             <FormItem label="Initial Diagnosis">
-                                <Input value={visitData.diagnosis} onChange={e => setVisitData({ ...visitData, diagnosis: e.target.value })} placeholder="e.g. Spondylolisthesis" className="bg-[#141416]/70 border-[#242427] text-slate-100 placeholder:text-[#9CA3AF]/30 h-10 rounded-xl focus:border-[#FF453A]/50" />
+                                <Input value={visitData.diagnosis} onChange={e => setVisitData({ ...visitData, diagnosis: e.target.value })} placeholder="e.g. Spondylolisthesis" className="bg-[var(--surface)]/70 border-[var(--border)] text-slate-100 placeholder:text-[var(--text-2)]/30 h-10 rounded-xl focus:border-[#FF453A]/50" />
                             </FormItem>
                             <div className="grid grid-cols-2 gap-4">
                                 <FormItem label="Height (cm)">
-                                    <Input type="number" value={visitData.height} onChange={e => setVisitData({ ...visitData, height: e.target.value })} className="bg-[#141416]/70 border-[#242427] text-slate-100 h-10 rounded-xl focus:border-[#FF453A]/50" />
+                                    <Input type="number" value={visitData.height} onChange={e => setVisitData({ ...visitData, height: e.target.value })} className="bg-[var(--surface)]/70 border-[var(--border)] text-slate-100 h-10 rounded-xl focus:border-[#FF453A]/50" />
                                 </FormItem>
                                 <FormItem label="Weight (kg)">
-                                    <Input type="number" value={visitData.weight} onChange={e => setVisitData({ ...visitData, weight: e.target.value })} className="bg-[#141416]/70 border-[#242427] text-slate-100 h-10 rounded-xl focus:border-[#FF453A]/50" />
+                                    <Input type="number" value={visitData.weight} onChange={e => setVisitData({ ...visitData, weight: e.target.value })} className="bg-[var(--surface)]/70 border-[var(--border)] text-slate-100 h-10 rounded-xl focus:border-[#FF453A]/50" />
                                 </FormItem>
                             </div>
                             <FormItem label="Clinical Notes">
-                                <Textarea value={visitData.comments} onChange={e => setVisitData({ ...visitData, comments: e.target.value })} className="bg-[#141416]/70 border-[#242427] text-slate-100 placeholder:text-[#9CA3AF]/30 min-h-[80px] rounded-xl resize-none focus:border-[#FF453A]/50" />
+                                <Textarea value={visitData.comments} onChange={e => setVisitData({ ...visitData, comments: e.target.value })} className="bg-[var(--surface)]/70 border-[var(--border)] text-slate-100 placeholder:text-[var(--text-2)]/30 min-h-[80px] rounded-xl resize-none focus:border-[#FF453A]/50" />
                             </FormItem>
                             <Button className="w-full bg-[#FF453A] hover:bg-[#e03d33] h-11 text-white font-bold rounded-xl shadow-[0_1px_2px_rgba(0,0,0,.04),0_8px_24px_rgba(0,0,0,.08)]" onClick={handleCreateVisit}>
                                 Next: Upload Scans <ArrowRight className="ml-2 h-4 w-4" />
@@ -581,20 +617,20 @@ export function ImportDialog({ children, targetSide, resetOnOpen, navigateOnImpo
 
                     {/* Step: SELECT_VISIT */}
                     {step === 'SELECT_VISIT' && (
-                        <ScrollArea className="h-[300px] border border-[#242427] rounded-xl p-2 bg-[#141416]/70">
+                        <ScrollArea className="h-[300px] border border-[var(--border)] rounded-xl p-2 bg-[var(--surface)]/70">
                             <div className="grid gap-2">
                                 {(selectedPatient?.visits || []).map(v => (
                                     <button
                                         key={v.id}
-                                        className="p-3 text-left border border-[#242427] rounded-xl hover:bg-[#1B1B1E] hover:border-[#3a3a3d] transition-all group"
+                                        className="p-3 text-left border border-[var(--border)] rounded-xl hover:bg-[var(--surface-2)] hover:border-[var(--border-strong)] transition-all group"
                                         onClick={() => { setSelectedVisit(v); setIsNewVisit(false); setStep('SCAN_UPLOAD'); }}
                                     >
                                         <div className="flex justify-between items-start mb-1">
                                             <span className="text-xs font-bold text-[#FF453A]">{v.visitNumber}</span>
-                                            <span className="text-[10px] text-[#9CA3AF]/50 font-medium">{v.date}</span>
+                                            <span className="text-[10px] text-[var(--text-2)]/50 font-medium">{v.date}</span>
                                         </div>
-                                        <div className="text-sm font-bold text-[#F5F5F7] truncate">{v.diagnosis}</div>
-                                        <div className="text-[10px] text-[#9CA3AF]/40 mt-1 italic font-medium">{v.consultants}</div>
+                                        <div className="text-sm font-bold text-[var(--text)] truncate">{v.diagnosis}</div>
+                                        <div className="text-[10px] text-[var(--text-2)]/40 mt-1 italic font-medium">{v.consultants}</div>
                                     </button>
                                 ))}
                             </div>
@@ -607,14 +643,14 @@ export function ImportDialog({ children, targetSide, resetOnOpen, navigateOnImpo
                             <div className="flex gap-4 justify-center">
                                 <Button
                                     variant={scanData.type === 'Pre-op' ? 'default' : 'outline'}
-                                    className={cn("flex-1 rounded-xl font-bold h-10", scanData.type === 'Pre-op' ? 'bg-[#FF453A] text-white hover:bg-[#e03d33]' : 'border-[#242427] text-[#9CA3AF] hover:bg-[#1B1B1E]')}
+                                    className={cn("flex-1 rounded-xl font-bold h-10", scanData.type === 'Pre-op' ? 'bg-[#FF453A] text-white hover:bg-[#e03d33]' : 'border-[var(--border)] text-[var(--text-2)] hover:bg-[var(--surface-2)]')}
                                     onClick={() => setScanData({ ...scanData, type: 'Pre-op' })}
                                 >
                                     Pre-op
                                 </Button>
                                 <Button
                                     variant={scanData.type === 'Post-op' ? 'default' : 'outline'}
-                                    className={cn("flex-1 rounded-xl font-bold h-10", scanData.type === 'Post-op' ? 'bg-[#FF453A] text-white hover:bg-[#e03d33]' : 'border-[#242427] text-[#9CA3AF] hover:bg-[#1B1B1E]')}
+                                    className={cn("flex-1 rounded-xl font-bold h-10", scanData.type === 'Post-op' ? 'bg-[#FF453A] text-white hover:bg-[#e03d33]' : 'border-[var(--border)] text-[var(--text-2)] hover:bg-[var(--surface-2)]')}
                                     onClick={() => setScanData({ ...scanData, type: 'Post-op' })}
                                 >
                                     Post-op
@@ -622,7 +658,7 @@ export function ImportDialog({ children, targetSide, resetOnOpen, navigateOnImpo
                             </div>
 
                             <div
-                                className="border-2 border-dashed border-[#242427] rounded-2xl p-10 flex flex-col items-center justify-center cursor-pointer hover:border-[#FF453A]/50 hover:bg-[#FF453A]/5 transition-all text-[#9CA3AF]/50 group"
+                                className="border-2 border-dashed border-[var(--border)] rounded-2xl p-10 flex flex-col items-center justify-center cursor-pointer hover:border-[#FF453A]/50 hover:bg-[#FF453A]/5 transition-all text-[var(--text-2)]/50 group"
                                 onClick={() => fileInputRef.current?.click()}
                             >
                                 <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={(e) => setSelectedFile(e.target.files?.[0] || null)} />
@@ -631,21 +667,21 @@ export function ImportDialog({ children, targetSide, resetOnOpen, navigateOnImpo
                                         <div className="bg-[rgba(255,69,58,0.12)] p-3 rounded-full mb-3">
                                             <ImageIcon className="h-8 w-8 text-[#FF453A]" />
                                         </div>
-                                        <span className="text-sm font-bold text-[#F5F5F7]">{selectedFile.name}</span>
-                                        <span className="text-xs font-medium text-[#9CA3AF]/50">{(selectedFile.size / 1024 / 1024).toFixed(2)} MB</span>
+                                        <span className="text-sm font-bold text-[var(--text)]">{selectedFile.name}</span>
+                                        <span className="text-xs font-medium text-[var(--text-2)]/50">{(selectedFile.size / 1024 / 1024).toFixed(2)} MB</span>
                                     </div>
                                 ) : (
                                     <>
                                         <Upload className="h-10 w-10 mb-3 group-hover:scale-110 group-hover:text-[#FF453A] transition-all opacity-40" />
-                                        <span className="text-sm font-medium text-[#9CA3AF]/60">Click to select Scan image</span>
-                                        <span className="text-[10px] mt-1 text-[#9CA3AF]/30">DICOM, JPG, PNG supported</span>
+                                        <span className="text-sm font-medium text-[var(--text-2)]/60">Click to select Scan image</span>
+                                        <span className="text-[10px] mt-1 text-[var(--text-2)]/30">DICOM, JPG, PNG supported</span>
                                     </>
                                 )}
                             </div>
 
                             <div className="grid grid-cols-4 items-center gap-4">
-                                <Label className="text-right text-[#9CA3AF]/60 text-xs uppercase font-bold pr-2 border-r border-[#242427] h-full flex items-center justify-end">Scan Date</Label>
-                                <Input type="date" value={scanData.date} onChange={e => setScanData({ ...scanData, date: e.target.value })} className="col-span-3 bg-[#141416]/70 border-[#242427] text-slate-100 h-10 rounded-xl font-bold focus:border-[#FF453A]/50" />
+                                <Label className="text-right text-[var(--text-2)]/60 text-xs uppercase font-bold pr-2 border-r border-[var(--border)] h-full flex items-center justify-end">Scan Date</Label>
+                                <Input type="date" value={scanData.date} onChange={e => setScanData({ ...scanData, date: e.target.value })} className="col-span-3 bg-[var(--surface)]/70 border-[var(--border)] text-slate-100 h-10 rounded-xl font-bold focus:border-[#FF453A]/50" />
                             </div>
 
                             <Button
@@ -670,8 +706,8 @@ function ModeButton({ icon: Icon, title, desc, onClick, disabled = false, isDark
             className={cn(
                 "h-auto py-4 px-5 justify-start gap-4 transition-all group rounded-2xl",
                 isDark
-                    ? "bg-[#0A0A0B]/60 border-[#242427] hover:bg-[#1B1B1E] hover:border-[#3a3a3d] text-[#F5F5F7]"
-                    : "bg-gray-200 border-gray-300 hover:bg-gray-300 hover:border-gray-400 text-slate-900"
+                    ? "bg-[var(--bg)]/60 border-[var(--border)] hover:bg-[var(--surface-2)] hover:border-[var(--border-strong)] text-[var(--text)]"
+                    : "bg-[var(--surface-2)] border-[var(--border)] hover:bg-[var(--surface-3)] hover:border-[var(--border-strong)] text-[var(--text)]"
             )}
             onClick={onClick}
             disabled={disabled}
@@ -685,11 +721,11 @@ function ModeButton({ icon: Icon, title, desc, onClick, disabled = false, isDark
             <div className="text-left">
                 <div className={cn(
                     "text-sm font-bold transition-colors",
-                    isDark ? "text-[#F5F5F7] group-hover:text-[#FF453A]" : "text-slate-900 group-hover:text-slate-900"
+                    isDark ? "text-[var(--text)] group-hover:text-[#FF453A]" : "text-[var(--text)] group-hover:text-[var(--text)]"
                 )}>{title}</div>
                 <div className={cn(
                     "text-[10px] font-medium",
-                    isDark ? "text-[#9CA3AF]/50" : "text-slate-600"
+                    isDark ? "text-[var(--text-2)]/50" : "text-[var(--text-2)]"
                 )}>{desc}</div>
             </div>
         </Button>
@@ -731,15 +767,15 @@ function ImportSourceCard({
                 "w-full text-left flex items-center gap-4 p-4 rounded-2xl border transition-all group relative",
                 isDark
                     ? isDisabled
-                        ? "bg-[#0A0A0B]/30 border-[#242427] opacity-50 cursor-not-allowed"
+                        ? "bg-[var(--bg)]/30 border-[var(--border)] opacity-50 cursor-not-allowed"
                         : comingSoon
-                            ? "bg-[#141416] border-[#242427] hover:border-[#3a3a3d] hover:bg-[#1B1B1E] cursor-pointer"
-                            : "bg-[#141416] border-[#242427] hover:border-[#FF453A]/40 hover:bg-[#1B1B1E] cursor-pointer"
+                            ? "bg-[var(--surface)] border-[var(--border)] hover:border-[var(--border-strong)] hover:bg-[var(--surface-2)] cursor-pointer"
+                            : "bg-[var(--surface)] border-[var(--border)] hover:border-[#FF453A]/40 hover:bg-[var(--surface-2)] cursor-pointer"
                     : isDisabled
-                        ? "bg-gray-50 border-gray-200 opacity-50 cursor-not-allowed"
+                        ? "bg-[var(--surface-2)] border-[var(--border)] opacity-50 cursor-not-allowed"
                         : comingSoon
-                            ? "bg-white border-gray-200 hover:border-gray-300 hover:bg-gray-50 cursor-pointer shadow-sm"
-                            : "bg-white border-gray-200 hover:border-red-200 hover:bg-red-50/20 cursor-pointer shadow-sm"
+                            ? "bg-[var(--surface)] border-[var(--border)] hover:border-[var(--border)] hover:bg-[var(--surface-2)] cursor-pointer shadow-sm"
+                            : "bg-[var(--surface)] border-[var(--border)] hover:border-red-200 hover:bg-red-50/20 cursor-pointer shadow-sm"
             )}
         >
             {/* Icon block */}
@@ -767,8 +803,8 @@ function ImportSourceCard({
                     <span className={cn(
                         "font-bold text-sm",
                         isDark
-                            ? comingSoon ? "text-[#F5F5F7]/50" : "text-[#F5F5F7]"
-                            : comingSoon ? "text-slate-400" : "text-slate-900"
+                            ? comingSoon ? "text-[var(--text)]/50" : "text-[var(--text)]"
+                            : comingSoon ? "text-[var(--text-3)]" : "text-[var(--text)]"
                     )}>
                         {title}
                     </span>
@@ -776,8 +812,8 @@ function ImportSourceCard({
                         <span className={cn(
                             "text-[9px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-full",
                             isDark
-                                ? "bg-[#242427] text-[#9CA3AF]/60"
-                                : "bg-gray-100 text-slate-400"
+                                ? "bg-[var(--surface-3)] text-[var(--text-2)]/60"
+                                : "bg-[var(--surface)] text-[var(--text-3)]"
                         )}>
                             {comingSoonLabel ?? "Coming Soon"}
                         </span>
@@ -786,8 +822,8 @@ function ImportSourceCard({
                 <p className={cn(
                     "text-[11px] leading-relaxed mb-2",
                     isDark
-                        ? comingSoon ? "text-[#9CA3AF]/30" : "text-[#9CA3AF]/60"
-                        : comingSoon ? "text-slate-300" : "text-slate-500"
+                        ? comingSoon ? "text-[var(--text-2)]/30" : "text-[var(--text-2)]/60"
+                        : comingSoon ? "text-[var(--text-3)]" : "text-[var(--text-2)]"
                 )}>
                     {description}
                 </p>
@@ -799,10 +835,10 @@ function ImportSourceCard({
                                 "text-[10px] font-medium px-2 py-0.5 rounded-full",
                                 isDark
                                     ? comingSoon
-                                        ? "bg-[#1B1B1E] text-[#9CA3AF]/30"
+                                        ? "bg-[var(--surface-2)] text-[var(--text-2)]/30"
                                         : "bg-[rgba(255,69,58,0.12)] text-[#FF453A]/80"
                                     : comingSoon
-                                        ? "bg-gray-50 text-gray-300 border border-gray-100"
+                                        ? "bg-[var(--surface-2)] text-gray-300 border border-gray-100"
                                         : "bg-red-50 text-red-500 border border-red-100"
                             )}
                         >
@@ -817,8 +853,8 @@ function ImportSourceCard({
                 "flex-shrink-0 h-4 w-4 transition-all",
                 isDark
                     ? comingSoon
-                        ? "text-[#9CA3AF]/20"
-                        : "text-[#9CA3AF]/40 group-hover:text-[#FF453A] group-hover:translate-x-0.5"
+                        ? "text-[var(--text-2)]/20"
+                        : "text-[var(--text-2)]/40 group-hover:text-[#FF453A] group-hover:translate-x-0.5"
                     : comingSoon
                         ? "text-gray-200"
                         : "text-gray-300 group-hover:text-[#FF453A] group-hover:translate-x-0.5"
@@ -830,7 +866,7 @@ function ImportSourceCard({
 function FormItem({ label, children }: any) {
     return (
         <div className="space-y-1.5 flex-1">
-            <Label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider ml-1 dark:text-[#9CA3AF]/60">{label}</Label>
+            <Label className="text-[10px] font-bold text-[var(--text-2)] uppercase tracking-wider ml-1 dark:text-[var(--text-2)]/60">{label}</Label>
             {children}
         </div>
     )

@@ -29,21 +29,21 @@ export const ShareDialog = () => {
     return (
         <Dialog open={shareDialogOpen} onOpenChange={setShareDialogOpen}>
             <DialogContent className={cn(
-                "sm:max-w-[425px] rounded-3xl shadow-2xl",
+                "sm:max-w-[425px] rounded-3xl",
                 isDark
-                    ? "!border-[#242427] !bg-[#141416] !text-[#F5F5F7]"
-                    : "!border-gray-300 !bg-gray-100 !text-slate-900"
+                    ? ""
+                    : ""
             )}>
                 <DialogHeader>
                     <div className="flex items-center gap-3 mb-2">
-                        <div className={cn("h-10 w-10 rounded-2xl flex items-center justify-center", isDark ? "bg-primary/10 text-primary" : "bg-blue-100 text-blue-600")}>
+                        <div className={cn("h-10 w-10 rounded-2xl flex items-center justify-center", isDark ? "bg-primary/10 text-primary" : "bg-[var(--accent-soft)] text-[var(--accent)]")}>
                             <Share2 className="h-5 w-5" />
                         </div>
                         <div>
-                            <DialogTitle className={cn("text-xl font-bold tracking-tight", isDark ? "text-[#F5F5F7]" : "text-slate-900")}>
+                            <DialogTitle className={cn("text-xl font-bold tracking-tight", isDark ? "" : "")}>
                                 Share Workspace
                             </DialogTitle>
-                            <DialogDescription className={cn("font-medium", isDark ? "text-[#9CA3AF]/80" : "text-slate-600")}>
+                            <DialogDescription className={cn("font-medium", isDark ? "text-[var(--text-2)]/80" : "")}>
                                 Anyone with this link can view this clinical case.
                             </DialogDescription>
                         </div>
@@ -57,8 +57,8 @@ export const ShareDialog = () => {
                             className={cn(
                                 "pr-12 h-12 rounded-2xl font-medium transition-all text-sm",
                                 isDark
-                                    ? "!bg-[#0A0A0B] !border-[#242427] !text-[#F5F5F7] focus-visible:!border-[#FF453A]/50"
-                                    : "!bg-white !border-gray-300 !text-slate-900 focus-visible:!border-gray-400"
+                                    ? "!bg-[var(--bg)] !border-[var(--border)] !text-[var(--text)] focus-visible:!border-[#FF453A]/50"
+                                    : "!bg-[var(--surface)] !border-[var(--border)] !text-[var(--text)] focus-visible:!border-[var(--border-strong)]"
                             )}
                         />
                         <Button
@@ -66,7 +66,7 @@ export const ShareDialog = () => {
                             variant="ghost"
                             className={cn(
                                 "absolute right-1 top-1 h-10 w-10 transition-all rounded-xl",
-                                isDark ? "hover:bg-[rgba(255,69,58,0.10)] hover:text-[#FF453A]" : "hover:bg-gray-200 hover:text-slate-900"
+                                isDark ? "hover:bg-[rgba(255,69,58,0.10)] hover:text-[#FF453A]" : "hover:bg-[var(--surface-2)] hover:text-[var(--text)]"
                             )}
                             onClick={handleCopy}
                         >
@@ -75,9 +75,9 @@ export const ShareDialog = () => {
                     </div>
                     <div className={cn(
                         "p-4 rounded-2xl border text-[11px] leading-relaxed",
-                        isDark ? "bg-[#0A0A0B] border-[#242427] text-[#9CA3AF]/80" : "bg-gray-200 border-gray-300 text-slate-600"
+                        isDark ? "bg-[var(--bg)] border-[var(--border)] text-[var(--text-2)]/80" : "bg-[var(--surface-2)] border-[var(--border)] text-[var(--text-2)]"
                     )}>
-                        <span className={cn("font-bold mr-1", isDark ? "text-[#FF453A]" : "text-blue-600")}>Note:</span>
+                        <span className={cn("font-bold mr-1", isDark ? "text-[#FF453A]" : "text-[var(--accent)]")}>Note:</span>
                         This link provides direct access to the current patient and planning session. It's intended for secure clinical collaboration.
                     </div>
                 </div>
@@ -87,7 +87,7 @@ export const ShareDialog = () => {
                             "w-full font-bold h-12 rounded-2xl shadow-xl transition-all active:scale-95",
                             isDark
                                 ? "bg-primary hover:bg-primary/90 text-primary-foreground shadow-primary/20"
-                                : "bg-blue-600 hover:bg-blue-500 text-white shadow-blue-900/20"
+                                : "bg-[var(--accent)] hover:brightness-110 text-white"
                         )}
                         onClick={handleCopy}
                     >

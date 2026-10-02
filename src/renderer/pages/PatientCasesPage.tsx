@@ -16,8 +16,11 @@ import {
     FileText,
     MoreVertical,
     Pencil,
-    Bell,
+    Check,
+    Trash2,
 } from "lucide-react";
+import { ConfirmDialog } from "@/components/ConfirmDialog";
+import { ImportDialog } from "@/features/import-export/ImportDialog";
 import { format, parse } from "date-fns";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { useShallow } from "zustand/react/shallow";
@@ -63,8 +66,8 @@ function statusBadgeClass(status?: string | null) {
     switch (status) {
         case 'Completed':   return 'text-emerald-400 bg-emerald-400/10';
         case 'In Progress': return 'text-[#FF453A] bg-[#FF453A]/10';
-        case 'Archived':    return 'text-[#6B7280] bg-[#6B7280]/10';
-        default:            return 'text-[#9CA3AF] bg-[#242427]';
+        case 'Archived':    return 'text-[var(--text-3)] bg-[#6B7280]/10';
+        default:            return 'text-[var(--text-2)] bg-[var(--surface-3)]';
     }
 }
 
@@ -99,9 +102,26 @@ function StudyCard({
 }) {
     const updateStudy = useAppStore(s => s.updateStudy);
     const generateShareLink = useAppStore(s => s.generateShareLink);
+    const deleteStudy = useAppStore(s => s.deleteStudy);
+    const [confirmDelete, setConfirmDelete] = useState(false);
     const [renaming, setRenaming] = useState(false);
-    const [nameDraft, setNameDraft] = useState(getStudyDisplayName(study));
-    const title = getStudyDisplayName(study);
+    // Card reads: patient name → "Study #N · <custom name>" · date (once) → modality / status / images.
+    const patient = useAppStore(s => s.patients.find(p => p.id === patientId));
+    const studyNumber = useMemo(() => {
+        if (!patient) return 1;
+        const all = [...patient.studies, ...patient.visits.flatMap(v => v.studies || [])];
+        const unique = Array.from(new Map(all.map(x => [x.id, x])).values())
+            .sort((a, b) => (Date.parse(a.acquisitionDate) || 0) - (Date.parse(b.acquisitionDate) || 0) || a.id.localeCompare(b.id));
+        return Math.max(1, unique.findIndex(x => x.id === study.id) + 1);
+    }, [patient, study.id]);
+    // Auto-generated names ("Pre-op · 2 Oct 2026") repeat the date — only show names the user typed.
+    const customName = study.name && !/ · \d{1,2} \w{3,} \d{4}$/.test(study.name) ? study.name.trim() : '';
+    const dateLabel = (() => {
+        const d = study.acquisitionDate ? new Date(study.acquisitionDate) : null;
+        return d && !isNaN(d.getTime()) ? d.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }) : (study.acquisitionDate || '');
+    })();
+    const title = customName || getStudyDisplayName(study);
+    const [nameDraft, setNameDraft] = useState(customName);
     const status = (study.status as StudyStatus) || 'Draft';
     const thumb = study.scans?.[0]?.imageUrl;
     const scanLabel = study.scans?.length
@@ -119,84 +139,99 @@ function StudyCard({
     };
 
     return (
-        <div className="flex items-center gap-4 rounded-xl border border-[#242427] bg-[#141416] p-3 hover:border-[#3A3A3E] transition-colors">
-            <div className="h-14 w-20 flex-shrink-0 overflow-hidden rounded-lg border border-[#242427] bg-[#0A0A0B]">
+        <div className="flex items-center gap-4 rounded-xl border border-[var(--border)] bg-[var(--surface)] p-3 hover:border-[var(--border-strong)] transition-colors" title={title}>
+            <div className="h-14 w-20 flex-shrink-0 overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--bg)]">
                 {thumb ? (
                     <img src={thumb} alt="" className="h-full w-full object-cover" />
                 ) : (
-                    <div className="flex h-full w-full items-center justify-center text-[#6B7280]">
+                    <div className="flex h-full w-full items-center justify-center text-[var(--text-3)]">
                         <ImageIcon className="h-5 w-5" />
                     </div>
                 )}
             </div>
 
             <div className="min-w-0 flex-1">
+                <div className="truncate text-sm font-semibold text-[var(--text)]">{patient?.name || 'Unnamed patient'}</div>
                 {renaming ? (
                     <Input
                         value={nameDraft}
+                        placeholder={`Study #${studyNumber} name`}
                         onChange={(e) => setNameDraft(e.target.value)}
                         onBlur={saveName}
                         onKeyDown={(e) => e.key === 'Enter' && saveName()}
                         autoFocus
-                        className="h-8 bg-[#0A0A0B] border-[#242427] text-sm font-semibold text-[#F5F5F7]"
+                        className="mt-1 h-7 bg-[var(--bg)] border-[var(--border)] text-xs text-[var(--text)]"
                     />
                 ) : (
-                    <div className="truncate text-sm font-semibold text-[#F5F5F7]">{title}</div>
+                    <button
+                        className="mt-0.5 block max-w-full truncate text-left text-xs text-[var(--text-2)] hover:underline decoration-dotted underline-offset-4"
+                        title="Click to name this study"
+                        onClick={() => { setNameDraft(customName); setRenaming(true); }}
+                    >
+                        <span className="font-semibold text-[var(--text)]">Study #{studyNumber}</span>
+                        {customName ? ` · ${customName}` : ''}
+                        {dateLabel ? ` · ${dateLabel}` : ''}
+                    </button>
                 )}
-                <div className="mt-0.5 truncate text-xs text-[#6B7280]">
-                    {scanLabel}
-                    {study.acquisitionDate ? ` · ${study.acquisitionDate}` : ''}
-                </div>
                 <div className="mt-2 flex flex-wrap items-center gap-2">
-                    <span className="rounded-md bg-[#242427] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-[#9CA3AF]">
+                    <span className="rounded-md bg-[var(--surface-3)] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-[var(--text-2)]">
                         {study.modality || 'Study'}
                     </span>
                     <span className={cn('inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[10px] font-semibold', statusBadgeClass(status))}>
                         <span className={cn('h-1.5 w-1.5 rounded-full', statusDotClass(status))} />
                         {status}
                     </span>
+                    <span className="text-[10px] text-[var(--text-3)]">{scanLabel}</span>
                 </div>
             </div>
 
-            <div className="flex flex-shrink-0 items-center gap-2">
+            <div className="flex flex-shrink-0 items-center gap-1">
                 <Button
-                    variant="outline"
-                    size="sm"
-                    className="h-8 border-[#242427] bg-transparent text-xs text-[#F5F5F7] hover:bg-[#242427]"
+                    variant="ghost"
+                    size="icon"
+                    title="Open in workspace"
+                    className="h-8 w-8 text-[var(--text-2)] hover:text-[var(--text)] hover:bg-[var(--surface-3)]"
                     onClick={() => onOpenWorkspace(study)}
                 >
-                    <ExternalLink className="mr-1.5 h-3.5 w-3.5" />
-                    Open Workspace
+                    <ExternalLink className="h-4 w-4" />
                 </Button>
                 <ReportsListDialog studyId={study.id} />
                 <DropdownMenu>
                     <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="icon" className="h-8 w-8 text-[#9CA3AF] hover:text-[#F5F5F7]">
+                        <Button variant="ghost" size="icon" title="More" className="h-8 w-8 text-[var(--text-2)] hover:text-[var(--text)] hover:bg-[var(--surface-3)]">
                             <MoreVertical className="h-4 w-4" />
                         </Button>
                     </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end" className="w-48 border-[#242427] bg-[#141416] text-[#F5F5F7]">
-                        <DropdownMenuLabel className="text-[10px] uppercase tracking-widest text-[#6B7280]">Study</DropdownMenuLabel>
+                    <DropdownMenuContent align="end" className="w-48">
                         <DropdownMenuItem onClick={() => { setNameDraft(getStudyDisplayName(study)); setRenaming(true); }}>
-                            <Pencil className="mr-2 h-3.5 w-3.5" /> Rename
+                            <Pencil className="mr-2 h-3.5 w-3.5 text-[var(--text-3)]" /> Rename
                         </DropdownMenuItem>
-                        <DropdownMenuSub>
-                            <DropdownMenuSubTrigger>Status</DropdownMenuSubTrigger>
-                            <DropdownMenuSubContent className="border-[#242427] bg-[#141416]">
-                                {STUDY_STATUSES.map(s => (
-                                    <DropdownMenuItem key={s} onClick={() => setStatus(s)}>
-                                        {s}{status === s ? ' ✓' : ''}
-                                    </DropdownMenuItem>
-                                ))}
-                            </DropdownMenuSubContent>
-                        </DropdownMenuSub>
-                        <DropdownMenuSeparator className="bg-[#242427]" />
                         <DropdownMenuItem onClick={() => generateShareLink({ patientId })}>
-                            <Share2 className="mr-2 h-3.5 w-3.5" /> Share patient
+                            <Share2 className="mr-2 h-3.5 w-3.5 text-[var(--text-3)]" /> Share
+                        </DropdownMenuItem>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuLabel className="px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-3)]">Status</DropdownMenuLabel>
+                        {STUDY_STATUSES.map(st => (
+                            <DropdownMenuItem key={st} onClick={() => setStatus(st)}>
+                                <span className={cn('mr-2.5 h-2 w-2 rounded-full', statusDotClass(st))} />
+                                <span className="flex-1">{st}</span>
+                                {status === st && <Check className="h-3.5 w-3.5 text-[var(--accent)]" />}
+                            </DropdownMenuItem>
+                        ))}
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem onClick={() => setConfirmDelete(true)} className="text-[var(--val-bad)] focus:text-[var(--val-bad)]">
+                            <Trash2 className="mr-2 h-3.5 w-3.5" /> Delete study
                         </DropdownMenuItem>
                     </DropdownMenuContent>
                 </DropdownMenu>
             </div>
+            <ConfirmDialog
+                open={confirmDelete}
+                onOpenChange={setConfirmDelete}
+                title="Delete this study?"
+                description={`"${title}" and its images, sessions and reports will be permanently deleted.`}
+                onConfirm={() => deleteStudy(patientId, study.id)}
+            />
         </div>
     );
 }
@@ -244,6 +279,8 @@ const PatientCasesPage = () => {
         }
     };
     const [showArchived, setShowArchived] = useState(false);
+    const [patientToDelete, setPatientToDelete] = useState<{ id: string; name: string } | null>(null);
+    const deletePatient = useAppStore(s => s.deletePatient);
     const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
     const [studyActionDialogOpen, setStudyActionDialogOpen] = useState(false);
     const [selectedStudyForAction, setSelectedStudyForAction] = useState<Study | null>(null);
@@ -464,31 +501,48 @@ const PatientCasesPage = () => {
         navigate('/workspace');
     });
 
+    // Always show fresh data: studies/sessions saved in the workspace (or a
+    // newly saved untitled study) appear as soon as this page opens.
+    useEffect(() => {
+        const st = useAppStore.getState();
+        void st.refreshPatients().catch(() => {});
+        if (st.activePatientId && !st.activeContextId) void st.setActivePatient(st.activePatientId);
+    }, []);
+
     const selectPatient = async (patientId: string) => {
         await setActivePatient(patientId);
     };
 
     return (
-        <div className="-mx-8 -my-6 flex h-[calc(100vh-4rem)] overflow-hidden bg-[#0A0A0B] text-[#F5F5F7]">
+        <div className="flex h-full min-h-0 overflow-hidden bg-[var(--bg)] text-[var(--text)]">
             {/* Left — Patient list */}
-            <div className="flex w-[320px] flex-shrink-0 flex-col border-r border-[#242427] bg-[#0F0F11]">
-                <div className="space-y-3 border-b border-[#242427] p-4">
+            <div className="flex w-[320px] min-h-0 flex-shrink-0 flex-col border-r border-[var(--border)] bg-[var(--sidebar)]">
+                <div className="flex-shrink-0 space-y-3 border-b border-[var(--border)] p-4">
                     <div>
-                        <h1 className="text-lg font-semibold text-[#F5F5F7]">Patients</h1>
-                        <p className="text-xs text-[#6B7280]">{processedPatients.length} patients</p>
+                        <h1 className="text-lg font-semibold text-[var(--text)]">Patients</h1>
+                        <div className="flex items-center justify-between">
+                            <p className="text-xs text-[var(--text-3)]">{processedPatients.length} {showArchived ? 'archived' : 'patients'}</p>
+                            <button
+                                onClick={() => setShowArchived(!showArchived)}
+                                className={cn('rounded-full border px-2 py-0.5 text-[10px] font-semibold transition-colors',
+                                    showArchived ? 'border-[var(--accent)] bg-[var(--accent-soft)] text-[var(--accent)]' : 'border-[var(--border-2)] text-[var(--text-3)] hover:text-[var(--text-2)]')}
+                            >
+                                {showArchived ? 'Showing archived' : 'Archived'}
+                            </button>
+                        </div>
                     </div>
                     <div className="relative">
-                        <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-[#6B7280]" />
+                        <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-[var(--text-3)]" />
                         <Input
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
                             placeholder="Search patients..."
-                            className="h-9 border-[#242427] bg-[#141416] pl-9 text-sm text-[#F5F5F7] placeholder:text-[#6B7280]"
+                            className="h-9 border-[var(--border)] bg-[var(--surface)] pl-9 text-sm text-[var(--text)] placeholder:text-[var(--text-3)]"
                         />
                     </div>
                 </div>
 
-                <div className="flex-1 overflow-y-auto p-2">
+                <div className="min-h-0 flex-1 overflow-y-auto p-2">
                     {processedPatients.map(patient => {
                         const isActive = patient.id === activePatientId;
                         const mrn = patient.contact || patient.id;
@@ -500,38 +554,42 @@ const PatientCasesPage = () => {
                                     'mb-1 flex cursor-pointer items-center gap-3 rounded-xl border p-3 transition-colors',
                                     isActive
                                         ? 'border-[#FF453A]/40 bg-[#FF453A]/10'
-                                        : 'border-transparent hover:bg-[#141416]',
+                                        : 'border-transparent hover:bg-[var(--surface)]',
                                     patient.isArchived && 'opacity-60',
                                 )}
                             >
-                                <Avatar className="h-10 w-10 border border-[#242427]">
-                                    <AvatarFallback className={cn('text-xs font-bold', isActive ? 'bg-[#FF453A] text-white' : 'bg-[#242427] text-[#9CA3AF]')}>
+                                <Avatar className="h-10 w-10 border border-[var(--border)]">
+                                    <AvatarFallback className={cn('text-xs font-bold', isActive ? 'bg-[#FF453A] text-white' : 'bg-[var(--surface-3)] text-[var(--text-2)]')}>
                                         {patientInitials(patient.name)}
                                     </AvatarFallback>
                                 </Avatar>
                                 <div className="min-w-0 flex-1">
-                                    <div className="truncate text-sm font-semibold text-[#F5F5F7]">{patient.name}</div>
-                                    <div className="truncate text-xs text-[#6B7280]">
+                                    <div className="truncate text-sm font-semibold text-[var(--text)]">{patient.name}</div>
+                                    <div className="truncate text-xs text-[var(--text-3)]">
                                         {patient.age ? `${patient.age}${patient.gender || ''}` : '—'}
                                         {mrn ? ` · MRN ${mrn}` : ''}
                                     </div>
                                 </div>
                                 <DropdownMenu>
                                     <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
-                                        <Button variant="ghost" size="icon" className="h-7 w-7 text-[#6B7280] hover:text-[#F5F5F7]">
+                                        <Button variant="ghost" size="icon" className="h-7 w-7 text-[var(--text-3)] hover:text-[var(--text)]">
                                             <MoreVertical className="h-4 w-4" />
                                         </Button>
                                     </DropdownMenuTrigger>
-                                    <DropdownMenuContent align="end" className="border-[#242427] bg-[#141416] text-[#F5F5F7]">
+                                    <DropdownMenuContent align="end" className="w-44" onClick={(e) => e.stopPropagation()}>
                                         <DropdownMenuItem onClick={() => generateShareLink({ patientId: patient.id })}>
-                                            <Share2 className="mr-2 h-3.5 w-3.5" /> Share
+                                            <Share2 className="mr-2 h-3.5 w-3.5 text-[var(--text-3)]" /> Share
                                         </DropdownMenuItem>
                                         <DropdownMenuItem onClick={() => handleArchiveToggle(patient.id, !!patient.isArchived)}>
                                             {patient.isArchived ? (
-                                                <><ArchiveRestore className="mr-2 h-3.5 w-3.5" /> Restore</>
+                                                <><ArchiveRestore className="mr-2 h-3.5 w-3.5 text-[var(--text-3)]" /> Restore</>
                                             ) : (
-                                                <><Archive className="mr-2 h-3.5 w-3.5" /> Archive</>
+                                                <><Archive className="mr-2 h-3.5 w-3.5 text-[var(--text-3)]" /> Archive</>
                                             )}
+                                        </DropdownMenuItem>
+                                        <DropdownMenuSeparator />
+                                        <DropdownMenuItem onClick={() => setPatientToDelete({ id: patient.id, name: patient.name })} className="text-[var(--val-bad)] focus:text-[var(--val-bad)]">
+                                            <Trash2 className="mr-2 h-3.5 w-3.5" /> Delete patient
                                         </DropdownMenuItem>
                                     </DropdownMenuContent>
                                 </DropdownMenu>
@@ -540,29 +598,29 @@ const PatientCasesPage = () => {
                     })}
                 </div>
 
-                <div className="border-t border-[#242427] p-4">
+                <div className="border-t border-[var(--border)] p-4">
                     <NewPatientDialog />
                 </div>
             </div>
 
             {/* Right — Patient detail + timeline */}
-            <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
+            <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
                 {activePatient ? (
                     <>
-                        <div className="flex items-start justify-between border-b border-[#242427] px-8 py-6">
+                        <div className="flex items-start justify-between border-b border-[var(--border)] px-8 py-6">
                             <div className="flex items-start gap-4">
-                                <Avatar className="h-16 w-16 border-2 border-[#242427]">
+                                <Avatar className="h-16 w-16 border-2 border-[var(--border)]">
                                     <AvatarFallback className="bg-[#FF453A]/15 text-lg font-bold text-[#FF453A]">
                                         {patientInitials(activePatient.name)}
                                     </AvatarFallback>
                                 </Avatar>
                                 <div>
-                                    <h2 className="text-2xl font-semibold text-[#F5F5F7]">{activePatient.name}</h2>
-                                    <p className="mt-1 text-sm text-[#9CA3AF]">
+                                    <h2 className="text-2xl font-semibold text-[var(--text)]">{activePatient.name}</h2>
+                                    <p className="mt-1 text-sm text-[var(--text-2)]">
                                         {activePatient.age ? `${activePatient.age}${activePatient.gender || ''}` : '—'}
                                         {activePatient.contact ? ` · MRN ${activePatient.contact}` : activePatient.id ? ` · MRN ${activePatient.id}` : ''}
                                     </p>
-                                    <div className="mt-2 flex flex-wrap items-center gap-4 text-xs text-[#6B7280]">
+                                    <div className="mt-2 flex flex-wrap items-center gap-4 text-xs text-[var(--text-3)]">
                                         {primaryDiagnosis && (
                                             <span className="inline-flex items-center gap-1.5">
                                                 <User className="h-3.5 w-3.5" />
@@ -579,33 +637,14 @@ const PatientCasesPage = () => {
                                 </div>
                             </div>
                             <div className="flex items-center gap-2">
-                                <Button variant="ghost" size="icon" className="relative h-9 w-9 text-[#9CA3AF]">
-                                    <Bell className="h-4 w-4" />
-                                </Button>
                                 <NewPatientDialog patient={activePatient} />
-                                <DropdownMenu>
-                                    <DropdownMenuTrigger asChild>
-                                        <Button variant="ghost" size="icon" className="h-9 w-9 text-[#9CA3AF]">
-                                            <MoreVertical className="h-4 w-4" />
-                                        </Button>
-                                    </DropdownMenuTrigger>
-                                    <DropdownMenuContent align="end" className="border-[#242427] bg-[#141416]">
-                                        <DropdownMenuCheckboxItem checked={showArchived} onCheckedChange={setShowArchived}>
-                                            Show archived patients
-                                        </DropdownMenuCheckboxItem>
-                                        <DropdownMenuSeparator className="bg-[#242427]" />
-                                        <DropdownMenuItem onClick={() => handleArchiveToggle(activePatient.id, !!activePatient.isArchived)}>
-                                            {activePatient.isArchived ? 'Restore patient' : 'Archive patient'}
-                                        </DropdownMenuItem>
-                                    </DropdownMenuContent>
-                                </DropdownMenu>
                             </div>
                         </div>
 
-                        <div className="flex-1 overflow-y-auto px-8 py-6">
+                        <div className="min-h-0 flex-1 overflow-y-auto px-8 py-6">
                             <div className="relative ml-4 border-l-2 border-[#FF453A]/30 pl-8 pb-4">
                                 {groupedTimeline.length === 0 ? (
-                                    <div className="rounded-xl border border-dashed border-[#242427] bg-[#141416]/50 py-12 text-center text-sm text-[#6B7280]">
+                                    <div className="rounded-xl border border-dashed border-[var(--border)] bg-[var(--surface)]/50 py-12 text-center text-sm text-[var(--text-3)]">
                                         No studies recorded. Add a new study to build the timeline.
                                     </div>
                                 ) : (
@@ -615,14 +654,14 @@ const PatientCasesPage = () => {
                                         const groupTitle = group.visits[0]?.diagnosis || group.visits[0]?.visitNumber || null;
                                         return (
                                             <div key={group.date} className="relative mb-6">
-                                                <span className="absolute -left-[41px] top-1 h-3 w-3 rounded-full border-2 border-[#FF453A] bg-[#0A0A0B]" />
+                                                <span className="absolute -left-[41px] top-1 h-3 w-3 rounded-full border-2 border-[#FF453A] bg-[var(--bg)]" />
                                                 <button
                                                     type="button"
                                                     onClick={() => toggleGroup(group.date)}
                                                     className="mb-3 flex w-full items-center justify-between text-left"
                                                 >
                                                     <div>
-                                                        <div className="text-sm font-semibold text-[#F5F5F7]">
+                                                        <div className="text-sm font-semibold text-[var(--text)]">
                                                             {group.date} {groupTitle ? `· ${groupTitle}` : ''}
                                                         </div>
                                                         <div className="text-xs font-medium text-[#FF453A]">
@@ -630,16 +669,16 @@ const PatientCasesPage = () => {
                                                         </div>
                                                     </div>
                                                     {expanded ? (
-                                                        <ChevronDown className="h-4 w-4 text-[#6B7280]" />
+                                                        <ChevronDown className="h-4 w-4 text-[var(--text-3)]" />
                                                     ) : (
-                                                        <ChevronRight className="h-4 w-4 text-[#6B7280]" />
+                                                        <ChevronRight className="h-4 w-4 text-[var(--text-3)]" />
                                                     )}
                                                 </button>
 
                                                 {expanded && (
                                                     <div className="space-y-3">
                                                         {studies.length === 0 ? (
-                                                            <div className="rounded-xl border border-dashed border-[#242427] py-6 text-center text-xs text-[#6B7280]">
+                                                            <div className="rounded-xl border border-dashed border-[var(--border)] py-6 text-center text-xs text-[var(--text-3)]">
                                                                 No studies in this group.
                                                             </div>
                                                         ) : (
@@ -661,17 +700,16 @@ const PatientCasesPage = () => {
 
                                 {activePatient && (
                                     <div className="relative mt-6">
-                                        <span className="absolute -left-[41px] top-4 h-3 w-3 rounded-full border-2 border-[#242427] bg-[#0A0A0B]" />
+                                        <span className="absolute -left-[41px] top-4 h-3 w-3 rounded-full border-2 border-[var(--border)] bg-[var(--bg)]" />
                                         <div className="rounded-xl border border-dashed border-[#FF453A]/30 bg-[#FF453A]/5 p-4">
                                             <div className="mb-3 flex flex-wrap items-center gap-2">
-                                                <Button
-                                                    onClick={handleAddStudy}
-                                                    className="h-8 gap-2 border border-[#FF453A]/30 bg-[#FF453A]/10 text-xs font-semibold text-[#FF453A] hover:bg-[#FF453A]/20"
-                                                >
-                                                    <Plus className="h-4 w-4" /> Add New Study
-                                                </Button>
+                                                <ImportDialog presetPatientId={activePatient.id} navigateOnImport>
+                                                    <Button className="h-8 gap-2 border border-[#FF453A]/30 bg-[#FF453A]/10 text-xs font-semibold text-[#FF453A] hover:bg-[#FF453A]/20">
+                                                        <Plus className="h-4 w-4" /> Add New Study
+                                                    </Button>
+                                                </ImportDialog>
                                             </div>
-                                            <p className="text-xs text-[#6B7280]">
+                                            <p className="text-xs text-[var(--text-3)]">
                                                 Add new studies and imaging to this patient's timeline.
                                             </p>
                                         </div>
@@ -682,25 +720,34 @@ const PatientCasesPage = () => {
 
                     </>
                 ) : (
-                    <div className="flex flex-1 flex-col items-center justify-center text-[#6B7280]">
+                    <div className="flex flex-1 flex-col items-center justify-center text-[var(--text-3)]">
                         <User className="mb-3 h-12 w-12 opacity-30" />
                         <p className="text-sm">Select a patient to view their timeline</p>
                     </div>
                 )}
             </div>
 
+            <ConfirmDialog
+                open={!!patientToDelete}
+                onOpenChange={(o) => { if (!o) setPatientToDelete(null); }}
+                title="Delete this patient?"
+                description={`${patientToDelete?.name || 'This patient'} and all their visits, studies, images, sessions and reports will be permanently deleted.`}
+                confirmLabel="Delete patient"
+                onConfirm={() => deletePatient(patientToDelete!.id)}
+            />
+
             {/* Session manager — existing workspace entry flow */}
             <Dialog open={studyActionDialogOpen} onOpenChange={(o) => {
                 setStudyActionDialogOpen(o);
                 setActiveDialog(o ? 'study-manager' : null);
             }}>
-                <DialogContent className="border-[#242427] bg-[#141416] sm:max-w-[420px]">
+                <DialogContent className="sm:max-w-[420px]">
                     <DialogHeader>
-                        <DialogTitle className="flex items-center gap-3 text-[#F5F5F7]">
+                        <DialogTitle className="flex items-center gap-3">
                             <History className="h-5 w-5 text-[#FF453A]" />
                             Session Manager
                         </DialogTitle>
-                        <DialogDescription className="text-[#9CA3AF]">
+                        <DialogDescription className="">
                             Continue an existing session or start a new planning session for{' '}
                             {selectedStudyForAction ? getStudyDisplayName(selectedStudyForAction) : 'this study'}.
                         </DialogDescription>
@@ -713,18 +760,18 @@ const PatientCasesPage = () => {
                                     <Button
                                         key={session.id}
                                         variant="outline"
-                                        className="h-auto w-full justify-between border-[#242427] bg-[#0A0A0B] px-4 py-3 text-[#F5F5F7] hover:border-[#FF453A]/40"
+                                        className="h-auto w-full justify-between border-[var(--border)] bg-[var(--bg)] px-4 py-3 text-[var(--text)] hover:border-[#FF453A]/40"
                                         onClick={() => handleContinueContext(session)}
                                     >
                                         <div className="text-left">
                                             <div className="text-sm font-semibold">{session.name}</div>
-                                            <div className="text-[10px] text-[#6B7280]">{session.lastModified}</div>
+                                            <div className="text-[10px] text-[var(--text-3)]">{session.lastModified}</div>
                                         </div>
                                         <ChevronRight className="h-4 w-4" />
                                     </Button>
                                 ))
                         ) : (
-                            <div className="rounded-xl border border-dashed border-[#242427] py-6 text-center text-xs text-[#6B7280]">
+                            <div className="rounded-xl border border-dashed border-[var(--border)] py-6 text-center text-xs text-[var(--text-3)]">
                                 No existing sessions found.
                             </div>
                         )}

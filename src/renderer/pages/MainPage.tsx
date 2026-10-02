@@ -21,7 +21,6 @@ const MainPage = () => {
     const activeContextId   = useAppStore(s => s.activeContextId);
     const activePatientId   = useAppStore(s => s.activePatientId);
     const isDicomMode       = useAppStore(s => s.isDicomMode);
-    const isComparisonMode  = useAppStore(s => s.isComparisonMode);
     const dicomSeries       = useAppStore(s => s.dicomSeries);
     const contexts          = useAppStore(s => s.contexts);
     const patients          = useAppStore(s => s.patients);
@@ -118,52 +117,51 @@ const MainPage = () => {
         }
     }, [activeContextId, contexts, patients, loadDicomURLs, exitDicomMode]);
 
-    const hasActiveContent = !!currentImage || !!activeContextId || isDicomMode || isComparisonMode;
+    const hasCase = !!currentImage || !!activeContextId;
     const isReportTab = new URLSearchParams(location.search).get('tab') === 'report';
+    // Kept mounted (hidden) under the report so returning is instant — the CT
+    // series in particular is expensive to reload.
+    const hidden = "absolute inset-0 opacity-0 pointer-events-none z-[-1]";
 
     return (
         <div className="h-full w-full flex items-center justify-center relative bg-background overflow-hidden">
             {isDicomMode ? (
-                <DICOMViewer fileList={dicomSeries} />
-            ) : hasActiveContent ? (
-                <>
-                    <div className={cn("w-full h-full transition-opacity", isReportTab ? "opacity-0 absolute inset-0 pointer-events-none z-[-1]" : "")}>
-                        {isComparisonMode ? (
-                            <div className="flex w-full h-full">
-                                <CanvasWorkspace side="left" />
-                                <CanvasWorkspace side="right" />
-                            </div>
-                        ) : (
-                            <CanvasWorkspace />
-                        )}
-                    </div>
-                    {isReportTab && (
-                        <div className="w-full h-full">
-                            <ReportBuilderWorkspace />
-                        </div>
-                    )}
-                </>
-            ) : (
-                <div className="text-center space-y-4 bg-background/5 p-10 rounded-xl border border-white/10 backdrop-blur-sm">
-                    <div className="h-24 w-24 bg-muted/20 rounded-full flex items-center justify-center mx-auto ring-4 ring-muted/10">
-                        <Upload className="h-10 w-10 text-muted-foreground" />
-                    </div>
-                    <div>
-                        <h2 className="text-2xl font-semibold mb-2 text-foreground">No Image Loaded</h2>
-                        <p className="text-muted-foreground max-w-sm mx-auto">
-                            Import a scan to begin analysis, or select a patient from the cases menu.
-                        </p>
-                    </div>
-                    <ImportDialog>
-                        <Button size="lg" className="gap-2 shadow-lg hover:shadow-xl transition-all">
-                            <Upload className="h-4 w-4" />
-                            Import Scan
-                        </Button>
-                    </ImportDialog>
+                <div className={cn("w-full h-full", isReportTab && hidden)}>
+                    <DICOMViewer fileList={dicomSeries} />
+                </div>
+            ) : hasCase ? (
+                <div className={cn("w-full h-full", isReportTab && hidden)}>
+                    <CanvasWorkspace />
+                </div>
+            ) : !isReportTab && (
+                <EmptyImport />
+            )}
+            {isReportTab && (
+                <div className="absolute inset-0">
+                    <ReportBuilderWorkspace />
                 </div>
             )}
         </div>
     );
 };
+
+/** No image yet: the same import entry point on Assessment and Planning. */
+export const EmptyImport = ({ title = "No image loaded", hint = "Import an X-ray or a CT/MR series to start. It is shared by Assessment, Planning and Compare (Image A)." }: { title?: string; hint?: string }) => (
+    <div className="text-center space-y-4 p-10 rounded-xl border border-[var(--border)] bg-[var(--surface)]/40">
+        <div className="h-20 w-20 bg-muted/20 rounded-full flex items-center justify-center mx-auto">
+            <Upload className="h-9 w-9 text-muted-foreground" />
+        </div>
+        <div>
+            <h2 className="text-xl font-semibold mb-2 text-foreground">{title}</h2>
+            <p className="text-muted-foreground max-w-sm mx-auto text-sm">{hint}</p>
+        </div>
+        <ImportDialog>
+            <Button size="lg" className="gap-2">
+                <Upload className="h-4 w-4" />
+                Import scan
+            </Button>
+        </ImportDialog>
+    </div>
+);
 
 export default MainPage;

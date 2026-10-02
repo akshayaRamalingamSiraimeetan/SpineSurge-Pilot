@@ -25,6 +25,10 @@ export interface PatientSlice {
     addPatient: (patient: Patient) => Promise<void>;
     updatePatient: (patient: Patient) => Promise<void>;
     archivePatient: (patientId: string, archived: boolean) => Promise<void>;
+    /** Permanently delete a patient (and all visits, studies, images, sessions, reports). */
+    deletePatient: (patientId: string) => Promise<void>;
+    /** Permanently delete one study (its images, sessions and reports). */
+    deleteStudy: (patientId: string, studyId: string) => Promise<void>;
     addVisit: (patientId: string, visit: Visit) => Promise<void>;
     updateVisit: (patientId: string, visitId: string, visit: Visit) => Promise<void>;
     deleteVisit: (patientId: string, visitId: string) => Promise<void>;
@@ -234,6 +238,28 @@ export const createPatientSlice: StateCreator<AppState, [], [], PatientSlice> = 
         } catch (e) {
             console.error('Archive patient failed', e);
         }
+    },
+
+    deletePatient: async (patientId) => {
+        await api.deletePatient(patientId, get().token);
+        if (get().activePatientId === patientId) get().resetWorkspace();
+        set((state: AppState) => ({ patients: state.patients.filter((p) => p.id !== patientId) }));
+    },
+
+    deleteStudy: async (patientId, studyId) => {
+        await api.deleteStudy(studyId, get().token);
+        const st = get();
+        const affected = st.contexts.filter((c) => c.studyIds?.includes(studyId)).map((c) => c.id);
+        if (st.activeContextId && affected.includes(st.activeContextId)) st.closeCase();
+        set((state: AppState) => ({
+            contexts: state.contexts.filter((c) => !affected.includes(c.id)),
+            contextStates: state.contextStates.filter((c) => !affected.includes(c.contextId)),
+            patients: state.patients.map((p) => p.id !== patientId ? p : {
+                ...p,
+                studies: p.studies.filter((s) => s.id !== studyId),
+                visits: p.visits.map((v) => ({ ...v, studies: (v.studies || []).filter((s) => s.id !== studyId) })),
+            }),
+        }));
     },
 
     addVisit: async (patientId, visit) => {
@@ -484,10 +510,13 @@ export const createPatientSlice: StateCreator<AppState, [], [], PatientSlice> = 
             ...(updates.currentImage !== undefined && merged.currentImage ? { currentImage: merged.currentImage } : {}),
         } : {};
 
+        // "Last edited" shown on the patients page / dashboard.
+        const lastModified = new Date().toISOString();
         set({
             contextStates: prev
                 ? state.contextStates.map((s) => s.contextId === contextId ? merged : s)
                 : [...state.contextStates, merged],
+            contexts: state.contexts.map((c) => c.id === contextId ? { ...c, lastModified } : c),
             ...mirror,
         });
 
@@ -498,6 +527,7 @@ export const createPatientSlice: StateCreator<AppState, [], [], PatientSlice> = 
 
         const payload = {
             ...context,
+            lastModified,
             state: {
                 measurements:       merged.measurements,
                 annotations:        merged.annotations,
@@ -515,7 +545,18 @@ export const createPatientSlice: StateCreator<AppState, [], [], PatientSlice> = 
                 currentImage,
             },
         };
-        return enqueueContextSave(contextId, payload, get().token);
+        const ok = await enqueueContextSave(contextId, payload, get().token);
+        // First real work on a Draft study → mark it In Progress so the patients
+        // page / dashboard reflect it (UI batch item 14).
+        if (ok && (merged.measurements.length > 0 || (merged.implants?.length ?? 0) > 0 || (merged.threeDImplants?.length ?? 0) > 0)) {
+            const sid = context.studyIds?.[0];
+            const patient = get().patients.find((p) => p.id === context.patientId);
+            const study = patient?.studies.find((x) => x.id === sid) ?? patient?.visits.flatMap((v) => v.studies || []).find((x) => x.id === sid);
+            if (study && (!study.status || study.status === 'Draft')) {
+                void get().updateStudy(context.patientId, study.id, { status: 'In Progress' }).catch(() => {});
+            }
+        }
+        return ok;
     },
 
     setActiveContextId: (contextId) => {

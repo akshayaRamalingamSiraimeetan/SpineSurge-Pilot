@@ -17,14 +17,20 @@ const normEmail = (e: unknown) => (typeof e === 'string' ? e.trim().toLowerCase(
 const emailEq = (e: string) => sql`lower(${users.email}) = ${e}`;
 import { sendEmail } from '../services/email';
 
-// Startup guard — fail fast if JWT_SECRET is missing
+// Startup guard — fail fast if JWT_SECRET is missing or a placeholder (SRV-34)
 if (!process.env.JWT_SECRET) {
   throw new Error('JWT_SECRET environment variable is required');
 }
+if (process.env.NODE_ENV === 'production' && (process.env.JWT_SECRET.length < 32 || /your_jwt_secret/i.test(process.env.JWT_SECRET))) {
+  throw new Error('JWT_SECRET must be a random string of at least 32 characters in production');
+}
+
+/** Hosted demo: skip email verification on sign-up. */
+const DEMO_MODE = process.env.DEMO_MODE === 'true';
 
 // ── Avatar upload (multer) ────────────────────────────────────────────────────
 
-const UPLOADS_DIR = path.resolve(__dirname, '..', 'uploads');
+const UPLOADS_DIR = path.resolve(process.env.UPLOADS_DIR || path.join(__dirname, '..', 'uploads'));
 if (!fs.existsSync(UPLOADS_DIR)) {
   fs.mkdirSync(UPLOADS_DIR, { recursive: true });
 }
@@ -120,9 +126,16 @@ authRouter.post('/register', async (req, res) => {
       passwordHash,
       role: 'viewer',
       isActive: true,
-      isEmailVerified: false,
+      // DEMO_MODE: testers can sign up without an email service (no OTP step).
+      isEmailVerified: DEMO_MODE,
       profileCompleted: false,
     });
+
+    if (DEMO_MODE) {
+      await auditLogger.log('USER_REGISTERED', 'user', userId, { demo: true }, userId, null);
+      res.status(201).json({ message: 'Account created. You can sign in now.', email, autoVerified: true });
+      return;
+    }
 
     // OTP generation and storage — done after user insert commits
     const otp = generateOtp();

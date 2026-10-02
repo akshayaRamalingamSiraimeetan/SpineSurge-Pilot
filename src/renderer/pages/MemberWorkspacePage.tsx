@@ -52,11 +52,11 @@ const formatDate = (v: string | null) => {
 
 const EmptyStudies = ({ name }: { name: string }) => (
     <div className="flex flex-col items-center justify-center py-20 text-center">
-        <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-[#1C1C1F]">
-            <FolderOpen className="h-7 w-7 text-[#4B5563]" />
+        <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-[var(--surface-2)]">
+            <FolderOpen className="h-7 w-7 text-[var(--text-3)]" />
         </div>
-        <p className="text-sm font-medium text-[#6B7280]">No studies yet</p>
-        <p className="mt-1 text-xs text-[#4B5563]">
+        <p className="text-sm font-medium text-[var(--text-3)]">No studies yet</p>
+        <p className="mt-1 text-xs text-[var(--text-3)]">
             {name} has not created any studies in this organization.
         </p>
     </div>
@@ -71,25 +71,25 @@ interface StudyCardProps {
 }
 
 const StudyCard = ({ study, onOpen, isOpening }: StudyCardProps) => (
-    <div className="flex flex-col gap-3 rounded-xl border border-[#242427] bg-[#141416] p-4 transition-colors hover:border-[#3A3A3E]">
+    <div className="flex flex-col gap-3 rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4 transition-colors hover:border-[var(--border-strong)]">
         {/* Header */}
         <div className="flex items-start gap-3">
-            <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg bg-[#242427]">
-                <FolderOpen className="h-4 w-4 text-[#9CA3AF]" />
+            <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg bg-[var(--surface-3)]">
+                <FolderOpen className="h-4 w-4 text-[var(--text-2)]" />
             </div>
             <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-semibold text-[#F5F5F7]">
+                <p className="truncate text-sm font-semibold text-[var(--text)]">
                     {study.modality ?? 'Unknown Modality'}
                 </p>
-                <p className="text-xs text-[#6B7280]">{study.source ?? 'Import'}</p>
+                <p className="text-xs text-[var(--text-3)]">{study.source ?? 'Import'}</p>
             </div>
-            <span className="flex-shrink-0 rounded-md bg-[#242427] px-2 py-0.5 font-mono text-[10px] text-[#4B5563]">
+            <span className="flex-shrink-0 rounded-md bg-[var(--surface-3)] px-2 py-0.5 font-mono text-[10px] text-[var(--text-3)]">
                 {study.id.slice(-6)}
             </span>
         </div>
 
         {/* Meta */}
-        <div className="flex items-center gap-4 text-xs text-[#6B7280]">
+        <div className="flex items-center gap-4 text-xs text-[var(--text-3)]">
             <span className="flex items-center gap-1">
                 <Calendar className="h-3 w-3" />
                 {study.acquisitionDate ?? '—'}
@@ -104,7 +104,7 @@ const StudyCard = ({ study, onOpen, isOpening }: StudyCardProps) => (
         {study.scans.length > 0 && (
             <div className="flex gap-2 overflow-x-auto pb-1">
                 {study.scans.slice(0, 5).map(scan => (
-                    <div key={scan.id} className="h-14 w-14 flex-none overflow-hidden rounded-lg border border-[#242427] bg-[#0F0F11]">
+                    <div key={scan.id} className="h-14 w-14 flex-none overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--sidebar)]">
                         <img
                             src={toAbsoluteUrl(scan.filePath)}
                             alt={scan.type ?? 'Scan'}
@@ -114,7 +114,7 @@ const StudyCard = ({ study, onOpen, isOpening }: StudyCardProps) => (
                     </div>
                 ))}
                 {study.scans.length > 5 && (
-                    <div className="flex h-14 w-14 flex-none items-center justify-center rounded-lg border border-[#242427] bg-[#0F0F11] text-xs font-semibold text-[#4B5563]">
+                    <div className="flex h-14 w-14 flex-none items-center justify-center rounded-lg border border-[var(--border)] bg-[var(--sidebar)] text-xs font-semibold text-[var(--text-3)]">
                         +{study.scans.length - 5}
                     </div>
                 )}
@@ -125,7 +125,7 @@ const StudyCard = ({ study, onOpen, isOpening }: StudyCardProps) => (
         <button
             onClick={() => onOpen(study)}
             disabled={isOpening || study.scans.length === 0}
-            className="flex w-full items-center justify-center gap-2 rounded-lg border border-[#242427] bg-[#1C1C1F] py-2 text-xs font-medium text-[#9CA3AF] transition-colors hover:border-[#FF453A]/40 hover:bg-[#FF453A]/5 hover:text-[#FF453A] disabled:cursor-not-allowed disabled:opacity-40"
+            className="flex w-full items-center justify-center gap-2 rounded-lg border border-[var(--border)] bg-[var(--surface-2)] py-2 text-xs font-medium text-[var(--text-2)] transition-colors hover:border-[#FF453A]/40 hover:bg-[#FF453A]/5 hover:text-[#FF453A] disabled:cursor-not-allowed disabled:opacity-40"
         >
             {isOpening ? (
                 <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Opening…</>
@@ -262,19 +262,19 @@ const MemberWorkspacePage = () => {
             <div className="flex items-center gap-3">
                 <button
                     onClick={() => navigate('/members')}
-                    className="flex h-8 w-8 items-center justify-center rounded-lg border border-[#242427] bg-[#141416] text-[#9CA3AF] hover:bg-[#242427] hover:text-[#F5F5F7] transition-colors"
+                    className="flex h-8 w-8 items-center justify-center rounded-lg border border-[var(--border)] bg-[var(--surface)] text-[var(--text-2)] hover:bg-[var(--surface-3)] hover:text-[var(--text)] transition-colors"
                     aria-label="Back to members"
                 >
                     <ArrowLeft className="h-4 w-4" />
                 </button>
                 <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
-                        <h1 className="truncate text-xl font-semibold text-[#F5F5F7]">{displayName}</h1>
-                        <span className="flex-shrink-0 rounded-full border border-[#242427] bg-[#1C1C1F] px-2 py-0.5 text-[10px] font-medium text-[#6B7280]">
+                        <h1 className="truncate text-xl font-semibold text-[var(--text)]">{displayName}</h1>
+                        <span className="flex-shrink-0 rounded-full border border-[var(--border)] bg-[var(--surface-2)] px-2 py-0.5 text-[10px] font-medium text-[var(--text-3)]">
                             Read-only inspection
                         </span>
                     </div>
-                    <p className="mt-0.5 text-sm text-[#6B7280]">
+                    <p className="mt-0.5 text-sm text-[var(--text-3)]">
                         {memberInfo?.email ?? ''} · Organization member workspace
                     </p>
                 </div>
@@ -291,7 +291,7 @@ const MemberWorkspacePage = () => {
             </div>
 
             {/* ── Loading / Error ──────────────────────────────────── */}
-            {loading && <div className="py-20 text-center text-sm text-[#4B5563]">Loading workspace…</div>}
+            {loading && <div className="py-20 text-center text-sm text-[var(--text-3)]">Loading workspace…</div>}
             {error && !loading && (
                 <div className="flex items-center gap-3 rounded-xl border border-[#FF453A]/30 bg-[#FF453A]/5 px-4 py-3 text-sm text-[#FF453A]">{error}</div>
             )}
@@ -304,13 +304,13 @@ const MemberWorkspacePage = () => {
                         { label: 'Scans',      value: totalScans,     icon: Calendar   },
                         { label: 'Modalities', value: modalities.length, icon: User    },
                     ].map(({ label, value, icon: Icon }) => (
-                        <div key={label} className="flex items-center gap-3 rounded-xl border border-[#242427] bg-[#141416] px-4 py-3">
-                            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#242427]">
-                                <Icon className="h-4 w-4 text-[#9CA3AF]" />
+                        <div key={label} className="flex items-center gap-3 rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3">
+                            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[var(--surface-3)]">
+                                <Icon className="h-4 w-4 text-[var(--text-2)]" />
                             </div>
                             <div>
-                                <p className="text-lg font-bold text-[#F5F5F7]">{value}</p>
-                                <p className="text-xs text-[#6B7280]">{label}</p>
+                                <p className="text-lg font-bold text-[var(--text)]">{value}</p>
+                                <p className="text-xs text-[var(--text-3)]">{label}</p>
                             </div>
                         </div>
                     ))}
@@ -321,7 +321,7 @@ const MemberWorkspacePage = () => {
             {!loading && !error && modalities.length > 0 && (
                 <div className="flex flex-wrap gap-2">
                     {modalities.map(m => (
-                        <span key={m} className="rounded-full border border-[#242427] bg-[#1C1C1F] px-3 py-1 text-xs font-medium text-[#9CA3AF]">
+                        <span key={m} className="rounded-full border border-[var(--border)] bg-[var(--surface-2)] px-3 py-1 text-xs font-medium text-[var(--text-2)]">
                             {m}
                         </span>
                     ))}
@@ -330,7 +330,7 @@ const MemberWorkspacePage = () => {
 
             {/* ── Studies list ─────────────────────────────────────── */}
             {!loading && !error && (
-                <h2 className="text-sm font-semibold uppercase tracking-wide text-[#F5F5F7]">
+                <h2 className="text-sm font-semibold uppercase tracking-wide text-[var(--text)]">
                     Studies ({studies.length})
                 </h2>
             )}

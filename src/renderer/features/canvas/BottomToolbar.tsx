@@ -149,7 +149,7 @@ const BottomToolbar = () => {
     } = store;
 
     const hasMainImage = !!store.currentImage;
-    const hasLeftImage = !!comparison.left.image;
+    const hasLeftImage = !!store.currentImage; // Image A = the case image
     const hasRightImage = !!comparison.right.image;
     const hasAnyCompareImage = hasLeftImage || hasRightImage;
 
@@ -168,7 +168,7 @@ const BottomToolbar = () => {
     }, [isComparisonMode, activeCanvasSide, effectiveCanvasSide, setActiveCanvasSide]);
 
     const canvas = useMemo(() => {
-        if (isComparisonMode) return comparison[effectiveCanvasSide].canvas;
+        if (isComparisonMode && effectiveCanvasSide === 'right') return comparison.right.canvas;
         return store.canvas;
     }, [isComparisonMode, effectiveCanvasSide, comparison, store.canvas]);
 
@@ -182,49 +182,57 @@ const BottomToolbar = () => {
     const dragging = useRef(false);
     const dragOffset = useRef({ x: 0, y: 0 });
 
-    // Default position: right side, vertically centered
-    const [pos, setPos] = useState<{ right: number; top: number | null; bottom: number | null }>({
-        right: 8,
-        top: null,
-        bottom: null,
-    });
-
-    // Convert right/top/bottom to absolute left/top for drag math
-    const getAbsolutePos = useCallback(() => {
-        if (!panelRef.current) return { x: 0, y: 0 };
-        const rect = panelRef.current.getBoundingClientRect();
-        return { x: rect.left, y: rect.top };
-    }, []);
+    // Position INSIDE the canvas area (the offset parent). null = default:
+    // right edge, vertically centred. Dragging is clamped to the canvas.
+    const [pos, setPos] = useState<{ left: number; top: number } | null>(null);
 
     const onMouseDown = useCallback((e: React.MouseEvent) => {
-        // Only drag on the grip handle area (first child with data-grip)
         if (!(e.target as HTMLElement).closest("[data-grip]")) return;
+        const panel = panelRef.current;
+        const parent = panel?.offsetParent as HTMLElement | null;
+        if (!panel || !parent) return;
         e.preventDefault();
         dragging.current = true;
-        const abs = getAbsolutePos();
-        dragOffset.current = { x: e.clientX - abs.x, y: e.clientY - abs.y };
+        const pr = panel.getBoundingClientRect();
+        dragOffset.current = { x: e.clientX - pr.left, y: e.clientY - pr.top };
 
         const onMove = (ev: MouseEvent) => {
-            if (!dragging.current || !panelRef.current) return;
-            const pw = window.innerWidth;
-            const ph = window.innerHeight;
-            const w = panelRef.current.offsetWidth;
-            const h = panelRef.current.offsetHeight;
-            const newLeft = Math.max(0, Math.min(pw - w, ev.clientX - dragOffset.current.x));
-            const newTop = Math.max(0, Math.min(ph - h, ev.clientY - dragOffset.current.y));
-            const newRight = pw - newLeft - w;
-            setPos({ right: newRight, top: newTop, bottom: null });
+            if (!dragging.current) return;
+            const box = parent.getBoundingClientRect();
+            const w = panel.offsetWidth, h = panel.offsetHeight;
+            const M = 8;
+            setPos({
+                left: Math.max(M, Math.min(box.width - w - M, ev.clientX - box.left - dragOffset.current.x)),
+                top: Math.max(M, Math.min(box.height - h - M, ev.clientY - box.top - dragOffset.current.y)),
+            });
         };
-
         const onUp = () => {
             dragging.current = false;
             window.removeEventListener("mousemove", onMove);
             window.removeEventListener("mouseup", onUp);
         };
-
         window.addEventListener("mousemove", onMove);
         window.addEventListener("mouseup", onUp);
-    }, [getAbsolutePos]);
+    }, []);
+
+    // Keep it inside the canvas when the canvas resizes (sidebars toggled).
+    useEffect(() => {
+        const panel = panelRef.current;
+        const parent = panel?.offsetParent as HTMLElement | null;
+        if (!panel || !parent) return;
+        const ro = new ResizeObserver(() => {
+            setPos((p) => {
+                if (!p) return p;
+                const w = panel.offsetWidth, h = panel.offsetHeight;
+                return {
+                    left: Math.max(8, Math.min(parent.clientWidth - w - 8, p.left)),
+                    top: Math.max(8, Math.min(parent.clientHeight - h - 8, p.top)),
+                };
+            });
+        });
+        ro.observe(parent);
+        return () => ro.disconnect();
+    });
 
     /* ── Handlers ─────────────────────────────────────────────── */
     const handleScreenshot = useCallback(() => {
@@ -309,13 +317,9 @@ const BottomToolbar = () => {
     if (!canvas || !hasToolbarTargetImage) return null;
 
     /* ── Computed position styles ────────────────────────────── */
-    const posStyle: React.CSSProperties = {
-        position: "fixed",
-        right: pos.right,
-        ...(pos.top !== null ? { top: pos.top } : { top: "50%", transform: "translateY(-50%)" }),
-        ...(pos.bottom !== null ? { bottom: pos.bottom } : {}),
-        zIndex: 55,
-    };
+    const posStyle: React.CSSProperties = pos
+        ? { position: "absolute", left: pos.left, top: pos.top, zIndex: 30 }
+        : { position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)", zIndex: 30 };
 
     const rotationDisplay = ((canvas.rotation % 360) + 360) % 360;
 

@@ -30,7 +30,7 @@ export type WorkspaceContext =
 export const UNAUTHORIZED_EVENT = 'spinesurge:unauthorized';
 
 async function authedFetch(input: string, init?: RequestInit): Promise<Response> {
-    const res = await authedFetch(input, init);
+    const res = await fetch(input, init);
     if (res.status === 401) window.dispatchEvent(new Event(UNAUTHORIZED_EVENT));
     return res;
 }
@@ -183,6 +183,24 @@ export const api = {
             body: JSON.stringify(context),
         });
         if (!response.ok) throw new Error('Failed to save context');
+        return response.json();
+    },
+
+    async deletePatient(patientId: string, token?: string | null) {
+        const response = await authedFetch(`${API_BASE}/api/patients/${encodeURIComponent(patientId)}`, {
+            method: 'DELETE',
+            headers: { ...authHeader(token ?? null) },
+        });
+        if (!response.ok) throw new Error((await response.json().catch(() => ({}))).error ?? 'Failed to delete patient');
+        return response.json();
+    },
+
+    async deleteStudy(studyId: string, token?: string | null) {
+        const response = await authedFetch(`${API_BASE}/api/studies/${encodeURIComponent(studyId)}`, {
+            method: 'DELETE',
+            headers: { ...authHeader(token ?? null) },
+        });
+        if (!response.ok) throw new Error((await response.json().catch(() => ({}))).error ?? 'Failed to delete study');
         return response.json();
     },
 

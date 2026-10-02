@@ -94,32 +94,32 @@ const InviteModal = ({ orgId, token, onClose, onSent }: InviteModalProps) => {
 
   return (
     <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 backdrop-blur-sm">
-      <div className="w-full max-w-md rounded-2xl border border-[#242427] bg-[#141416] p-6 shadow-2xl">
+      <div className="w-full max-w-md rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-6 shadow-2xl">
         <div className="mb-4 flex items-center justify-between">
-          <h3 className="text-base font-semibold text-[#F5F5F7]">Invite Members</h3>
-          <button onClick={onClose} className="text-[#6B7280] hover:text-[#F5F5F7] transition-colors"><X className="h-4 w-4" /></button>
+          <h3 className="text-base font-semibold text-[var(--text)]">Invite Members</h3>
+          <button onClick={onClose} className="text-[var(--text-3)] hover:text-[var(--text)] transition-colors"><X className="h-4 w-4" /></button>
         </div>
-        <label className="mb-1.5 block text-xs font-medium text-[#9CA3AF]">Email Addresses</label>
+        <label className="mb-1.5 block text-xs font-medium text-[var(--text-2)]">Email Addresses</label>
         <div
-          className="flex min-h-[44px] flex-wrap gap-1.5 rounded-lg border border-[#242427] bg-[#0F0F11] px-3 py-2 focus-within:border-[#FF453A] transition-colors cursor-text"
+          className="flex min-h-[44px] flex-wrap gap-1.5 rounded-lg border border-[var(--border)] bg-[var(--sidebar)] px-3 py-2 focus-within:border-[#FF453A] transition-colors cursor-text"
           onClick={() => (document.getElementById('invite-email-input') as HTMLInputElement)?.focus()}
         >
           {chips.map(e => (
-            <span key={e} className="flex items-center gap-1 rounded-md bg-[#242427] px-2 py-0.5 text-xs text-[#F5F5F7]">
+            <span key={e} className="flex items-center gap-1 rounded-md bg-[var(--surface-3)] px-2 py-0.5 text-xs text-[var(--text)]">
               {e}
-              <button type="button" onClick={() => setChips(p => p.filter(c => c !== e))} className="text-[#6B7280] hover:text-[#FF453A]"><X className="h-3 w-3" /></button>
+              <button type="button" onClick={() => setChips(p => p.filter(c => c !== e))} className="text-[var(--text-3)] hover:text-[#FF453A]"><X className="h-3 w-3" /></button>
             </span>
           ))}
           <input id="invite-email-input" type="email" value={inputValue}
             onChange={e => { setInputValue(e.target.value); setError(''); }}
             onKeyDown={handleKeyDown} onBlur={addChip}
             placeholder={chips.length === 0 ? 'name@hospital.com, …' : ''}
-            className="flex-1 min-w-[140px] bg-transparent text-sm text-[#F5F5F7] outline-none placeholder:text-[#4B5563]" />
+            className="flex-1 min-w-[140px] bg-transparent text-sm text-[var(--text)] outline-none placeholder:text-[var(--text-3)]" />
         </div>
-        <p className="mt-1 text-[11px] text-[#4B5563]">Press Enter or comma to add multiple emails.</p>
+        <p className="mt-1 text-[11px] text-[var(--text-3)]">Press Enter or comma to add multiple emails.</p>
         {error && <p className="mt-1 text-xs text-[#FF453A]">{error}</p>}
         <div className="mt-5 flex gap-3">
-          <button onClick={onClose} className="flex-1 rounded-lg border border-[#242427] bg-transparent py-2.5 text-sm font-medium text-[#9CA3AF] hover:bg-[#242427] hover:text-[#F5F5F7] transition-colors">Cancel</button>
+          <button onClick={onClose} className="flex-1 rounded-lg border border-[var(--border)] bg-transparent py-2.5 text-sm font-medium text-[var(--text-2)] hover:bg-[var(--surface-3)] hover:text-[var(--text)] transition-colors">Cancel</button>
           <button onClick={handleSend} disabled={sending} className="flex-1 rounded-lg bg-[#FF453A] py-2.5 text-sm font-semibold text-white hover:bg-[#e03d33] disabled:opacity-50 disabled:cursor-not-allowed transition-colors">
             {sending ? 'Sending…' : 'Send Invitations'}
           </button>
@@ -138,11 +138,11 @@ interface ConfirmModalProps {
 
 const ConfirmModal = ({ title, body, action, variant, onConfirm, onCancel }: ConfirmModalProps) => (
   <div className="fixed inset-0 z-[300] flex items-center justify-center bg-black/60 backdrop-blur-sm">
-    <div className="w-full max-w-sm rounded-2xl border border-[#242427] bg-[#141416] p-6 shadow-2xl">
-      <h3 className="text-base font-semibold text-[#F5F5F7]">{title}</h3>
-      <p className="mt-2 text-sm text-[#9CA3AF]">{body}</p>
+    <div className="w-full max-w-sm rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-6 shadow-2xl">
+      <h3 className="text-base font-semibold text-[var(--text)]">{title}</h3>
+      <p className="mt-2 text-sm text-[var(--text-2)]">{body}</p>
       <div className="mt-5 flex gap-3">
-        <button onClick={onCancel} className="flex-1 rounded-lg border border-[#242427] bg-transparent py-2 text-sm font-medium text-[#9CA3AF] hover:bg-[#242427] hover:text-[#F5F5F7] transition-colors">Cancel</button>
+        <button onClick={onCancel} className="flex-1 rounded-lg border border-[var(--border)] bg-transparent py-2 text-sm font-medium text-[var(--text-2)] hover:bg-[var(--surface-3)] hover:text-[var(--text)] transition-colors">Cancel</button>
         <button onClick={onConfirm} className={`flex-1 rounded-lg py-2 text-sm font-semibold text-white transition-colors ${variant === 'danger' ? 'bg-[#FF453A] hover:bg-[#e03d33]' : 'bg-orange-500 hover:bg-orange-600'}`}>{action}</button>
       </div>
     </div>
@@ -260,9 +260,9 @@ const OrgMembersPage = () => {
   if (!orgId) {
     return (
       <div className="mx-auto max-w-5xl pt-16 text-center">
-        <Users className="mx-auto mb-4 h-12 w-12 text-[#4B5563]" />
-        <h2 className="text-lg font-semibold text-[#F5F5F7]">No Organization Selected</h2>
-        <p className="mt-2 text-sm text-[#6B7280]">Switch to an organization workspace to view its members.</p>
+        <Users className="mx-auto mb-4 h-12 w-12 text-[var(--text-3)]" />
+        <h2 className="text-lg font-semibold text-[var(--text)]">No Organization Selected</h2>
+        <p className="mt-2 text-sm text-[var(--text-3)]">Switch to an organization workspace to view its members.</p>
         <button onClick={() => navigate('/dashboard')} className="mt-6 rounded-lg bg-[#FF453A] px-5 py-2.5 text-sm font-semibold text-white hover:bg-[#e03d33] transition-colors">Back to Dashboard</button>
       </div>
     );
@@ -280,16 +280,16 @@ const OrgMembersPage = () => {
       {/* ── Header ──────────────────────────────────────────────── */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <button onClick={() => navigate('/dashboard')} className="flex h-8 w-8 items-center justify-center rounded-lg border border-[#242427] bg-[#141416] text-[#9CA3AF] hover:bg-[#242427] hover:text-[#F5F5F7] transition-colors" aria-label="Back">
+          <button onClick={() => navigate('/dashboard')} className="flex h-8 w-8 items-center justify-center rounded-lg border border-[var(--border)] bg-[var(--surface)] text-[var(--text-2)] hover:bg-[var(--surface-3)] hover:text-[var(--text)] transition-colors" aria-label="Back">
             <ArrowLeft className="h-4 w-4" />
           </button>
           <div>
-            <h1 className="text-xl font-semibold text-[#F5F5F7]">Organization Members</h1>
-            <p className="text-sm text-[#6B7280]">{isAdmin ? 'Admin view — manage members and invitations' : 'Member view'}</p>
+            <h1 className="text-xl font-semibold text-[var(--text)]">Organization Members</h1>
+            <p className="text-sm text-[var(--text-3)]">{isAdmin ? 'Admin view — manage members and invitations' : 'Member view'}</p>
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <button onClick={fetchData} disabled={loading} className="flex h-9 w-9 items-center justify-center rounded-lg border border-[#242427] bg-[#141416] text-[#9CA3AF] hover:bg-[#242427] hover:text-[#F5F5F7] disabled:opacity-50 transition-colors" aria-label="Refresh">
+          <button onClick={fetchData} disabled={loading} className="flex h-9 w-9 items-center justify-center rounded-lg border border-[var(--border)] bg-[var(--surface)] text-[var(--text-2)] hover:bg-[var(--surface-3)] hover:text-[var(--text)] disabled:opacity-50 transition-colors" aria-label="Refresh">
             <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
           </button>
           {/* Invite button — admin only */}
@@ -302,10 +302,10 @@ const OrgMembersPage = () => {
       </div>
 
       {/* ── Tabs ────────────────────────────────────────────────── */}
-      <div className="flex items-center gap-1 rounded-xl border border-[#242427] bg-[#141416] p-1 w-fit">
+      <div className="flex items-center gap-1 rounded-xl border border-[var(--border)] bg-[var(--surface)] p-1 w-fit">
         {availableTabs.map(t => (
           <button key={t} onClick={() => setTab(t)}
-            className={`rounded-lg px-4 py-1.5 text-sm font-medium transition-colors ${tab === t ? 'bg-[#242427] text-[#F5F5F7]' : 'text-[#6B7280] hover:text-[#9CA3AF]'}`}>
+            className={`rounded-lg px-4 py-1.5 text-sm font-medium transition-colors ${tab === t ? 'bg-[var(--surface-3)] text-[var(--text)]' : 'text-[var(--text-3)] hover:text-[var(--text-2)]'}`}>
             {t === 'members' ? `Members (${members.length})` : `Invitations (${invitations.length})`}
           </button>
         ))}
@@ -313,34 +313,34 @@ const OrgMembersPage = () => {
 
       {/* ── Search ──────────────────────────────────────────────── */}
       <div className="relative">
-        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#4B5563]" />
+        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--text-3)]" />
         <input type="text" value={search} onChange={e => setSearch(e.target.value)}
           placeholder={tab === 'members' ? 'Search by name or email…' : 'Search by email…'}
-          className="w-full rounded-lg border border-[#242427] bg-[#141416] py-2.5 pl-10 pr-4 text-sm text-[#F5F5F7] outline-none placeholder:text-[#4B5563] focus:border-[#FF453A] transition-colors" />
+          className="w-full rounded-lg border border-[var(--border)] bg-[var(--surface)] py-2.5 pl-10 pr-4 text-sm text-[var(--text)] outline-none placeholder:text-[var(--text-3)] focus:border-[#FF453A] transition-colors" />
       </div>
 
       {/* ── Members Table ────────────────────────────────────────── */}
       {tab === 'members' && (
-        <div className="overflow-hidden rounded-xl border border-[#242427] bg-[#141416]">
+        <div className="overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--surface)]">
           {/* Column headers — show Actions col only for admins */}
-          <div className={`grid ${isAdmin ? 'grid-cols-[2.5fr_2fr_1fr_1fr_1.5fr_auto]' : 'grid-cols-[2.5fr_2fr_1fr_1fr_1.5fr]'} gap-4 border-b border-[#242427] px-5 py-3`}>
+          <div className={`grid ${isAdmin ? 'grid-cols-[2.5fr_2fr_1fr_1fr_1.5fr_auto]' : 'grid-cols-[2.5fr_2fr_1fr_1fr_1.5fr]'} gap-4 border-b border-[var(--border)] px-5 py-3`}>
             {['Profile', 'Email', 'Role', 'Status', 'Joined On', ...(isAdmin ? ['Actions'] : [])].map(col => (
-              <span key={col} className="text-xs font-medium uppercase tracking-wide text-[#6B7280]">{col}</span>
+              <span key={col} className="text-xs font-medium uppercase tracking-wide text-[var(--text-3)]">{col}</span>
             ))}
           </div>
 
           {loading ? (
-            <div className="py-12 text-center text-sm text-[#4B5563]">Loading…</div>
+            <div className="py-12 text-center text-sm text-[var(--text-3)]">Loading…</div>
           ) : loadError ? (
             <div className="py-12 text-center text-sm text-[#FF453A]">{loadError}</div>
           ) : filteredMembers.length === 0 ? (
-            <div className="py-12 text-center text-sm text-[#4B5563]">{search ? 'No members match your search.' : 'No members yet.'}</div>
+            <div className="py-12 text-center text-sm text-[var(--text-3)]">{search ? 'No members match your search.' : 'No members yet.'}</div>
           ) : (
             filteredMembers.map((member, idx) => {
               const isSelf    = member.userId === user?.id;
               const isLoading = actionLoading === member.id;
               return (
-                <div key={member.id} className={`grid ${isAdmin ? 'grid-cols-[2.5fr_2fr_1fr_1fr_1.5fr_auto]' : 'grid-cols-[2.5fr_2fr_1fr_1fr_1.5fr]'} gap-4 items-center px-5 py-3.5 transition-colors hover:bg-[#1B1B1E] ${idx < filteredMembers.length - 1 ? 'border-b border-[#1E1E21]' : ''}`}>
+                <div key={member.id} className={`grid ${isAdmin ? 'grid-cols-[2.5fr_2fr_1fr_1fr_1.5fr_auto]' : 'grid-cols-[2.5fr_2fr_1fr_1fr_1.5fr]'} gap-4 items-center px-5 py-3.5 transition-colors hover:bg-[var(--surface-2)] ${idx < filteredMembers.length - 1 ? 'border-b border-[var(--border)]' : ''}`}>
 
                   {/* Profile */}
                   <div className="flex items-center gap-3 min-w-0">
@@ -349,17 +349,17 @@ const OrgMembersPage = () => {
                         ? <img src={`${API_BASE}${member.avatarUrl}`} alt="" className="h-full w-full object-cover" />
                         : getInitials(member.fullName, member.email)}
                     </div>
-                    <span className="truncate text-sm font-medium text-[#F5F5F7]">
+                    <span className="truncate text-sm font-medium text-[var(--text)]">
                       {member.fullName ?? '—'}
-                      {isSelf && <span className="ml-1.5 text-xs text-[#4B5563]">(you)</span>}
+                      {isSelf && <span className="ml-1.5 text-xs text-[var(--text-3)]">(you)</span>}
                     </span>
                   </div>
 
                   {/* Email */}
-                  <span className="truncate text-sm text-[#9CA3AF]">{member.email}</span>
+                  <span className="truncate text-sm text-[var(--text-2)]">{member.email}</span>
 
                   {/* Role */}
-                  <span className="text-sm text-[#9CA3AF] capitalize">{member.role}</span>
+                  <span className="text-sm text-[var(--text-2)] capitalize">{member.role}</span>
 
                   {/* Status */}
                   <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${STATUS_COLORS[member.status] ?? ''}`}>
@@ -367,7 +367,7 @@ const OrgMembersPage = () => {
                   </span>
 
                   {/* Joined On */}
-                  <span className="text-sm text-[#9CA3AF]">{formatDate(member.joinedAt)}</span>
+                  <span className="text-sm text-[var(--text-2)]">{formatDate(member.joinedAt)}</span>
 
                   {/* Actions — admin only */}
                   {isAdmin && (
@@ -376,7 +376,7 @@ const OrgMembersPage = () => {
                       <button
                         onClick={() => navigate(`/members/${member.userId}/workspace`)}
                         title="View member workspace"
-                        className="flex h-7 w-7 items-center justify-center rounded-md border border-[#242427] bg-[#1B1B1E] text-[#9CA3AF] hover:border-[#3A3A3E] hover:text-[#F5F5F7] transition-colors"
+                        className="flex h-7 w-7 items-center justify-center rounded-md border border-[var(--border)] bg-[var(--surface-2)] text-[var(--text-2)] hover:border-[var(--border-strong)] hover:text-[var(--text)] transition-colors"
                       >
                         <ExternalLink className="h-3.5 w-3.5" />
                       </button>
@@ -387,7 +387,7 @@ const OrgMembersPage = () => {
                             onClick={() => setConfirm({ membershipId: member.id, memberName: member.fullName ?? member.email, action: 'removed' })}
                             disabled={isLoading}
                             title="Remove member"
-                            className="flex h-7 w-7 items-center justify-center rounded-md border border-[#242427] bg-[#1B1B1E] text-[#9CA3AF] hover:border-[#FF453A] hover:text-[#FF453A] disabled:opacity-50 transition-colors"
+                            className="flex h-7 w-7 items-center justify-center rounded-md border border-[var(--border)] bg-[var(--surface-2)] text-[var(--text-2)] hover:border-[#FF453A] hover:text-[#FF453A] disabled:opacity-50 transition-colors"
                           >
                             <UserMinus className="h-3.5 w-3.5" />
                           </button>
@@ -395,13 +395,13 @@ const OrgMembersPage = () => {
                             onClick={() => setConfirm({ membershipId: member.id, memberName: member.fullName ?? member.email, action: 'blacklisted' })}
                             disabled={isLoading}
                             title="Blacklist member"
-                            className="flex h-7 w-7 items-center justify-center rounded-md border border-[#242427] bg-[#1B1B1E] text-[#9CA3AF] hover:border-orange-500 hover:text-orange-400 disabled:opacity-50 transition-colors"
+                            className="flex h-7 w-7 items-center justify-center rounded-md border border-[var(--border)] bg-[var(--surface-2)] text-[var(--text-2)] hover:border-orange-500 hover:text-orange-400 disabled:opacity-50 transition-colors"
                           >
                             <Ban className="h-3.5 w-3.5" />
                           </button>
                         </>
                       ) : (
-                        !isSelf && <span className="text-xs text-[#4B5563]">—</span>
+                        !isSelf && <span className="text-xs text-[var(--text-3)]">—</span>
                       )}
                     </div>
                   )}
@@ -414,28 +414,28 @@ const OrgMembersPage = () => {
 
       {/* ── Invitations Table (admin only) ───────────────────────── */}
       {tab === 'invitations' && isAdmin && (
-        <div className="overflow-hidden rounded-xl border border-[#242427] bg-[#141416]">
-          <div className="grid grid-cols-[2fr_1fr_1.5fr_1fr] gap-4 border-b border-[#242427] px-5 py-3">
+        <div className="overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--surface)]">
+          <div className="grid grid-cols-[2fr_1fr_1.5fr_1fr] gap-4 border-b border-[var(--border)] px-5 py-3">
             {['Email', 'Role', 'Invited On', 'Status'].map(col => (
-              <span key={col} className="text-xs font-medium uppercase tracking-wide text-[#6B7280]">{col}</span>
+              <span key={col} className="text-xs font-medium uppercase tracking-wide text-[var(--text-3)]">{col}</span>
             ))}
           </div>
           {loading ? (
-            <div className="py-12 text-center text-sm text-[#4B5563]">Loading…</div>
+            <div className="py-12 text-center text-sm text-[var(--text-3)]">Loading…</div>
           ) : filteredInvitations.length === 0 ? (
-            <div className="py-12 text-center text-sm text-[#4B5563]">{search ? 'No invitations match your search.' : 'No invitations sent yet.'}</div>
+            <div className="py-12 text-center text-sm text-[var(--text-3)]">{search ? 'No invitations match your search.' : 'No invitations sent yet.'}</div>
           ) : (
             filteredInvitations.map((inv, idx) => (
-              <div key={inv.id} className={`grid grid-cols-[2fr_1fr_1.5fr_1fr] gap-4 items-center px-5 py-3.5 transition-colors hover:bg-[#1B1B1E] ${idx < filteredInvitations.length - 1 ? 'border-b border-[#1E1E21]' : ''}`}>
+              <div key={inv.id} className={`grid grid-cols-[2fr_1fr_1.5fr_1fr] gap-4 items-center px-5 py-3.5 transition-colors hover:bg-[var(--surface-2)] ${idx < filteredInvitations.length - 1 ? 'border-b border-[var(--border)]' : ''}`}>
                 <div className="flex items-center gap-2 min-w-0">
-                  <div className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-[#242427]">
-                    <Mail className="h-3.5 w-3.5 text-[#6B7280]" />
+                  <div className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-[var(--surface-3)]">
+                    <Mail className="h-3.5 w-3.5 text-[var(--text-3)]" />
                   </div>
-                  <span className="truncate text-sm text-[#F5F5F7]">{inv.invitedEmail}</span>
+                  <span className="truncate text-sm text-[var(--text)]">{inv.invitedEmail}</span>
                 </div>
-                <span className="text-sm text-[#9CA3AF] capitalize">{inv.role}</span>
-                <span className="text-sm text-[#9CA3AF]">{formatDate(inv.createdAt)}</span>
-                <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium w-fit ${STATUS_COLORS[inv.status] ?? 'text-[#9CA3AF]'}`}>
+                <span className="text-sm text-[var(--text-2)] capitalize">{inv.role}</span>
+                <span className="text-sm text-[var(--text-2)]">{formatDate(inv.createdAt)}</span>
+                <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium w-fit ${STATUS_COLORS[inv.status] ?? 'text-[var(--text-2)]'}`}>
                   {capitalize(inv.status)}
                 </span>
               </div>
