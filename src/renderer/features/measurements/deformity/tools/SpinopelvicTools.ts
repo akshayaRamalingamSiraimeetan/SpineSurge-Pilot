@@ -1,6 +1,6 @@
 import { Point, getMidpoint } from "@/lib/canvas/GeometryUtils";
 import { Measurement } from "@/lib/canvas/CanvasManager";
-import { drawMeasurementLabel, drawPoint } from "@/lib/canvas/CanvasUtils";
+import { drawMeasurementLabel } from "@/lib/canvas/CanvasUtils";
 import { drawAngleArc, getHipAxisCenter, drawFemoralHeads } from "./BaseTools";
 
 export function calculateSSA(points: Point[]) {

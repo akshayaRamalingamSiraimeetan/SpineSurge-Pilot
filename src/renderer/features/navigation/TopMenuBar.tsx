@@ -54,11 +54,10 @@ import { useNavigate, useLocation } from "react-router-dom";
 import { useState, useRef, useMemo } from "react";
 import { ProfileDialog } from "./ProfileDialog";
 import { SettingsDialog } from "./SettingsDialog";
-import { ReportDialog } from "./ReportDialog";
 import { ShareDialog } from "./ShareDialog";
 import { useAppStore, getStudyDisplayName } from "@/lib/store/index";
 import { cn } from "@/lib/utils";
-import { generateReportPDF } from "@/lib/pdf/generateReportPDF";
+import { buildReportPDF, exportReportPDF } from "@/lib/pdf/generateReportPDF";
 import { Eye } from "lucide-react";
 
 /* ── Workspace mode tabs ─────────────────────────────────────── */
@@ -106,7 +105,8 @@ const TopMenuBar = () => {
 
     const [profileOpen, setProfileOpen]   = useState(false);
     const [settingsOpen, setSettingsOpen] = useState(false);
-    const [reportOpen, setReportOpen]     = useState(false);
+    const [reportBusy, setReportBusy]     = useState<'preview' | 'export' | null>(null);
+    const [pdfPreviewUrl, setPdfPreviewUrl] = useState<string | null>(null);
     const [closeAttemptRoute, setCloseAttemptRoute] = useState<string | null>(null);
     const queryParams = useMemo(() => new URLSearchParams(location.search), [location.search]);
     const wsTab = (queryParams.get('tab') as WsTab) || 'assessment';
@@ -158,54 +158,56 @@ const TopMenuBar = () => {
         : 'U';
 
     /* ── Tab switching ───────────────────────────────────────── */
+    // Tabs replace the history entry so Back leaves the workspace instead of
+    // walking through tabs (BUGS NAV-30). Tool state is reset per tab (WS-20).
     const handleWsTab = (key: WsTab) => {
+        const st = useAppStore.getState();
+        st.setActiveTool(null);
+        st.setSelection(null);
         if (key === 'compare') {
             setComparisonMode(true);
             navigate('/compare');
-        } else if (key === 'report') {
-            // Keep isComparisonMode as-is so users can generate Comparison Reports
-            const searchParams = new URLSearchParams(location.search);
-            searchParams.set('tab', key);
-            navigate(`/workspace?${searchParams.toString()}`);
-        } else {
-            if (isComparisonMode) setComparisonMode(false);
-            const searchParams = new URLSearchParams(location.search);
-            searchParams.set('tab', key);
-            navigate(`/workspace?${searchParams.toString()}`);
+            return;
         }
+        // Keep comparison mode for the report tab (comparison reports).
+        if (key !== 'report' && isComparisonMode) setComparisonMode(false);
+        const searchParams = new URLSearchParams(location.search);
+        searchParams.set('tab', key);
+        navigate(`/workspace?${searchParams.toString()}`, { replace: location.pathname === '/workspace' });
     };
 
     /* ── Other navigation ────────────────────────────────────── */
+    // Leaving the workspace: flush pending edits, then close the case so a
+    // later Quick Use can't write into this study (BUGS WS-10).
+    const leaveWorkspace = (targetRoute: string) => {
+        setComparisonMode(false);
+        useAppStore.getState().closeCase();
+        navigate(targetRoute);
+    };
+
     const handleCloseWorkspace = async (targetRoute: string) => {
-        if (!hasUnsyncedChanges) {
-            setComparisonMode(false);
-            navigate(targetRoute);
+        const state = useAppStore.getState();
+        if (!state.activeContextId || !hasUnsyncedChanges) {
+            leaveWorkspace(targetRoute);
             return;
         }
 
-        const state = useAppStore.getState();
-        if (state.activeContextId) {
-            state.setSyncStatus('saving');
-            const success = await state.updateContextState(state.activeContextId, {
-                measurements: state.measurements,
-                implants: state.implants,
-                threeDImplants: state.threeDImplants,
-                pedicleSimulations: state.pedicleSimulations,
-                currentImage: state.currentImage,
-            });
+        state.setSyncStatus('saving');
+        const success = await state.updateContextState(state.activeContextId, {
+            measurements: state.measurements,
+            implants: state.implants,
+            threeDImplants: state.threeDImplants,
+            pedicleSimulations: state.pedicleSimulations,
+            ...(state.currentImage ? { currentImage: state.currentImage } : {}),
+        });
 
-            if (success) {
-                state.setHasUnsyncedChanges(false);
-                state.setSyncStatus('synced');
-                setComparisonMode(false);
-                navigate(targetRoute);
-            } else {
-                state.setSyncStatus('error');
-                setCloseAttemptRoute(targetRoute);
-            }
+        if (success) {
+            state.setHasUnsyncedChanges(false);
+            state.setSyncStatus('synced');
+            leaveWorkspace(targetRoute);
         } else {
-            setComparisonMode(false);
-            navigate(targetRoute);
+            state.setSyncStatus('error');
+            setCloseAttemptRoute(targetRoute);
         }
     };
 
@@ -435,39 +437,48 @@ const TopMenuBar = () => {
                     </Button>
                 )}
 
-                {/* PDF Actions (Report Tab Only) */}
+                {/* PDF Actions (Report Tab Only) — one generator, model-driven (RPT-13/14) */}
                 {wsTab === 'report' ? (
                     <div className="flex items-center gap-2 mr-2">
-                        <Button 
-                            variant="secondary" 
-                            size="sm" 
+                        <Button
+                            variant="secondary"
+                            size="sm"
                             className="h-8 text-xs bg-white/10 hover:bg-white/20 border-white/5"
+                            disabled={reportBusy !== null}
                             onClick={async () => {
+                                setReportBusy('preview');
                                 try {
-                                    const url = await generateReportPDF({ previewOnly: true });
-                                    if (url) window.open(url, '_blank');
+                                    const { blob } = await buildReportPDF();
+                                    setPdfPreviewUrl(URL.createObjectURL(blob));
                                 } catch (e: any) {
                                     alert(e.message || "Failed to preview PDF");
+                                } finally {
+                                    setReportBusy(null);
                                 }
                             }}
                         >
                             <Eye className="w-3.5 h-3.5 mr-1.5" />
-                            Preview PDF
+                            {reportBusy === 'preview' ? 'Building…' : 'Preview PDF'}
                         </Button>
-                        <Button 
-                            size="sm" 
+                        <Button
+                            size="sm"
                             className="h-8 text-xs text-white shadow-sm hover:brightness-110 transition-all border-none"
                             style={{ backgroundColor: '#FF453A' }}
+                            disabled={reportBusy !== null}
                             onClick={async () => {
+                                setReportBusy('export');
                                 try {
-                                    await generateReportPDF();
+                                    const r = await exportReportPDF({ saveToRecord: true });
+                                    if (r.uploadError) alert(`PDF downloaded, but it was not saved to the patient record: ${r.uploadError}`);
                                 } catch (e: any) {
                                     alert(e.message || "Failed to export PDF");
+                                } finally {
+                                    setReportBusy(null);
                                 }
                             }}
                         >
                             <Download className="w-3.5 h-3.5 mr-1.5" />
-                            Export PDF
+                            {reportBusy === 'export' ? 'Exporting…' : 'Export PDF'}
                         </Button>
                     </div>
                 ) : (
@@ -502,7 +513,7 @@ const TopMenuBar = () => {
                 {/* View Report (workspace only) */}
                 {isWorkspaceRoute && (
                     <button
-                        onClick={() => { setWsTab('report'); setReportOpen(true); setActiveDialog('report'); }}
+                        onClick={() => handleWsTab('report')}
                         style={{
                             display: 'flex', alignItems: 'center', gap: 6,
                             height: 30, padding: '0 12px',
@@ -577,8 +588,13 @@ const TopMenuBar = () => {
             {/* Dialogs */}
             <ProfileDialog open={profileOpen} onOpenChange={setProfileOpen} />
             <SettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} />
-            <ReportDialog open={reportOpen} onOpenChange={(v) => { setReportOpen(v); setActiveDialog(v ? 'report' : null); }} checkedCount={measurements.filter((m) => m.selected).length} />
-            <ImportDialog />
+            <Dialog open={!!pdfPreviewUrl} onOpenChange={(open) => {
+                if (!open && pdfPreviewUrl) { URL.revokeObjectURL(pdfPreviewUrl); setPdfPreviewUrl(null); }
+            }}>
+                <DialogContent className="max-w-5xl w-[90vw] h-[90vh] p-0 overflow-hidden">
+                    {pdfPreviewUrl && <iframe src={pdfPreviewUrl} title="Report preview" className="w-full h-full border-none" />}
+                </DialogContent>
+            </Dialog>
             <ShareDialog />
 
             {closeAttemptRoute && (

@@ -1,4 +1,4 @@
-import { Point, getDistance } from "@/lib/canvas/GeometryUtils";
+import { Point, getDistance, endplateAngleDeg } from "@/lib/canvas/GeometryUtils";
 import { Measurement } from "@/lib/canvas/CanvasManager";
 import { drawMeasurementLabel } from "@/lib/canvas/CanvasUtils";
 
@@ -39,10 +39,7 @@ export function calculateVBM(points: Point[], mode: VBMMode, ratio: number | nul
         const antH = getDistance(p1, p2);
 
         // Wedge Angle: angle between p0-p1 and p3-p2
-        const ang1 = Math.atan2(p1.y - p0.y, p1.x - p0.x);
-        const ang2 = Math.atan2(p2.y - p3.y, p2.x - p3.x);
-        let wedgeAngle = Math.abs(ang1 - ang2) * (180 / Math.PI);
-        if (wedgeAngle > 90) wedgeAngle = 180 - wedgeAngle;
+        const wedgeAngle = endplateAngleDeg(p0, p1, p3, p2);
 
         results.push(`ANT: ${(antH * k).toFixed(1)}${unit}`);
         results.push(`POST: ${(postH * k).toFixed(1)}${unit}`);

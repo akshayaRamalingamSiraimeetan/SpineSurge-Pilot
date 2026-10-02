@@ -1,4 +1,4 @@
-import { Point, getMidpoint, getLineLinesIntersection, getDistance } from "@/lib/canvas/GeometryUtils";
+import { Point, getMidpoint, getLineLinesIntersection, getDistance, endplateAngleDeg } from "@/lib/canvas/GeometryUtils";
 import { Measurement } from "@/lib/canvas/CanvasManager";
 import { drawMeasurementLabel } from "@/lib/canvas/CanvasUtils";
 
@@ -10,11 +10,7 @@ export function calculateSpinalCurvature(points: Point[]) {
     const p3 = points[2];
     const p4 = points[3];
 
-    const angle1 = Math.atan2(p2.y - p1.y, p2.x - p1.x);
-    const angle2 = Math.atan2(p4.y - p3.y, p4.x - p3.x);
-
-    let diff = Math.abs(angle1 - angle2) * (180 / Math.PI);
-    if (diff > 90) diff = 180 - diff;
+    const diff = endplateAngleDeg(p1, p2, p3, p4);
 
     // To find the intersection of the endplate lines (not their perpendiculars)
     const intersection = getLineLinesIntersection(p1, p2, p3, p4);

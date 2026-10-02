@@ -5,6 +5,7 @@ import EmptyStateCard from './EmptyStateCard';
 
 interface StudyRow {
   id: string;
+  patientId: string;
   patientName: string;
   studyTitle: string;
   modality: string;
@@ -25,16 +26,15 @@ const RecentStudiesSection = () => {
     .flatMap((p) =>
       (p.studies ?? []).map((s) => ({
         id:              s.id,
+        patientId:       p.id,
         patientName:     p.name,
         studyTitle:      getStudyDisplayName(s),
         modality:        s.modality,
         acquisitionDate: s.acquisitionDate ?? '—',
       }))
     )
-    .sort((a, b) => {
-      // Sort newest first; fall back to string comparison
-      return b.acquisitionDate.localeCompare(a.acquisitionDate);
-    })
+    // Newest first by parsed date (mixed "Mar 05, 2025" / ISO formats — NAV-31)
+    .sort((a, b) => (Date.parse(b.acquisitionDate) || 0) - (Date.parse(a.acquisitionDate) || 0))
     .slice(0, 5);
 
   return (
@@ -69,7 +69,11 @@ const RecentStudiesSection = () => {
           {recentStudies.map((study) => (
             <button
               key={study.id}
-              onClick={() => navigate('/workspace')}
+              onClick={async () => {
+                // Open THIS study, not whatever was loaded last (NAV-15)
+                await useAppStore.getState().openStudy(study.patientId, study.id);
+                navigate('/workspace');
+              }}
               className="group flex flex-col gap-2 rounded-xl border border-[#242427] bg-[#141416] p-4 text-left transition-colors hover:border-[#3A3A3E] hover:bg-[#1B1B1E]"
             >
               <div className="flex items-center gap-2">

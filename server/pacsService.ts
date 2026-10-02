@@ -61,7 +61,7 @@ export async function searchPACS(config: PACSServerConfig, query: any): Promise<
         if (query.patientID) params.append('PatientID', query.patientID);
         if (query.studyDate) params.append('StudyDate', query.studyDate);
 
-        const response = await axios.get(`${url}/studies`, {
+        const response = await axios.get(`${url}/studies`, { maxRedirects: 0,
             params,
             headers: { 'Accept': 'application/dicom+json' }
         });
@@ -126,7 +126,7 @@ export async function importPACSStudy(config: PACSServerConfig, studyInstanceUID
         console.log(`Starting PACS import for Study: ${studyInstanceUID}`);
 
         // 1. Get Instances for the study
-        const instancesResponse = await axios.get(`${url}/studies/${studyInstanceUID}/instances`, {
+        const instancesResponse = await axios.get(`${url}/studies/${studyInstanceUID}/instances`, { maxRedirects: 0,
             headers: { 'Accept': 'application/dicom+json' }
         });
 
@@ -168,7 +168,7 @@ export async function importPACSStudy(config: PACSServerConfig, studyInstanceUID
             const previewUrl = `${wadoUrl}/wado?requestType=WADO&studyUID=${studyInstanceUID}&seriesUID=${seriesInstanceUID}&objectUID=${sopInstanceUID}&contentType=image/png`;
 
             try {
-                const response = await axios.get(previewUrl, {
+                const response = await axios.get(previewUrl, { maxRedirects: 0,
                     responseType: 'arraybuffer',
                     timeout: 20000
                 });

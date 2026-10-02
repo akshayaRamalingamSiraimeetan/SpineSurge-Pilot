@@ -19,13 +19,14 @@ export function ReportsListDialog({ studyId }: { studyId: string }) {
     const token = useAppStore(s => s.token);
 
     useEffect(() => {
-        if (open) {
-            setLoading(true);
-            api.getStudyReports(studyId, token)
-                .then(setReports)
-                .catch(err => console.error(err))
-                .finally(() => setLoading(false));
-        }
+        if (!open) return;
+        let ignore = false; // drop late responses after close/study change (RPT-19)
+        setLoading(true);
+        api.getStudyReports(studyId, token)
+            .then((r) => { if (!ignore) setReports(r); })
+            .catch(err => console.error(err))
+            .finally(() => { if (!ignore) setLoading(false); });
+        return () => { ignore = true; };
     }, [open, studyId, token]);
 
     return (
@@ -47,7 +48,7 @@ export function ReportsListDialog({ studyId }: { studyId: string }) {
                             </div>
                         ) : reports.length === 0 ? (
                             <div className="text-center py-10 text-muted-foreground italic font-medium opacity-60">
-                                No reports generated for this visit.
+                                No reports generated for this study yet.
                             </div>
                         ) : (
                             reports.map((report) => (
@@ -56,7 +57,7 @@ export function ReportsListDialog({ studyId }: { studyId: string }) {
                                         <span className="text-sm font-bold text-foreground">
                                             {report.title || `Report v${report.version || 1}`}
                                         </span>
-                                        <span className="text-[10px] text-muted-foreground opacity-70 font-mono tracking-tight">{report.created_at}</span>
+                                        <span className="text-[10px] text-muted-foreground opacity-70 font-mono tracking-tight">{(report.createdAt ?? report.created_at) ? new Date(report.createdAt ?? report.created_at).toLocaleString() : ''} · v{report.version ?? 1}</span>
                                     </div>
                                     <div className="flex gap-2">
                                         <Button size="sm" variant="ghost" className="h-8 w-8 p-0 text-primary hover:bg-primary/10 rounded-lg" onClick={() => setSelectedReportUrl(report.url)}>

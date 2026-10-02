@@ -64,13 +64,16 @@ export function calculatePelvicParameters(points: Point[]) {
     // Calculate PI = PT + SS (or geometrically strictly).
     // Angle between Perpendicular to Plate and Hip-S1 Axis.
 
-    const angle_plate_deg = angle_plate * (180 / Math.PI);
-    // Perpendicular angle: Plate angle + 90
-    // If plate is Down-Right (+45), Perp is Down-Left (+135) [Anterior-Inferior]
-    const angle_normal = angle_plate_deg + 90;
-
-    let pi_angle = Math.abs(angle_Axis - angle_normal);
-    if (pi_angle > 180) pi_angle = 360 - pi_angle;
+    // PI = angle between the S1 endplate normal and the line S1-midpoint → hip
+    // axis. Take the normal that points toward the hips so the result is the
+    // same for left- and right-facing films (BUGS CV-02).
+    const toHip = { x: hipAxisCenter.x - s1_center.x, y: hipAxisCenter.y - s1_center.y };
+    let normal = { x: -vec_plate.y, y: vec_plate.x };
+    if (normal.x * toHip.x + normal.y * toHip.y < 0) normal = { x: -normal.x, y: -normal.y };
+    const nLen = Math.hypot(normal.x, normal.y) || 1;
+    const hLen = Math.hypot(toHip.x, toHip.y) || 1;
+    const cosPI = Math.max(-1, Math.min(1, (normal.x * toHip.x + normal.y * toHip.y) / (nLen * hLen)));
+    const pi_angle = Math.acos(cosPI) * (180 / Math.PI);
 
     return {
         ss: angle_SS,

@@ -28,7 +28,7 @@ invitationsRouter.get('/pending', authenticate, async (req, res) => {
       .innerJoin(orgs, eq(orgInvitations.orgId, orgs.id))
       .where(
         and(
-          eq(orgInvitations.invitedEmail, req.user!.email),
+          eq(orgInvitations.invitedEmail, req.user!.email.toLowerCase()),
           eq(orgInvitations.status, 'pending')
         )
       );
@@ -60,7 +60,7 @@ invitationsRouter.post(
         .limit(1);
 
       // 404 if not found or email doesn't match
-      if (!invitation || invitation.invitedEmail !== req.user!.email) {
+      if (!invitation || invitation.invitedEmail.toLowerCase() !== req.user!.email.toLowerCase()) {
         res.status(404).json({ error: 'Invitation not found' });
         return;
       }
@@ -83,10 +83,18 @@ invitationsRouter.post(
         )
         .limit(1);
 
-      if (existingMembership) {
+      // Removed members may rejoin via a new invitation; blacklisted may not (BUGS NAV-23).
+      if (existingMembership && existingMembership.status === 'active') {
         res.status(409).json({
           code: 'ALREADY_IN_ORGANIZATION',
           message: 'You are already a member of this organization.',
+        });
+        return;
+      }
+      if (existingMembership && existingMembership.status === 'blacklisted') {
+        res.status(403).json({
+          code: 'MEMBERSHIP_BLOCKED',
+          message: 'You cannot join this organization. Please contact its administrator.',
         });
         return;
       }
@@ -95,14 +103,20 @@ invitationsRouter.post(
       const now = new Date();
 
       await db.transaction(async (tx) => {
-        // Insert membership row (multi-org support) with status='active'
-        await tx.insert(organizationMemberships).values({
-          userId:   req.user!.id,
-          orgId:    invitation.orgId,
-          role:     invitation.role,
-          status:   'active',
-          joinedAt: now,
-        });
+        if (existingMembership) {
+          // Re-activate a previously removed membership
+          await tx.update(organizationMemberships)
+            .set({ status: 'active', role: invitation.role, joinedAt: now })
+            .where(eq(organizationMemberships.id, existingMembership.id));
+        } else {
+          await tx.insert(organizationMemberships).values({
+            userId:   req.user!.id,
+            orgId:    invitation.orgId,
+            role:     invitation.role,
+            status:   'active',
+            joinedAt: now,
+          });
+        }
 
         // Mark invitation accepted
         await tx
@@ -166,7 +180,7 @@ invitationsRouter.post('/:id/decline', authenticate, async (req, res) => {
       .where(eq(orgInvitations.id, id))
       .limit(1);
 
-    if (!invitation || invitation.invitedEmail !== req.user!.email) {
+    if (!invitation || invitation.invitedEmail.toLowerCase() !== req.user!.email.toLowerCase()) {
       res.status(404).json({ error: 'Invitation not found' });
       return;
     }

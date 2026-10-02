@@ -14,8 +14,9 @@ import {
 } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { API_BASE } from '@/lib/api';
 
-const BASE_URL = 'http://localhost:3001';
+const BASE_URL = API_BASE;
 
 const VerifyEmailPage = () => {
     const navigate = useNavigate();
@@ -43,7 +44,7 @@ const VerifyEmailPage = () => {
             if (stored) {
                 setEmail(stored);
             } else {
-                navigate('/register');
+                navigate('/register', { replace: true });
             }
         }
     }, []); // eslint-disable-line react-hooks/exhaustive-deps

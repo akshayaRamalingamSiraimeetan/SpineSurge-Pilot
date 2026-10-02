@@ -169,3 +169,24 @@ export function extrapolateLine(p1: Point, p2: Point, length: number): { start: 
         }
     };
 }
+
+/**
+ * Angle (degrees, 0–180) between two endplate lines A(a1→a2) and B(b1→b2).
+ *
+ * Endplates are within ±90° of horizontal, so both lines are oriented
+ * left→right before measuring. This makes the result independent of click
+ * direction (no -160° for a 20° curve) AND lets curves > 90° report correctly
+ * (no 70° for a 110° curve). BUGS CV-01, CV-17.
+ */
+export function endplateAngleDeg(a1: Point, a2: Point, b1: Point, b2: Point): number {
+    const orient = (p: Point, q: Point) => {
+        let x = q.x - p.x, y = q.y - p.y;
+        if (x < 0 || (x === 0 && y > 0)) { x = -x; y = -y; }
+        const len = Math.hypot(x, y) || 1;
+        return { x: x / len, y: y / len };
+    };
+    const u = orient(a1, a2);
+    const v = orient(b1, b2);
+    const dot = Math.max(-1, Math.min(1, u.x * v.x + u.y * v.y));
+    return Math.acos(dot) * (180 / Math.PI);
+}

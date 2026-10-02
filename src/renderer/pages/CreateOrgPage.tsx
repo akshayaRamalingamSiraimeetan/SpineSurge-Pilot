@@ -13,6 +13,7 @@ import {
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
+import { API_BASE } from '@/lib/api';
 
 /**
  * CreateOrgPage
@@ -46,7 +47,7 @@ const CreateOrgPage = () => {
 
         try {
             const res = await axios.post(
-                'http://localhost:3001/orgs',
+                `${API_BASE}/orgs`,
                 { name, organizationEmail: email },
                 {
                     headers: { Authorization: `Bearer ${token}` },

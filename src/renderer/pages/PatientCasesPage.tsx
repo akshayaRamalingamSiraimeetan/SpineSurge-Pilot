@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 import { format, parse } from "date-fns";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { useShallow } from "zustand/react/shallow";
 import { useAppStore, Study, getStudyDisplayName, STUDY_STATUSES, StudyStatus } from "@/lib/store/index";
 import { useState, useMemo, useEffect } from "react";
 import { NewPatientDialog } from "@/features/patients/NewPatientDialog";
@@ -96,7 +97,8 @@ function StudyCard({
     patientId: string;
     onOpenWorkspace: (study: Study) => void;
 }) {
-    const { updateStudy, generateShareLink } = useAppStore();
+    const updateStudy = useAppStore(s => s.updateStudy);
+    const generateShareLink = useAppStore(s => s.generateShareLink);
     const [renaming, setRenaming] = useState(false);
     const [nameDraft, setNameDraft] = useState(getStudyDisplayName(study));
     const title = getStudyDisplayName(study);
@@ -207,15 +209,40 @@ const PatientCasesPage = () => {
         setActivePatient,
         archivePatient,
         contexts,
-        setActiveContextId,
         addContext,
         setActiveDialog,
         generateShareLink,
         addVisit,
         addStudy,
-    } = useAppStore();
+    } = useAppStore(useShallow(s => ({
+        patients: s.patients,
+        activePatientId: s.activePatientId,
+        setActivePatient: s.setActivePatient,
+        archivePatient: s.archivePatient,
+        contexts: s.contexts,
+        addContext: s.addContext,
+        setActiveDialog: s.setActiveDialog,
+        generateShareLink: s.generateShareLink,
+        addVisit: s.addVisit,
+        addStudy: s.addStudy,
+    })));
 
     const [searchQuery, setSearchQuery] = useState('');
+    // One create/open action at a time — prevents duplicate visits/studies/
+    // contexts from double clicks (BUGS NAV-19).
+    const [busy, setBusy] = useState(false);
+    const runExclusive = async (fn: () => Promise<void>) => {
+        if (busy) return;
+        setBusy(true);
+        try {
+            await fn();
+        } catch (e) {
+            console.error(e);
+            alert(`Something went wrong: ${e instanceof Error ? e.message : 'server error'}. Please try again.`);
+        } finally {
+            setBusy(false);
+        }
+    };
     const [showArchived, setShowArchived] = useState(false);
     const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
     const [studyActionDialogOpen, setStudyActionDialogOpen] = useState(false);
@@ -300,7 +327,9 @@ const PatientCasesPage = () => {
         } else {
             setExpandedGroups(new Set());
         }
-    }, [activePatientId, groupedTimeline]);
+        // Only when the patient changes — not on every patient-list refresh (NAV-25).
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [activePatientId]);
 
     const firstSeenDate = useMemo(() => {
         if (!activePatient?.visits?.length) return activePatient?.lastVisit || null;
@@ -325,9 +354,9 @@ const PatientCasesPage = () => {
         });
     };
 
-    const handleAddStudy = async () => {
+    const handleAddStudy = () => runExclusive(async () => {
         if (!activePatient) return;
-        
+
         const todayStr = format(new Date(), 'MMM dd, yyyy');
         
         // Find existing visit for today
@@ -340,7 +369,7 @@ const PatientCasesPage = () => {
 
         if (!targetVisitId) {
             // Create a new visit automatically if none exists for today
-            const newVisitId = `visit-${Date.now()}`;
+            const newVisitId = `visit-${crypto.randomUUID()}`;
             const newVisit = {
                 id: newVisitId,
                 visitNumber: `#${String((activePatient.visits?.length || 0) + 1).padStart(4, '0')}`,
@@ -360,7 +389,7 @@ const PatientCasesPage = () => {
         }
         
         // Create an empty study
-        const studyId = `std-${Date.now()}`;
+        const studyId = `std-${crypto.randomUUID()}`;
         const newStudy: Omit<Study, 'scans'> = {
             id: studyId,
             patientId: activePatient.id,
@@ -375,8 +404,9 @@ const PatientCasesPage = () => {
         if (useAppStore.getState().isDicomMode) {
             destroyCornerstone();
         }
+        useAppStore.getState().closeCase();
         const newContext = {
-            id: `ctx-${Date.now()}`,
+            id: `ctx-${crypto.randomUUID()}`,
             patientId: activePatient.id,
             visitId: targetVisitId,
             studyIds: [studyId],
@@ -385,16 +415,15 @@ const PatientCasesPage = () => {
             lastModified: format(new Date(), 'yyyy-MM-dd HH:mm'),
         };
         await addContext(newContext);
-        
-        // Navigate to workspace
+
         navigate('/workspace');
-    };
+    });
 
     const handleArchiveToggle = async (patientId: string, currentArchived: boolean) => {
         if (confirm(`Are you sure you want to ${currentArchived ? 'restore' : 'archive'} this patient?`)) {
             await archivePatient(patientId, !currentArchived);
             if (!currentArchived && activePatientId === patientId) {
-                setActivePatient('');
+                useAppStore.getState().resetWorkspace();
             }
         }
     };
@@ -404,7 +433,7 @@ const PatientCasesPage = () => {
         setStudyActionDialogOpen(true);
     };
 
-    const handleContinueContext = async (context: { id: string; patientId: string }) => {
+    const handleContinueContext = (context: { id: string; patientId: string }) => runExclusive(async () => {
         // Tear down the Cornerstone runtime before opening a normal workspace.
         // This prevents stale RenderingEngine / ToolGroup / cache state from
         // the previous DICOM session from influencing CanvasWorkspace.
@@ -412,17 +441,16 @@ const PatientCasesPage = () => {
             destroyCornerstone();
         }
         await setActivePatient(context.patientId, context.id);
-        setActiveContextId(context.id);
         navigate('/workspace');
-    };
+    });
 
-    const handleStartNewFromStudy = async (study: Study) => {
+    const handleStartNewFromStudy = (study: Study) => runExclusive(async () => {
         // Tear down the Cornerstone runtime before opening a normal workspace.
         if (useAppStore.getState().isDicomMode) {
             destroyCornerstone();
         }
         const newContext = {
-            id: `ctx-${Date.now()}`,
+            id: `ctx-${crypto.randomUUID()}`,
             patientId: study.patientId,
             visitId: study.visitId,
             studyIds: [study.id],
@@ -430,10 +458,11 @@ const PatientCasesPage = () => {
             name: `${getStudyDisplayName(study)} - ${format(new Date(), 'MMM dd')}`,
             lastModified: format(new Date(), 'yyyy-MM-dd HH:mm'),
         };
+        // Load the patient (clears any previous case) then create the session.
         await setActivePatient(study.patientId);
         await addContext(newContext);
         navigate('/workspace');
-    };
+    });
 
     const selectPatient = async (patientId: string) => {
         await setActivePatient(patientId);

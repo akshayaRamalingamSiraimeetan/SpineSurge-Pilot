@@ -1,7 +1,9 @@
+import { useAppStore } from './index';
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import { API_BASE } from '@/lib/api';
 
-const API_BASE = 'http://localhost:3001';
+
 
 
 export interface PACSServerConfig {
@@ -79,7 +81,7 @@ export const usePACSStore = create<PACSState>()(
                 try {
                     const response = await fetch(`${API_BASE}/api/pacs/search`, {
                         method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
+                        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${useAppStore.getState().token ?? ''}` },
                         body: JSON.stringify({ config, query })
                     });
 
@@ -103,7 +105,7 @@ export const usePACSStore = create<PACSState>()(
                 try {
                     const response = await fetch(`${API_BASE}/api/pacs/import`, {
                         method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
+                        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${useAppStore.getState().token ?? ''}` },
                         body: JSON.stringify({ config, studyInstanceUID, patientId, visitId })
                     });
 

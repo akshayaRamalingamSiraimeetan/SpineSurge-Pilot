@@ -2,6 +2,7 @@ import { ThemeProvider } from "@/components/theme-provider"
 import { HashRouter as Router, Routes, Route, Navigate } from "react-router-dom"
 import { useEffect } from "react"
 import { useAppStore } from "@/lib/store/index"
+import { UNAUTHORIZED_EVENT } from "@/lib/api"
 
 import MainLayout from "@/components/layout/MainLayout"
 import DashboardLayout from "@/components/dashboard/DashboardLayout"
@@ -21,15 +22,26 @@ import { RouteErrorBoundary } from "@/components/RouteErrorBoundary"
 import { RequireAuth, RequireVerified, RequireProfile, RedirectIfComplete } from "@/components/guards"
 
 const App = () => {
-  const initializeStore = useAppStore(state => state.initializeStore);
+  const bootstrapSession = useAppStore(state => state.bootstrapSession);
 
+  // Validate persisted token, restore user/orgs, load patients (no-op without token).
   useEffect(() => {
-    initializeStore();
-  }, [initializeStore]);
+    void bootstrapSession();
+  }, [bootstrapSession]);
+
+  // Expired/invalid token on any API call → sign out; guards redirect to /login (NAV-07).
+  useEffect(() => {
+    const onUnauthorized = () => {
+      if (useAppStore.getState().token) useAppStore.getState().clearAuth();
+    };
+    window.addEventListener(UNAUTHORIZED_EVENT, onUnauthorized);
+    return () => window.removeEventListener(UNAUTHORIZED_EVENT, onUnauthorized);
+  }, []);
 
   return (
     <ThemeProvider defaultTheme="dark" storageKey="vite-ui-theme">
       <Router>
+        <RouteErrorBoundary routeName="app">
         <Routes>
           {/* ── Public routes — redirect fully-onboarded users away ── */}
           <Route path="/login" element={
@@ -156,7 +168,10 @@ const App = () => {
 
           {/* Legacy route — redirect to Patients page */}
           <Route path="/cases" element={<Navigate to="/patients" replace />} />
+          {/* Unknown routes → dashboard (guards bounce to /login if signed out) */}
+          <Route path="*" element={<Navigate to="/dashboard" replace />} />
         </Routes>
+        </RouteErrorBoundary>
       </Router>
     </ThemeProvider>
   );

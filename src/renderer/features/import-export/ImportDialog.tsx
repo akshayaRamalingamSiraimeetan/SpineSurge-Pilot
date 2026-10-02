@@ -32,7 +32,6 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { format } from "date-fns"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { API_BASE } from "@/lib/api"
 
 type ImportStep =
     | 'MODE'
@@ -69,14 +68,12 @@ export function ImportDialog({ children, targetSide, resetOnOpen, navigateOnImpo
         addVisit,
         addStudy,
         addScan,
-        loadImage,
         isComparisonMode,
         activeCanvasSide,
         setComparisonImage,
         setActiveDialog,
         addContext,
         setActivePatient,
-        setActiveContextId,
         updateContextState,
     } = useAppStore()
 
@@ -90,6 +87,9 @@ export function ImportDialog({ children, targetSide, resetOnOpen, navigateOnImpo
     const [visitData, setVisitData] = useState({ diagnosis: '', height: '', weight: '', consultant: 'Dr. Muthuraman (SRIHER)', comments: '' })
     const [scanData, setScanData] = useState({ type: 'Pre-op' as 'Pre-op' | 'Post-op', date: format(new Date(), 'yyyy-MM-dd') })
     const [selectedFile, setSelectedFile] = useState<File | null>(null)
+    const [isNewPatient, setIsNewPatient] = useState(false)
+    const [isNewVisit, setIsNewVisit] = useState(false)
+    const [importing, setImporting] = useState(false)
 
     const importSide = isComparisonMode ? (targetSide || activeCanvasSide) : null;
 
@@ -106,6 +106,8 @@ export function ImportDialog({ children, targetSide, resetOnOpen, navigateOnImpo
 
     // Handlers
     const resetWizard = () => {
+        setIsNewPatient(false)
+        setIsNewVisit(false)
         setStep('MODE')
         setSelectedPatient(null)
         setSelectedVisit(null)
@@ -124,79 +126,62 @@ export function ImportDialog({ children, targetSide, resetOnOpen, navigateOnImpo
         fileInputRef.current?.click()
     }
 
+    // Dashboard entry points start a fresh case — but only once the user has
+    // actually picked something; cancelling must not wipe work (BUGS WS-11).
+    const startFresh = () => {
+        if (resetOnOpen) useAppStore.getState().resetWorkspace();
+    };
+
     const handleQuickFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
         const file = event.target.files?.[0]
         if (!file) return;
 
-        const loadQuickImage = (imageUrl: string) => {
-            if (isComparisonMode && importSide) {
-                setComparisonImage(importSide, imageUrl);
-            } else {
-                loadImage(imageUrl);
-            }
-        };
+        // Reset so picking the same file again still fires onChange.
+        event.target.value = '';
 
-        try {
-            const formData = new FormData();
-            const scanId = `quick-scan-${Date.now()}`;
-            const studyId = `quick-study-${Date.now()}`;
+        if (isComparisonMode && importSide) {
+            setComparisonImage(importSide, URL.createObjectURL(file));
+            handleClose();
+            goToWorkspace();
+            return;
+        }
 
-            const patientId = `quick-${Date.now()}`;
-            const patientRes = await fetch(`${API_BASE}/api/patients`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    id: patientId,
-                    name: 'Quick Analysis',
-                    age: 0,
-                    gender: 'O',
-                    dob: '',
-                    lastVisit: new Date().toISOString()
-                })
-            });
-            if (!patientRes.ok) throw new Error('Failed to create quick patient');
+        startFresh();
+        const { activePatientId, activeContextId, contexts } = useAppStore.getState();
+        const activeCtx = contexts.find(c => c.id === activeContextId);
+        const studyId = activeCtx?.studyIds?.[0];
 
-            const studyRes = await fetch(`${API_BASE}/api/studies`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    id: studyId,
-                    patientId,
-                    modality: 'Import',
-                    source: 'Quick Use',
-                    acquisitionDate: new Date().toISOString()
-                })
-            });
-            if (!studyRes.ok) throw new Error('Failed to create quick study');
-
-            formData.append('file', file);
-            formData.append('id', scanId);
-            formData.append('studyId', studyId);
-            formData.append('type', 'Pre-op');
-            formData.append('date', new Date().toISOString().split('T')[0]);
-
-            const scanRes = await fetch(`${API_BASE}/api/scans`, {
-                method: 'POST',
-                body: formData
-            });
-
-            if (!scanRes.ok) throw new Error('Failed to upload scan file');
-
-            const { imageUrl } = await scanRes.json();
-
-            if (!imageUrl) throw new Error('Server did not return an image URL');
-
-            loadQuickImage(imageUrl);
-        } catch (err) {
-            console.warn("Quick Use upload failed, falling back to local file:", err);
-
+        if (activePatientId && activeCtx && studyId) {
+            // Inside an open study: the new image gets its OWN session in the
+            // same study, so the previous image's measurements never end up
+            // drawn on this one (BUGS CV-19).
             try {
-                const localUrl = URL.createObjectURL(file);
-                loadQuickImage(localUrl);
-            } catch (fallbackErr) {
-                console.error("Quick Use fallback failed:", fallbackErr);
-                alert("Failed to open this file in Quick Use. Please start the server or try another image.");
+                const imageUrl = await addScan(activePatientId, studyId, {
+                    id: `scan-${crypto.randomUUID()}`,
+                    type: 'Pre-op',
+                    date: format(new Date(), 'yyyy-MM-dd'),
+                }, file);
+                useAppStore.getState().closeCase();
+                const contextId = `ctx-${crypto.randomUUID()}`;
+                await addContext({
+                    id: contextId,
+                    patientId: activePatientId,
+                    visitId: activeCtx.visitId,
+                    studyIds: [studyId],
+                    mode: 'plan',
+                    name: `${activeCtx.name || 'Session'} · ${file.name}`,
+                    lastModified: new Date().toISOString(),
+                });
+                await updateContextState(contextId, { currentImage: imageUrl });
+            } catch (err) {
+                console.error("Quick Use upload failed:", err);
+                alert(`Could not save this image to the study: ${err instanceof Error ? err.message : 'server error'}. Please try again.`);
+                return;
             }
+        } else {
+            // Untitled session: show locally; uploaded once it becomes a study.
+            useAppStore.getState().closeCase();
+            useAppStore.getState().loadLocalImage(file);
         }
 
         handleClose();
@@ -207,6 +192,9 @@ export function ImportDialog({ children, targetSide, resetOnOpen, navigateOnImpo
         const files = event.target.files;
         if (files && files.length > 0) {
             const fileArray = Array.from(files);
+            startFresh();
+            // A local series is not tied to the open study (BUGS WS-13).
+            useAppStore.getState().closeCase();
             useAppStore.getState().loadDicomSeries(fileArray);
             handleClose();
             goToWorkspace();
@@ -217,9 +205,11 @@ export function ImportDialog({ children, targetSide, resetOnOpen, navigateOnImpo
         folderInputRef.current?.click();
     }
 
+    // Wizard steps only collect data; nothing is written to the server or the
+    // global store until "Import" succeeds (BUGS WS-12).
     const handleCreatePatient = () => {
         const newPatient: Patient = {
-            id: patientData.id || `#${Math.floor(Math.random() * 1000000000)}`,
+            id: patientData.id.trim() || `PAT-${crypto.randomUUID().slice(0, 8).toUpperCase()}`,
             name: patientData.name,
             age: parseInt(patientData.age),
             gender: patientData.gender as 'M' | 'F' | 'O',
@@ -228,15 +218,15 @@ export function ImportDialog({ children, targetSide, resetOnOpen, navigateOnImpo
             visits: [],
             studies: []
         }
-        addPatient(newPatient)
         setSelectedPatient(newPatient)
+        setIsNewPatient(true)
         setStep('NEW_VISIT')
     }
 
     const handleCreateVisit = () => {
         if (!selectedPatient) return
         const newVisit: Visit = {
-            id: Date.now().toString(),
+            id: crypto.randomUUID(),
             visitNumber: `#${String((selectedPatient.visits || []).length + 1).padStart(4, '0')}`,
             date: format(new Date(), 'MMMM dd, yyyy'),
             time: format(new Date(), 'hh:mm a'),
@@ -249,73 +239,62 @@ export function ImportDialog({ children, targetSide, resetOnOpen, navigateOnImpo
             scans: [],
             studies: []
         }
-        addVisit(selectedPatient.id, newVisit)
         setSelectedVisit(newVisit)
+        setIsNewVisit(true)
         setStep('SCAN_UPLOAD')
     }
 
     const handleFinalImport = async () => {
-        if (!selectedPatient || !selectedVisit || !selectedFile) return
+        if (!selectedPatient || !selectedVisit || !selectedFile || importing) return
+        setImporting(true)
 
-        const studyId = `std-${Date.now()}`;
-        const scanId = `scan-${Date.now()}`;
-        const contextId = `ctx-${Date.now()}`;
+        const studyId = `std-${crypto.randomUUID()}`;
+        const scanId = `scan-${crypto.randomUUID()}`;
+        const contextId = `ctx-${crypto.randomUUID()}`;
 
-        await addStudy({
-            id: studyId,
-            patientId: selectedPatient.id,
-            visitId: selectedVisit.id,
-            modality: 'X-Ray',
-            source: 'Import',
-            acquisitionDate: scanData.date
-        });
+        try {
+            if (isNewPatient) await addPatient(selectedPatient);
+            if (isNewVisit) await addVisit(selectedPatient.id, selectedVisit);
 
-        await addScan(selectedPatient.id, studyId, {
-            id: scanId,
-            type: scanData.type,
-            date: scanData.date
-        }, selectedFile)
-
-        const state = useAppStore.getState();
-        const updatedPatient = state.patients.find(p => p.id === selectedPatient.id);
-        let serverUrl: string | undefined;
-
-        updatedPatient?.studies.forEach(s => {
-            const found = s.scans.find(scan => scan.id === scanId);
-            if (found) serverUrl = found.imageUrl;
-        });
-
-        const imageUrl = serverUrl ?? URL.createObjectURL(selectedFile);
-
-        if (!isComparisonMode) {
-            await addContext({
-                id: contextId,
+            await addStudy({
+                id: studyId,
                 patientId: selectedPatient.id,
                 visitId: selectedVisit.id,
-                studyIds: [studyId],
-                mode: 'plan',
-                name: `${selectedPatient.name} - ${format(new Date(), 'MMM dd, yyyy')}`,
-                lastModified: new Date().toISOString(),
+                modality: 'X-Ray',
+                source: 'Import',
+                acquisitionDate: scanData.date
             });
-            await setActivePatient(selectedPatient.id, contextId);
-            setActiveContextId(contextId);
-            await updateContextState(contextId, { currentImage: imageUrl });
-        }
 
-        if (serverUrl) {
-            console.log('[ImportDialog] handleFinalImport: Using Server URL', serverUrl);
+            const imageUrl = await addScan(selectedPatient.id, studyId, {
+                id: scanId,
+                type: scanData.type,
+                date: scanData.date
+            }, selectedFile);
+
             if (isComparisonMode && importSide) {
-                setComparisonImage(importSide, serverUrl)
+                setComparisonImage(importSide, imageUrl);
             } else {
-                loadImage(serverUrl)
+                // A new scan is a new case: drop whatever was on the canvas.
+                startFresh();
+                useAppStore.getState().closeCase();
+                await addContext({
+                    id: contextId,
+                    patientId: selectedPatient.id,
+                    visitId: selectedVisit.id,
+                    studyIds: [studyId],
+                    mode: 'plan',
+                    name: `${selectedPatient.name} - ${format(new Date(), 'MMM dd, yyyy')}`,
+                    lastModified: new Date().toISOString(),
+                });
+                await updateContextState(contextId, { currentImage: imageUrl });
+                // Reload from server so patient, contexts and image are consistent.
+                await setActivePatient(selectedPatient.id, contextId);
             }
-        } else {
-            console.warn('[ImportDialog] Server URL not found, using Blob', imageUrl);
-            if (isComparisonMode && importSide) {
-                setComparisonImage(importSide, imageUrl)
-            } else {
-                loadImage(imageUrl)
-            }
+        } catch (err) {
+            alert(`Import failed: ${err instanceof Error ? err.message : 'server error'}. Please try again.`);
+            return;
+        } finally {
+            setImporting(false)
         }
 
         handleClose();
@@ -324,7 +303,6 @@ export function ImportDialog({ children, targetSide, resetOnOpen, navigateOnImpo
 
     return (
         <Dialog open={open} onOpenChange={(val) => {
-            if (val && resetOnOpen) useAppStore.getState().resetWorkspace();
             setOpen(val);
             setActiveDialog(val ? 'import' : null);
             if (!val) resetWizard();
@@ -542,7 +520,7 @@ export function ImportDialog({ children, targetSide, resetOnOpen, navigateOnImpo
                                             <button
                                                 key={p.id}
                                                 className="flex items-center justify-between p-3 rounded-lg hover:bg-[#1B1B1E] hover:border-[#3a3a3d] border border-transparent transition-all text-left"
-                                                onClick={() => { setSelectedPatient(p); setStep('VISIT_CHOICE'); }}
+                                                onClick={() => { setSelectedPatient(p); setIsNewPatient(false); setStep('VISIT_CHOICE'); }}
                                             >
                                                 <div>
                                                     <div className="text-sm font-bold text-[#F5F5F7]">{p.name || 'Unknown Patient'}</div>
@@ -609,7 +587,7 @@ export function ImportDialog({ children, targetSide, resetOnOpen, navigateOnImpo
                                     <button
                                         key={v.id}
                                         className="p-3 text-left border border-[#242427] rounded-xl hover:bg-[#1B1B1E] hover:border-[#3a3a3d] transition-all group"
-                                        onClick={() => { setSelectedVisit(v); setStep('SCAN_UPLOAD'); }}
+                                        onClick={() => { setSelectedVisit(v); setIsNewVisit(false); setStep('SCAN_UPLOAD'); }}
                                     >
                                         <div className="flex justify-between items-start mb-1">
                                             <span className="text-xs font-bold text-[#FF453A]">{v.visitNumber}</span>
@@ -672,10 +650,10 @@ export function ImportDialog({ children, targetSide, resetOnOpen, navigateOnImpo
 
                             <Button
                                 className="w-full bg-[#FF453A] hover:bg-[#e03d33] h-12 shadow-[0_1px_2px_rgba(0,0,0,.04),0_8px_24px_rgba(0,0,0,.08)] font-bold text-white rounded-xl"
-                                disabled={!selectedFile}
+                                disabled={!selectedFile || importing}
                                 onClick={handleFinalImport}
                             >
-                                Finalize & Import <Check className="ml-2 h-4 w-4" />
+                                {importing ? "Importing…" : "Finalize & Import"} <Check className="ml-2 h-4 w-4" />
                             </Button>
                         </div>
                     )}

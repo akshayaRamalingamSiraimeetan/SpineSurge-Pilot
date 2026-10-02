@@ -30,10 +30,11 @@ const InspectionBanner = () => {
     if (!inspectionMode?.active) return null;
 
     const handleExit = () => {
+        // Drop the member's case entirely, then reload the admin's own list.
         setInspectionMode(null);
         clearImage();
-        // Restore admin's own patient context
-        useAppStore.getState().initializeStore();
+        useAppStore.getState().resetWorkspace();
+        void useAppStore.getState().initializeStore();
         navigate('/members');
     };
 

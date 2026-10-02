@@ -218,7 +218,11 @@ export class CanvasManager {
         const newImplants = [...(this.current.data.implants || []).map(i => ({
             ...i,
             position: i.position ? { ...i.position } : null,
-            properties: { ...i.properties }
+            // Deep-copy rod points: MOVE_IMPLANT mutates them (BUGS CV-11)
+            properties: {
+                ...i.properties,
+                ...(Array.isArray(i.properties?.points) ? { points: i.properties.points.map((pt: Point) => ({ ...pt })) } : {}),
+            }
         }))];
 
         let description = 'Operation';

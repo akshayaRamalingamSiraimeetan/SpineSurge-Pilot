@@ -13,6 +13,8 @@
     "build": "vite build",
     "preview": "vite preview",
     "start:server": "tsx server/index.ts",
+    "db:migrate": "tsx server/migrate.ts",
+    "db:seed-dev-user": "tsx server/seed-dev-user.ts",
     "stop:server": "powershell -Command \"Get-NetTCPConnection -LocalPort 3001 -ErrorAction SilentlyContinue | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force -ErrorAction SilentlyContinue }\"",
     "restart:server": "npm run stop:server && npm run start:server",
     "type-check": "tsc --noEmit -p tsconfig.app.json",

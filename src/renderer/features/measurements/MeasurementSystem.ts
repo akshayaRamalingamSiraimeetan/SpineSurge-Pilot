@@ -226,5 +226,12 @@ export const MeasurementSystem = {
                 ctx.restore();
                 break;
         }
+        // Curvature tools compute their drag handle while drawing; keep it on the
+        // real measurement so it can be grabbed (BUGS CV-14).
+        const hp = (displayMeasurement.measurement as any)?.handlePos;
+        if (hp) {
+            if (!m.measurement) m.measurement = {};
+            (m.measurement as any).handlePos = hp;
+        }
     }
 };

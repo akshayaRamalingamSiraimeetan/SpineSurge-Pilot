@@ -226,8 +226,6 @@ const BottomToolbar = () => {
         window.addEventListener("mouseup", onUp);
     }, [getAbsolutePos]);
 
-    if (!canvas || !hasToolbarTargetImage) return null;
-
     /* ── Handlers ─────────────────────────────────────────────── */
     const handleScreenshot = useCallback(() => {
         if (isComparisonMode) {
@@ -270,10 +268,10 @@ const BottomToolbar = () => {
 
     const toolbarActions = useMemo<Record<string, () => void>>(
         () => ({
-            rotateLeft: () => setRotation(canvas.rotation - 90),
-            rotateRight: () => setRotation(canvas.rotation + 90),
-            rotateFineUp: () => setRotation(canvas.rotation + 1),
-            rotateFineDown: () => setRotation(canvas.rotation - 1),
+            rotateLeft: () => setRotation((canvas?.rotation ?? 0) - 90),
+            rotateRight: () => setRotation((canvas?.rotation ?? 0) + 90),
+            rotateFineUp: () => setRotation((canvas?.rotation ?? 0) + 1),
+            rotateFineDown: () => setRotation((canvas?.rotation ?? 0) - 1),
             flip: () => toggleFlipX(),
             crop: () => toggleTool("crop"),
             reset: () => resetCanvas(),
@@ -282,7 +280,7 @@ const BottomToolbar = () => {
             capture: () => handleScreenshot(),
         }),
         [
-            canvas.rotation,
+            canvas?.rotation,
             setRotation,
             toggleFlipX,
             toggleTool,
@@ -306,6 +304,9 @@ const BottomToolbar = () => {
         },
         [toolbarActions],
     );
+
+    // Early exit AFTER all hooks (rules-of-hooks; BUGS TS-01).
+    if (!canvas || !hasToolbarTargetImage) return null;
 
     /* ── Computed position styles ────────────────────────────── */
     const posStyle: React.CSSProperties = {

@@ -1,6 +1,6 @@
 import { Point, getDistance } from "@/lib/canvas/GeometryUtils";
 import { Measurement } from "@/lib/canvas/CanvasManager";
-import { drawMeasurementLabel, drawPoint } from "@/lib/canvas/CanvasUtils";
+import { drawMeasurementLabel } from "@/lib/canvas/CanvasUtils";
 
 export interface SpondylolisthesisResult {
     slipDistance: number;

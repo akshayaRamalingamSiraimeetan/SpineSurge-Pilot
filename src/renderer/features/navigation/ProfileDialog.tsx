@@ -15,6 +15,7 @@ import { useTheme } from "@/components/theme-provider";
 import { cn } from "@/lib/utils";
 
 import { useAppStore } from "@/lib/store/index";
+import { API_BASE } from "@/lib/api";
 
 export function ProfileDialog({ open, onOpenChange }: { open: boolean, onOpenChange: (open: boolean) => void }) {
     const { resolvedTheme } = useTheme();
@@ -50,9 +51,30 @@ export function ProfileDialog({ open, onOpenChange }: { open: boolean, onOpenCha
         return parts[0] ? parts[0][0].toUpperCase() : 'U';
     }, [localProfile.name]);
 
-    const handleSave = () => {
-        updateUser(localProfile);
-        onOpenChange(false);
+    const [saving, setSaving] = useState(false);
+    // Name is saved to the server; the other fields are display preferences
+    // kept in this session only (the server has no columns for them).
+    const handleSave = async () => {
+        setSaving(true);
+        try {
+            const token = useAppStore.getState().token;
+            const res = await fetch(`${API_BASE}/auth/profile`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token ?? ''}` },
+                body: JSON.stringify({ full_name: localProfile.name }),
+            });
+            if (!res.ok) {
+                const d = await res.json().catch(() => ({}));
+                alert(d.error ?? 'Could not save your profile.');
+                return;
+            }
+            updateUser(localProfile);
+            onOpenChange(false);
+        } catch {
+            alert('Network error — please try again.');
+        } finally {
+            setSaving(false);
+        }
     };
 
     return (
@@ -147,7 +169,7 @@ export function ProfileDialog({ open, onOpenChange }: { open: boolean, onOpenCha
 
                 <div className="flex justify-end pt-6 gap-3">
                     <Button variant="ghost" onClick={() => onOpenChange(false)} className={isDark ? "text-[#9CA3AF] hover:text-[#F5F5F7] hover:bg-[#1B1B1E]" : "text-slate-700 hover:text-slate-900 hover:bg-gray-200"}>Cancel</Button>
-                    <Button onClick={handleSave} className="bg-[#FF453A] hover:bg-[#e03d33] text-white gap-2 px-8 shadow-lg shadow-[rgba(0,0,0,0.2)]">
+                    <Button onClick={handleSave} disabled={saving} className="bg-[#FF453A] hover:bg-[#e03d33] text-white gap-2 px-8 shadow-lg shadow-[rgba(0,0,0,0.2)]">
                         <Check className="h-4 w-4" />
                         Save Changes
                     </Button>

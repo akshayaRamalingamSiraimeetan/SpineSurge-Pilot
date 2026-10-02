@@ -84,6 +84,7 @@ const closeConn = (doc: WSSharedDoc, conn: WebSocket) => {
 const send = (doc: WSSharedDoc, conn: WebSocket, m: Uint8Array) => {
     if (conn.readyState !== WebSocket.OPEN) {
         closeConn(doc, conn);
+        return;
     }
     try {
         conn.send(m, (err: any) => { if (err) closeConn(doc, conn); });

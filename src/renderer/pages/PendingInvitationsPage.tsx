@@ -9,6 +9,7 @@ import {
     CardDescription,
 } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { API_BASE } from '@/lib/api';
 
 interface Invitation {
     id:        string;
@@ -41,7 +42,7 @@ const PendingInvitationsPage = () => {
         setFetchError(null);
         setLoading(true);
         try {
-            const res = await axios.get('http://localhost:3001/invitations/pending', {
+            const res = await axios.get(`${API_BASE}/invitations/pending`, {
                 headers: { Authorization: `Bearer ${token}` },
                 validateStatus: (s) => s < 500,
             });
@@ -53,7 +54,7 @@ const PendingInvitationsPage = () => {
             }
         } catch (err: unknown) {
             if (axios.isAxiosError(err)) {
-                setFetchError(err.response?.data?.error ?? err.message ?? 'An unexpected error occurred.');
+                setFetchError(err.response?.data?.error ?? err.response?.data?.message ?? err.message ?? 'An unexpected error occurred.');
             } else {
                 setFetchError('An unexpected error occurred.');
             }
@@ -70,7 +71,7 @@ const PendingInvitationsPage = () => {
 
         try {
             const res = await axios.post(
-                `http://localhost:3001/invitations/${invitationId}/accept`,
+                `${API_BASE}/invitations/${invitationId}/accept`,
                 {},
                 {
                     headers: { Authorization: `Bearer ${token}` },
@@ -86,12 +87,12 @@ const PendingInvitationsPage = () => {
             } else {
                 setActionErrors((prev) => ({
                     ...prev,
-                    [invitationId]: res.data?.error ?? 'Failed to accept invitation.',
+                    [invitationId]: res.data?.error ?? res.data?.message ?? 'Failed to accept invitation.',
                 }));
             }
         } catch (err: unknown) {
             const message = axios.isAxiosError(err)
-                ? (err.response?.data?.error ?? err.message ?? 'An unexpected error occurred.')
+                ? (err.response?.data?.error ?? err.response?.data?.message ?? err.message ?? 'An unexpected error occurred.')
                 : 'An unexpected error occurred.';
             setActionErrors((prev) => ({ ...prev, [invitationId]: message }));
         } finally {
@@ -105,7 +106,7 @@ const PendingInvitationsPage = () => {
 
         try {
             const res = await axios.post(
-                `http://localhost:3001/invitations/${invitationId}/decline`,
+                `${API_BASE}/invitations/${invitationId}/decline`,
                 {},
                 {
                     headers: { Authorization: `Bearer ${token}` },
@@ -123,7 +124,7 @@ const PendingInvitationsPage = () => {
             }
         } catch (err: unknown) {
             const message = axios.isAxiosError(err)
-                ? (err.response?.data?.error ?? err.message ?? 'An unexpected error occurred.')
+                ? (err.response?.data?.error ?? err.response?.data?.message ?? err.message ?? 'An unexpected error occurred.')
                 : 'An unexpected error occurred.';
             setActionErrors((prev) => ({ ...prev, [invitationId]: message }));
         } finally {

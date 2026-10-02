@@ -1,11 +1,12 @@
 import express from 'express';
+import 'dotenv/config';
 import cors from 'cors';
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs-extra';
 import { db } from './db';
 import * as schema from './schema';
-import { eq, and, isNull, or } from 'drizzle-orm';
+import { eq, and, isNull, or, sql } from 'drizzle-orm';
 import * as pacsService from './pacsService';
 import http from 'http';
 import { WebSocketServer } from 'ws';
@@ -14,18 +15,30 @@ import { authRouter } from './routes/auth';
 import { orgsRouter } from './routes/orgs';
 import { invitationsRouter } from './routes/invitations';
 import { authenticate } from './middleware/authenticate';
+import jwt from 'jsonwebtoken';
 
 
 
 const app = express();
 const server = http.createServer(app);
-const wss = new WebSocketServer({ noServer: true });
+const wss = new WebSocketServer({ noServer: true, maxPayload: 16 * 1024 * 1024 });
 
 wss.on('connection', (ws, req) => {
     setupWSConnection(ws, req);
 });
 
+// Live-share rooms require a valid session token (?token=…) — BUGS SRV-09.
 server.on('upgrade', (request, socket, head) => {
+    try {
+        const url = new URL(request.url ?? '/', 'http://localhost');
+        const token = url.searchParams.get('token');
+        if (!token) throw new Error('missing token');
+        jwt.verify(token, process.env.JWT_SECRET!);
+    } catch {
+        socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
+        socket.destroy();
+        return;
+    }
     wss.handleUpgrade(request, socket, head, (ws) => {
         wss.emit('connection', ws, request);
     });
@@ -33,40 +46,69 @@ server.on('upgrade', (request, socket, head) => {
 
 const port = process.env.PORT ? parseInt(process.env.PORT) : 3001;
 
-app.use(cors());
-app.use(express.json());
+// Behind a reverse proxy (any hosted deploy), use X-Forwarded-* so image URLs
+// built from req.protocol/host come out as the public https URL.
+app.set('trust proxy', true);
 
-// Log middleware & Security Headers
+// CORS: allow-list via CORS_ORIGINS (comma separated); default = any origin
+// (dev). Auth is a bearer token, not a cookie, so no credentials needed.
+const corsOrigins = (process.env.CORS_ORIGINS ?? '').split(',').map(s => s.trim()).filter(Boolean);
+app.use(cors(corsOrigins.length ? { origin: corsOrigins } : undefined));
+// Context saves carry all measurements/annotations — 100kb default was too
+// small and silently failed big saves (BUGS SRV-13).
+app.use(express.json({ limit: '10mb' }));
+// Express 5 leaves req.body undefined when no parser matched (BUGS SRV-20).
+app.use((req, _res, next) => { if (req.body === undefined) req.body = {}; next(); });
+
 app.use((req, res, next) => {
-    console.log(`${req.method} ${req.url}`);
-
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS, PUT, PATCH, DELETE');
-    res.setHeader('Access-Control-Allow-Headers', 'X-Requested-With,content-type');
-
+    if (process.env.LOG_REQUESTS === 'true') console.log(`${req.method} ${req.url}`);
     res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
     res.setHeader('Cross-Origin-Embedder-Policy', 'credentialless');
-
     next();
 });
 
 // Setup uploads directory
 const UPLOADS_DIR = path.resolve(__dirname, 'uploads');
 fs.ensureDirSync(UPLOADS_DIR);
-app.use('/uploads', express.static(UPLOADS_DIR));
+// Only inert media types are ever served inline; anything else downloads.
+// nosniff stops the browser treating an upload as HTML/JS (BUGS SRV-07).
+const INLINE_EXTS = new Set(['.png', '.jpg', '.jpeg', '.webp', '.bmp', '.gif', '.pdf']);
+app.use('/uploads', express.static(UPLOADS_DIR, {
+    setHeaders: (res, filePath) => {
+        res.setHeader('X-Content-Type-Options', 'nosniff');
+        res.setHeader('Content-Security-Policy', "default-src 'none'; sandbox");
+        if (!INLINE_EXTS.has(path.extname(filePath).toLowerCase())) {
+            res.setHeader('Content-Disposition', 'attachment');
+        }
+    },
+}));
 
-// File upload configuration
+// File upload configuration — allow-listed extensions only (DICOM files
+// frequently have no extension, which is allowed).
+const UPLOAD_EXTS = new Set(['', '.png', '.jpg', '.jpeg', '.webp', '.bmp', '.tif', '.tiff', '.dcm', '.dicom', '.pdf']);
 const storage = multer.diskStorage({
     destination: (req, file, cb) => {
         cb(null, UPLOADS_DIR);
     },
     filename: (req, file, cb) => {
-        const ext = path.extname(file.originalname);
+        const ext = path.extname(file.originalname).toLowerCase();
         const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
         cb(null, `${uniqueSuffix}${ext}`);
     }
 });
-const upload = multer({ storage });
+const upload = multer({
+    storage,
+    limits: { fileSize: 512 * 1024 * 1024, files: 1 }, // BUGS SRV-12
+    fileFilter: (_req, file, cb) => {
+        const ext = path.extname(file.originalname).toLowerCase();
+        if (UPLOAD_EXTS.has(ext)) cb(null, true);
+        else cb(new Error(`File type not allowed: ${ext}`));
+    },
+});
+
+// Every /api route requires a valid session (BUGS SRV-01). authenticate is
+// idempotent, so routes that also list it explicitly are fine.
+app.use('/api', authenticate);
 
 // Helper to normalize gender
 const normalizeGender = (g: string | null): 'M' | 'F' | 'O' => {
@@ -92,6 +134,24 @@ const toAbsoluteUrl = (relativePath: string, baseUrl: string) => {
     const filename = relativePath.split(/[\\/]/).pop() || '';
     return `${baseUrl}/uploads/${filename}`;
 };
+
+// A context's current image is stored host-independently: files we serve are
+// kept as "/uploads/<file>" and expanded to an absolute URL on read, so saved
+// studies keep working when the server's host or port changes.
+const UPLOADS_URL_RE = /^(?:https?:\/\/[^/]+)?\/uploads\/([^/?#]+)$/;
+
+// blob:/data: URLs only exist inside one browser tab; persisting them leaves
+// the study with an image that can never be loaded again.
+const isEphemeralUrl = (url: unknown) => typeof url === 'string' && /^(blob|data):/i.test(url);
+
+const toStoredImageRef = (url: string | null | undefined) => {
+    if (!url) return null;
+    const match = url.match(UPLOADS_URL_RE);
+    return match ? `/uploads/${match[1]}` : url;
+};
+
+const toClientImageUrl = (ref: string | null, baseUrl: string) =>
+    ref && UPLOADS_URL_RE.test(ref) ? toAbsoluteUrl(ref, baseUrl) : ref;
 
 // --- API Routes ---
 
@@ -368,7 +428,7 @@ app.post('/api/studies', authenticate, async (req, res) => {
 });
 
 // Add Scan (to Study)
-app.post('/api/scans', upload.single('file'), async (req, res) => {
+app.post('/api/scans', authenticate, upload.single('file'), async (req, res) => {
     const { id, studyId, type, date } = req.body;
     const file = req.file;
 
@@ -404,6 +464,7 @@ app.post('/api/scans', upload.single('file'), async (req, res) => {
         });
     } catch (err: any) {
         console.error("Save scan error:", err);
+        await fs.remove(file.path).catch(() => {});
         res.status(500).json({ error: err.message });
     }
 });
@@ -411,6 +472,7 @@ app.post('/api/scans', upload.single('file'), async (req, res) => {
 // --- Contexts ---
 app.get('/api/contexts/:patientId', async (req, res) => {
     try {
+        const baseUrl = `${req.protocol}://${req.get('host')}`;
         const dbContexts = await db.query.contexts.findMany({
             where: eq(schema.contexts.patientId, req.params.patientId),
             with: {
@@ -428,13 +490,17 @@ app.get('/api/contexts/:patientId', async (req, res) => {
             mode: c.mode,
             name: c.name,
             lastModified: c.lastModified,
-            currentImage: c.currentImage ?? null,
-            measurements: c.measurements.map(m => ({
-                ...m,
-                points: JSON.parse(m.points || '[]'),
-                result: JSON.parse(m.result || 'null'),
-                measurement: JSON.parse(m.metadata || '{}')
-            })),
+            currentImage: toClientImageUrl(c.currentImage ?? null, baseUrl),
+            measurements: c.measurements.map(m => {
+                const { __selected, ...meta } = JSON.parse(m.metadata || '{}');
+                return {
+                    ...m,
+                    points: JSON.parse(m.points || '[]'),
+                    result: JSON.parse(m.result || 'null'),
+                    measurement: meta,
+                    selected: __selected !== false,
+                };
+            }),
             implants: c.implants.map(i => ({
                 ...i,
                 position: JSON.parse(i.position || 'null'),
@@ -452,9 +518,6 @@ app.get('/api/contexts/:patientId', async (req, res) => {
 app.post('/api/contexts', async (req, res) => {
     const { id, patientId, visitId, studyIds, mode, name, lastModified, state } = req.body;
     try {
-        const measurementCount = state?.measurements?.length ?? 0;
-        const annotationCount  = Array.isArray(state?.annotations) ? state.annotations.length : 0;
-        console.log(`[POST /api/contexts] id=${id} patient=${patientId} measurements=${measurementCount} annotations=${annotationCount} currentImage=${state?.currentImage ?? 'none'} studyIds=${JSON.stringify(studyIds)}`);
         if (!id || !patientId) {
             console.error('[POST /api/contexts] Missing id or patientId — rejecting');
             res.status(400).json({ error: 'Missing id or patientId' });
@@ -462,11 +525,20 @@ app.post('/api/contexts', async (req, res) => {
         }
 
         await db.transaction(async (tx) => {
+            // Serialize concurrent saves of the same context (BUGS SRV-14).
+            await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${String(id)}))`);
             const vId = visitId === "" ? null : visitId;
             const validStudyIds = (studyIds || []).filter((sid: string) => sid && sid !== "");
 
+            // An ephemeral (blob:) image is never written; on update the
+            // previously stored image is kept instead.
+            const ephemeralImage = isEphemeralUrl(state?.currentImage);
+            if (ephemeralImage) {
+                console.warn(`[POST /api/contexts] id=${id} ignoring non-persistent currentImage`);
+            }
+            const currentImage = ephemeralImage ? null : toStoredImageRef(state?.currentImage);
+
             // 1. Upsert Context
-            console.log("  Step 1: Upserting context...");
             await tx.insert(schema.contexts).values({
                 id,
                 patientId,
@@ -476,7 +548,7 @@ app.post('/api/contexts', async (req, res) => {
                 lastModified: lastModified || new Date().toISOString(),
                 annotations: JSON.stringify(state?.annotations || []),
                 toolState: JSON.stringify(state?.toolState || {}),
-                currentImage: state?.currentImage ?? null,
+                currentImage,
             }).onConflictDoUpdate({
                 target: schema.contexts.id,
                 set: {
@@ -486,19 +558,17 @@ app.post('/api/contexts', async (req, res) => {
                     lastModified: lastModified || new Date().toISOString(),
                     annotations: JSON.stringify(state?.annotations || []),
                     toolState: JSON.stringify(state?.toolState || {}),
-                    currentImage: state?.currentImage ?? null,
+                    ...(ephemeralImage ? {} : { currentImage }),
                 }
             });
 
             // 2. Sync Study Links
-            console.log("  Step 2: Syncing study links...");
             await tx.delete(schema.contextStudies).where(eq(schema.contextStudies.contextId, id));
             if (validStudyIds.length > 0) {
                 await tx.insert(schema.contextStudies).values(
                     validStudyIds.map((sid: string) => ({ contextId: id, studyId: sid }))
                 );
             }
-            console.log("  Step 2: Study links sync complete.");
 
             // 3. Sync Normalized State (Measurements & Implants)
             if (state) {
@@ -512,7 +582,8 @@ app.post('/api/contexts', async (req, res) => {
                             fragmentId: m.fragmentId,
                             points: JSON.stringify(m.points || []),
                             result: JSON.stringify(m.result || null),
-                            metadata: JSON.stringify(m.measurement || {}),
+                            // `selected` (report inclusion) lives in metadata (BUGS WS-25)
+                            metadata: JSON.stringify({ ...(m.measurement || {}), __selected: m.selected !== false }),
                             timestamp: m.timestamp || Date.now()
                         }))
                     );
@@ -539,11 +610,7 @@ app.post('/api/contexts', async (req, res) => {
         res.json({ success: true });
     } catch (err: any) {
         console.error("Critical error in saveContext:", err);
-        res.status(500).json({
-            error: err.message,
-            stack: err.stack,
-            detail: err.toString()
-        });
+        res.status(500).json({ error: 'Failed to save context' });
     }
 });
 
@@ -553,26 +620,40 @@ app.post('/api/reports', upload.single('file'), async (req, res) => {
     const { id, visitId, studyId, title } = req.body;
     const file = req.file;
     if (!file) return res.status(400).json({ error: 'No file uploaded' });
+    if (!visitId) {
+        await fs.remove(file.path).catch(() => {});
+        return res.status(400).json({ error: 'visitId is required' });
+    }
 
     try {
-        let version = 1;
-        if (studyId) {
-            const existing = await db.query.reports.findMany({
-                where: eq(schema.reports.studyId, studyId),
-                orderBy: (reports, { desc }) => [desc(reports.version)]
-            });
-            if (existing.length > 0 && existing[0].version != null) {
-                version = existing[0].version + 1;
+        // Version = max+1 computed under a per-study lock so concurrent exports
+        // can't produce duplicate versions (BUGS RPT-09 / SRV-21).
+        const version = await db.transaction(async (tx) => {
+            const lockKey = String(studyId || visitId);
+            await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${lockKey}))`);
+            let next = 1;
+            if (studyId) {
+                const [row] = await tx.select({ v: sql<number>`coalesce(max(${schema.reports.version}), 0)` })
+                    .from(schema.reports)
+                    .where(eq(schema.reports.studyId, studyId));
+                next = Number(row?.v ?? 0) + 1;
             }
-        }
-
-        const relativePath = path.basename(file.path);
-        await db.insert(schema.reports).values({
-            id, visitId, studyId, version, filePath: relativePath, title, createdAt: new Date().toISOString()
+            await tx.insert(schema.reports).values({
+                id: id || `rep-${Date.now()}-${Math.round(Math.random() * 1e9)}`,
+                visitId,
+                studyId: studyId || null,
+                version: next,
+                filePath: path.basename(file.path),
+                title,
+                createdAt: new Date().toISOString(),
+            });
+            return next;
         });
         res.json({ success: true, version });
     } catch (e: any) {
-        res.status(500).json({ error: e.message });
+        console.error("Save report error:", e);
+        await fs.remove(file.path).catch(() => {});
+        res.status(500).json({ error: 'Failed to save report' });
     }
 });
 
@@ -628,8 +709,21 @@ app.get('/api/local-file', (req, res) => {
 });
 
 // Import Folder
+// Reads a folder ON THE SERVER — only for single-machine/desktop installs.
+// Disabled unless ALLOW_SERVER_FOLDER_IMPORT=true, and confined to
+// IMPORT_ROOT when set (BUGS SRV-05).
 app.post('/api/import', async (req, res) => {
     const { folderPath, patientId: targetPatientId, visitId } = req.body;
+    if (process.env.ALLOW_SERVER_FOLDER_IMPORT !== 'true') {
+        return res.status(403).json({ error: 'Server folder import is disabled on this server' });
+    }
+    const importRoot = process.env.IMPORT_ROOT ? path.resolve(process.env.IMPORT_ROOT) : null;
+    if (importRoot && folderPath) {
+        const rel = path.relative(importRoot, path.resolve(folderPath));
+        if (rel.startsWith('..') || path.isAbsolute(rel)) {
+            return res.status(403).json({ error: 'Folder is outside the allowed import root' });
+        }
+    }
     if (!folderPath || !fs.existsSync(folderPath)) {
         return res.status(400).json({ error: 'Invalid folder path' });
     }
@@ -695,7 +789,8 @@ app.post('/api/import', async (req, res) => {
                                 visitId: visitId || null,
                                 modality,
                                 source: 'Import',
-                                acquisitionDate: visitDate
+                                acquisitionDate: visitDate,
+                                ownerUserId: req.user!.id, // never "visible to all" (SRV-03)
                             }).onConflictDoNothing();
 
                             let ext = path.extname(file);
@@ -753,6 +848,21 @@ app.post('/api/pacs/import', async (req, res) => {
 app.use('/auth', authRouter);
 app.use('/orgs', orgsRouter);
 app.use('/invitations', invitationsRouter);
+
+// Final error handler: generic message to the client, details in the log
+// (BUGS SRV-19). Multer limit/filter errors become 400s.
+app.use((err: any, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+    if (err instanceof multer.MulterError || /File type not allowed/.test(err?.message ?? '')) {
+        res.status(400).json({ error: err.message });
+        return;
+    }
+    if (err?.type === 'entity.too.large') {
+        res.status(413).json({ error: 'Request too large' });
+        return;
+    }
+    console.error('[unhandled]', err);
+    res.status(500).json({ error: 'Internal server error' });
+});
 
 server.listen(port, () => {
     console.log(`Server running at http://localhost:${port}`);

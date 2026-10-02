@@ -8,7 +8,7 @@ import { DICOMViewer } from "@/features/dicom/DICOMViewer";
 import ReportBuilderWorkspace from "@/features/report/ReportBuilderWorkspace";
 import { cn } from "@/lib/utils";
 
-import { useEffect, useMemo } from "react";
+import { useEffect, useRef } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { API_BASE } from "@/lib/api";
 import { useAutosave } from "@/hooks/useAutosave";
@@ -17,32 +17,19 @@ const MainPage = () => {
     useAutosave();
     const navigate = useNavigate();
     const location = useLocation();
-    const {
-        currentImage,
-        activeContextId,
-        activePatientId,
-        isDicomMode,
-        isComparisonMode,
-        dicomSeries,
-        contexts,
-        patients,
-        contextStates,
-        loadDicomURLs,
-        exitDicomMode,
-        setActivePatient,
-        setActiveContextId,
-        initializeLiveRoom,
-        disconnectLiveRoom
-    } = useAppStore();
-
-    // ── Resolve the current study for logging & DICOM detection ─────────────
-    const currentStudy = useMemo(() => {
-        if (!activeContextId) return null;
-        const context = contexts.find((c: Context) => c.id === activeContextId);
-        if (!context) return null;
-        const patient = patients.find((p: Patient) => p.id === context.patientId);
-        return patient?.studies.find((s: any) => s.id === context.studyIds[0]) ?? null;
-    }, [activeContextId, contexts, patients]);
+    const currentImage      = useAppStore(s => s.currentImage);
+    const activeContextId   = useAppStore(s => s.activeContextId);
+    const activePatientId   = useAppStore(s => s.activePatientId);
+    const isDicomMode       = useAppStore(s => s.isDicomMode);
+    const isComparisonMode  = useAppStore(s => s.isComparisonMode);
+    const dicomSeries       = useAppStore(s => s.dicomSeries);
+    const contexts          = useAppStore(s => s.contexts);
+    const patients          = useAppStore(s => s.patients);
+    const loadDicomURLs     = useAppStore(s => s.loadDicomURLs);
+    const exitDicomMode     = useAppStore(s => s.exitDicomMode);
+    const setActivePatient  = useAppStore(s => s.setActivePatient);
+    const initializeLiveRoom = useAppStore(s => s.initializeLiveRoom);
+    const disconnectLiveRoom = useAppStore(s => s.disconnectLiveRoom);
 
     // Initialize Live Room when context OR patient is active
     useEffect(() => {
@@ -56,145 +43,83 @@ const MainPage = () => {
         return () => disconnectLiveRoom();
     }, [activeContextId, activePatientId, initializeLiveRoom, disconnectLiveRoom]);
 
-    // Deep Linking Support
+    // Deep link (?patientId=&contextId=&currentImage=): apply ONCE, then strip
+    // those params so tab switches / back-forward don't reload the case
+    // (BUGS NAV-05). Other params (tab) are kept.
     useEffect(() => {
-        const queryParams = new URLSearchParams(location.search);
-        const pId = queryParams.get('patientId');
-        const cId = queryParams.get('contextId');
-        const img = queryParams.get('currentImage');
+        const params = new URLSearchParams(location.search);
+        const pId = params.get('patientId');
+        const cId = params.get('contextId');
+        const img = params.get('currentImage');
+        if (!pId && !cId && !img) return;
 
-        if (pId) {
-            setActivePatient(pId, cId || undefined);
-        } else if (cId) {
-            setActiveContextId(cId);
+        const state = useAppStore.getState();
+        if (pId && (pId !== state.activePatientId || (cId && cId !== state.activeContextId))) {
+            void setActivePatient(pId, cId || undefined);
+        } else if (!pId && cId && cId !== state.activeContextId) {
+            state.setActiveContextId(cId);
         }
 
         if (img) {
             const decodedImg = decodeURIComponent(img);
-            if (decodedImg !== useAppStore.getState().currentImage) {
-                const finalUrl = (decodedImg.startsWith('http') || decodedImg.startsWith('blob:'))
-                    ? decodedImg
-                    : `${API_BASE}/uploads/${decodedImg.split('/').pop()}`;
+            const finalUrl = (decodedImg.startsWith('http') || decodedImg.startsWith('blob:'))
+                ? decodedImg
+                : `${API_BASE}/uploads/${decodedImg.split('/').pop()}`;
+            if (finalUrl !== useAppStore.getState().currentImage) {
                 useAppStore.setState({ currentImage: finalUrl });
             }
         }
-    }, [location.search, setActivePatient, setActiveContextId]);
 
-    // Persist currentImage to context state whenever it changes while a context is active
+        params.delete('patientId');
+        params.delete('contextId');
+        params.delete('currentImage');
+        const rest = params.toString();
+        navigate({ pathname: location.pathname, search: rest ? `?${rest}` : '' }, { replace: true });
+    }, [location.search, location.pathname, navigate, setActivePatient]);
+
+    // Persist a newly loaded image into the active context (once per change).
     useEffect(() => {
         if (activeContextId && currentImage) {
             const state = useAppStore.getState();
             const existingState = state.contextStates.find(s => s.contextId === activeContextId);
-            if (existingState?.currentImage !== currentImage) {
-                state.updateContextState(activeContextId, { currentImage });
+            if (existingState && existingState.currentImage !== currentImage && !currentImage.startsWith('blob:')) {
+                void state.updateContextState(activeContextId, { currentImage });
             }
         }
     }, [currentImage, activeContextId]);
 
-    // Populate workspace state from active context (measurements, 3D state, image)
+    // DICOM auto-detection: decide ONCE per activated context whether it is a
+    // CT/MR series. Not re-run on isDicomMode changes, so the user can exit the
+    // viewer and import a local series without being bounced (BUGS NAV-06, WS-13).
+    const detectedForCtxRef = useRef<string | null>(null);
     useEffect(() => {
-        if (activeContextId) {
-            const contextState = useAppStore.getState().contextStates.find(s => s.contextId === activeContextId);
-            if (contextState) {
-                const patch: Record<string, unknown> = {};
-                if (contextState.measurements) patch.measurements = contextState.measurements;
-                if (contextState.implants) patch.implants = contextState.implants;
-                if (contextState.threeDImplants) patch.threeDImplants = contextState.threeDImplants;
-                if (contextState.pedicleSimulations) patch.pedicleSimulations = contextState.pedicleSimulations;
-                if (contextState.currentImage && !useAppStore.getState().currentImage) {
-                    patch.currentImage = contextState.currentImage;
-                }
-                if (Object.keys(patch).length > 0) {
-                    useAppStore.setState(patch);
-                }
+        if (!activeContextId) { detectedForCtxRef.current = null; return; }
+        if (detectedForCtxRef.current === activeContextId) return;
+        const context = contexts.find((c: Context) => c.id === activeContextId);
+        if (!context) return; // contexts still loading — retry when they arrive
+        const patient = patients.find((p: Patient) => p.id === context.patientId);
+        const study = patient?.studies.find((s: any) => s.id === context.studyIds[0]);
+        if (!study) return;
+        detectedForCtxRef.current = activeContextId;
+
+        const firstScan = study.scans[0];
+        const isDICOM = !!firstScan && (study.modality === 'CT' || study.modality === 'MRI' || firstScan.imageUrl.toLowerCase().endsWith('.dcm'));
+        const dicomActive = useAppStore.getState().isDicomMode;
+        if (isDICOM) {
+            if (!dicomActive) {
+                loadDicomURLs(study.scans.map((s: any) => {
+                    const url = s.imageUrl;
+                    if (url.startsWith('http') || url.startsWith('blob:')) return url;
+                    return `${API_BASE}${url.startsWith('/') ? '' : '/'}${url}`;
+                }));
             }
+        } else if (dicomActive) {
+            exitDicomMode();
         }
-    }, [activeContextId, contextStates]);
+    }, [activeContextId, contexts, patients, loadDicomURLs, exitDicomMode]);
 
-    // DICOM auto-detection: fires when activeContextId changes
-    useEffect(() => {
-        if (activeContextId) {
-            const context = contexts.find((c: Context) => c.id === activeContextId);
-            if (context) {
-                const patient = patients.find((p: Patient) => p.id === context.patientId);
-                const study = patient?.studies.find((s: any) => s.id === context.studyIds[0]);
-                if (study && study.scans.length > 0) {
-                    const firstScan = study.scans[0];
-                    const isDICOM = study.modality === 'CT' || study.modality === 'MRI' || firstScan.imageUrl.toLowerCase().endsWith('.dcm');
-
-                    if (isDICOM) {
-                        if (!isDicomMode) {
-                            const urls = study.scans.map((s: any) => {
-                                const url = s.imageUrl;
-                                if (url.startsWith('http') || url.startsWith('blob:')) return url;
-                                return `${API_BASE}${url.startsWith('/') ? '' : '/'}${url}`;
-                            });
-                            loadDicomURLs(urls);
-                        }
-                    } else {
-                        if (isDicomMode) {
-                            exitDicomMode();
-                        }
-                    }
-                } else {
-                    if (isDicomMode) {
-                        exitDicomMode();
-                    }
-                }
-            }
-        }
-    }, [activeContextId, contexts, patients, isDicomMode, loadDicomURLs, exitDicomMode]);
-
-    // ESC Key Navigation Handler
-    useEffect(() => {
-        const handleKeyDown = (e: KeyboardEvent) => {
-            if (e.key === 'Escape') {
-                e.preventDefault();
-                e.stopPropagation();
-                return;
-
-                if (useAppStore.getState().isDicomMode) {
-                    useAppStore.getState().clearImage();
-                    return;
-                }
-
-                const state = useAppStore.getState();
-                if (state.currentImage || state.activeContextId) {
-                    state.clearImage();
-                    state.setActiveContextId(null);
-                    return;
-                }
-
-                if (location.pathname !== '/workspace' && location.pathname !== '/') {
-                    navigate('/dashboard');
-                }
-            }
-        };
-
-        window.addEventListener('keydown', handleKeyDown);
-        return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [location.pathname, navigate]);
-
-    // ── Render Decision ──────────────────────────────────────────────────────
     const hasActiveContent = !!currentImage || !!activeContextId || isDicomMode || isComparisonMode;
     const isReportTab = new URLSearchParams(location.search).get('tab') === 'report';
-    const renderBranch = isDicomMode ? 'DICOMViewer' : hasActiveContent ? 'CanvasWorkspace' : 'EmptyState';
-
-    // ── [TRACE] Single targeted log — the ONLY place that decides viewer ─────
-    console.log(
-        `%c[WORKSPACE RENDER] branch=${renderBranch}`,
-        `color:${renderBranch === 'DICOMViewer' ? 'red' : renderBranch === 'CanvasWorkspace' ? 'lime' : 'gray'};font-weight:bold`,
-        {
-            isDicomMode,
-            currentImage: currentImage ? currentImage.slice(0, 80) : null,
-            dicomSeriesLength: dicomSeries.length,
-            activePatientId,
-            activeContextId,
-            studyId:       currentStudy?.id       ?? null,
-            studyModality: currentStudy?.modality  ?? null,
-            firstScanUrl:  currentStudy?.scans?.[0]?.imageUrl?.slice(0, 80) ?? null,
-        }
-    );
 
     return (
         <div className="h-full w-full flex items-center justify-center relative bg-background overflow-hidden">

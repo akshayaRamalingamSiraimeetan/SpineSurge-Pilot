@@ -2,8 +2,20 @@ import { StateCreator } from 'zustand';
 import axios from 'axios';
 import { UserProfile } from './types';
 import type { AppState } from './index';
+import { API_BASE } from '../api';
 
-const BASE_URL = 'http://localhost:3001';
+const BASE_URL = API_BASE;
+
+/** Server returns `fullName`; the UI reads `name`. Normalise once here (BUGS NAV-12). */
+export function normalizeUser(raw: any): UserProfile | null {
+  if (!raw) return null;
+  const avatar: string | undefined = raw.avatarUrl ?? undefined;
+  return {
+    ...raw,
+    name:      raw.name ?? raw.fullName ?? raw.email ?? '',
+    avatarUrl: avatar && avatar.startsWith('/') ? `${API_BASE}${avatar}` : avatar,
+  };
+}
 
 export interface OrgListItem {
   orgId: string;
@@ -44,7 +56,10 @@ export interface AuthSlice {
 
   // ── Actions ────────────────────────────────────────────────────────────────
   login:               (email: string) => void;
+  /** Full sign-out: clears auth AND all patient/workspace data in memory. */
   logout:              () => void;
+  /** On app boot with a persisted token: validate it and restore user + orgs. */
+  bootstrapSession:    () => Promise<void>;
   updateUser:          (updates: Partial<UserProfile>) => void;
   setToken:            (token: string | null) => void;
   setIsEmailVerified:  (value: boolean) => void;
@@ -58,7 +73,8 @@ export interface AuthSlice {
   setActiveWorkspace:  (ws: ActiveWorkspace) => void;
   loginWithCredentials: (email: string, password: string) => Promise<void>;
   clearAuth:           () => void;
-  fetchOrgLists:       () => Promise<void>;
+  /** Resolves true when both lists loaded successfully. */
+  fetchOrgLists:       () => Promise<boolean>;
   /** @internal overridden by patientSlice at runtime */
   initializeStore:     () => Promise<void>;
 }
@@ -89,7 +105,41 @@ export const createAuthSlice: StateCreator<AppState, [], [], AuthSlice> = (set, 
     },
   }),
 
-  logout: () => set({ isAuthenticated: false, user: null }),
+  logout: () => get().clearAuth(),
+
+  bootstrapSession: async () => {
+    const token = get().token;
+    if (!token) return;
+    try {
+      const meRes = await axios.get(`${BASE_URL}/auth/me`, {
+        headers: { Authorization: `Bearer ${token}` },
+        validateStatus: (s) => s < 500,
+      });
+      if (meRes.status === 401) { get().clearAuth(); return; }
+      if (meRes.status === 200) {
+        const u = meRes.data.user ?? meRes.data;
+        set({
+          isAuthenticated:  true,
+          user:             normalizeUser(u),
+          isEmailVerified:  u?.isEmailVerified ?? get().isEmailVerified,
+          profileCompleted: u?.profileCompleted ?? get().profileCompleted,
+        });
+      }
+    } catch (err) {
+      console.error('[bootstrapSession]', err); // network error: keep session, retry on next action
+    }
+    const orgsLoaded = await get().fetchOrgLists();
+    // Drop a persisted org workspace the user no longer belongs to (BUGS NAV-18).
+    const ws = get().activeWorkspace;
+    if (orgsLoaded && ws.type === 'organization') {
+      const { joinedOrgs, createdOrgs } = get();
+      const known = [...joinedOrgs, ...createdOrgs].some(o => o.orgId === ws.orgId);
+      if (!known) {
+        set({ activeWorkspace: { type: 'personal' } });
+      }
+    }
+    await get().initializeStore();
+  },
 
   updateUser: (updates) => set((state) => ({
     user: state.user ? { ...state.user, ...updates } : null,
@@ -108,13 +158,11 @@ export const createAuthSlice: StateCreator<AppState, [], [], AuthSlice> = (set, 
 
   /** Switch workspace — pure frontend state, no server call, no JWT change */
   setActiveWorkspace: (ws) => {
-    set({ activeWorkspace: ws });
-    // Re-fetch patients filtered by new workspace context
-    // (initializeStore is defined in patientSlice but merged into AppState)
-    // We call it via get() after the state update settles
-    setTimeout(() => {
-      get().initializeStore();
-    }, 0);
+    // Different workspace = different data set: drop everything first so
+    // nothing from the previous workspace is shown or saved (BUGS NAV-17).
+    get().resetWorkspace();
+    set({ activeWorkspace: ws, patients: [] });
+    void get().initializeStore();
   },
 
   // ── loginWithCredentials ───────────────────────────────────────────────────
@@ -143,47 +191,31 @@ export const createAuthSlice: StateCreator<AppState, [], [], AuthSlice> = (set, 
       throw err;
     }
 
-    const { token } = loginData;
-    get().setToken(token);
+    const { token } = loginData as { token: string; user?: any };
+    const loginUser = (loginData as any).user;
+    // Start from a clean slate — never show the previous user's data.
+    get().resetWorkspace();
+    set({
+      token,
+      patients:         [],
+      isAuthenticated:  true,
+      user:             normalizeUser(loginUser),
+      // Login only succeeds for verified users; trust the login payload (BUGS NAV-10).
+      isEmailVerified:  loginUser?.isEmailVerified ?? true,
+      profileCompleted: loginUser?.profileCompleted ?? false,
+      orgId:            loginUser?.orgId ?? null,
+    });
 
-    // Step 2: GET /auth/me
-    try {
-      const meRes = await axios.get(`${BASE_URL}/auth/me`, {
-        headers: { Authorization: `Bearer ${token}` },
-        validateStatus: (s) => s < 500,
-      });
-
-      if (meRes.status === 200) {
-        const userPayload = meRes.data.user ?? meRes.data;
-        set({
-          isAuthenticated:  true,
-          user:             userPayload,
-          isEmailVerified:  userPayload?.isEmailVerified  ?? false,
-          profileCompleted: userPayload?.profileCompleted ?? false,
-          orgId:            userPayload?.orgId ?? null,
-        });
-        // Restore activeWorkspace from localStorage (already done by persist middleware).
-        // If no stored workspace, default stays personal — no change needed.
-      } else {
-        set({
-          isAuthenticated:  true,
-          isEmailVerified:  false,
-          profileCompleted: false,
-          orgId:            null,
-        });
-      }
-    } catch {
-      set({
-        isAuthenticated:  true,
-        isEmailVerified:  false,
-        profileCompleted: false,
-        orgId:            null,
-      });
-    }
+    // Enrich profile (avatar etc.) + orgs + patients; failures here never undo the login.
+    await get().bootstrapSession();
   },
 
   // ── clearAuth ──────────────────────────────────────────────────────────────
-  clearAuth: () => set({
+  clearAuth: () => {
+    get().disconnectLiveRoom?.();
+    get().resetWorkspace();
+    set({
+    patients:         [],
     isAuthenticated:  false,
     user:             null,
     token:            null,
@@ -194,12 +226,13 @@ export const createAuthSlice: StateCreator<AppState, [], [], AuthSlice> = (set, 
     pendingEmail:     null,
     joinedOrgs:       [],
     createdOrgs:      [],
-  }),
+    });
+  },
 
   // ── fetchOrgLists ──────────────────────────────────────────────────────────
   fetchOrgLists: async () => {
     const token = get().token;
-    if (!token) return;
+    if (!token) return false;
 
     try {
       const [joinedRes, createdRes] = await Promise.all([
@@ -229,18 +262,15 @@ export const createAuthSlice: StateCreator<AppState, [], [], AuthSlice> = (set, 
         );
         set({ createdOrgs: normalized });
       }
+      return joinedRes.status === 200 && createdRes.status === 200;
     } catch (err) {
       console.error('[fetchOrgLists]', err);
+      return false;
     }
   },
 
   // ── initializeStore ────────────────────────────────────────────────────────
   // Stub: overridden by patientSlice at runtime (spread order in index.ts).
   // Sets isAuthenticated from persisted token so guards work on first render.
-  initializeStore: async () => {
-    const { token } = get();
-    if (token) {
-      set({ isAuthenticated: true });
-    }
-  },
+  initializeStore: async () => {},
 });

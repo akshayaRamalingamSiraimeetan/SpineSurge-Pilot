@@ -2,6 +2,7 @@ import { StateCreator } from 'zustand';
 import { Patient, Study, Scan, Visit, Context, ContextState } from './types';
 import { api } from '../api';
 import type { AppState } from './index';
+import { emptyCaseState, caseStateFromContext } from './caseState';
 
 export interface PatientSlice {
     patients: Patient[];
@@ -10,7 +11,7 @@ export interface PatientSlice {
     contexts: Context[];
     contextStates: ContextState[];
     activeContextId: string | null;
-    
+
     // Autosave state
     syncStatus: 'synced' | 'unsynced' | 'saving' | 'error';
     hasUnsyncedChanges: boolean;
@@ -18,22 +19,95 @@ export interface PatientSlice {
     setHasUnsyncedChanges: (has: boolean) => void;
 
     initializeStore: () => Promise<void>;
+    /** Re-fetch the patient list only. Never touches the open workspace. */
+    refreshPatients: () => Promise<void>;
     setActivePatient: (patientId: string, initialContextId?: string | null) => Promise<void>;
     addPatient: (patient: Patient) => Promise<void>;
     updatePatient: (patient: Patient) => Promise<void>;
     archivePatient: (patientId: string, archived: boolean) => Promise<void>;
     addVisit: (patientId: string, visit: Visit) => Promise<void>;
     updateVisit: (patientId: string, visitId: string, visit: Visit) => Promise<void>;
-    deleteVisit: (patientId: string, visitId: string) => void;
+    deleteVisit: (patientId: string, visitId: string) => Promise<void>;
     reorderVisits: (patientId: string, visits: Visit[]) => Promise<void>;
     addStudy: (study: Omit<Study, 'scans'>) => Promise<void>;
     updateStudy: (patientId: string, studyId: string, updates: Partial<Pick<Study, 'name' | 'status' | 'modality' | 'source' | 'acquisitionDate' | 'visitId'>>) => Promise<void>;
-    addScan: (patientId: string, studyId: string, scanMetadata: Omit<Scan, 'imageUrl'>, file: File) => Promise<void>;
+    /** Uploads the file and resolves to the server image URL. */
+    addScan: (patientId: string, studyId: string, scanMetadata: Omit<Scan, 'imageUrl'>, file: File) => Promise<string>;
     addContext: (context: Context) => Promise<void>;
     updateContextState: (contextId: string, updates: Partial<ContextState>) => Promise<boolean>;
     setActiveContextId: (contextId: string | null) => void;
+    /** Open a study: latest existing session for it, or a new one. */
+    openStudy: (patientId: string, studyId: string) => Promise<void>;
+    /** Leave the workspace: unload the case but keep the selected patient. */
+    closeCase: () => void;
     resetWorkspace: () => void;
 }
+
+// ── Request sequencing ──────────────────────────────────────────────────────
+// Each async loader bumps its counter; a response is applied only if no newer
+// request started meanwhile. Prevents patient A's data landing under B.
+let patientLoadSeq = 0;
+let patientListSeq = 0;
+
+// ── Per-context save queue ──────────────────────────────────────────────────
+// Saves for one context are serialized and coalesced (latest payload wins).
+// Concurrent POST /api/contexts for the same id caused PK violations and
+// out-of-order writes (docs/BUGS.md WS-02).
+type SaveJob = { payload: any; token: string | null; waiters: ((ok: boolean) => void)[] };
+const saveInFlight = new Map<string, Promise<void>>();
+const savePending = new Map<string, SaveJob>();
+
+function enqueueContextSave(contextId: string, payload: any, token: string | null): Promise<boolean> {
+    return new Promise<boolean>((resolve) => {
+        const pending = savePending.get(contextId);
+        if (pending) {
+            pending.payload = payload;
+            pending.token = token;
+            pending.waiters.push(resolve);
+        } else {
+            savePending.set(contextId, { payload, token, waiters: [resolve] });
+        }
+        if (!saveInFlight.has(contextId)) drainSaves(contextId);
+    });
+}
+
+function drainSaves(contextId: string) {
+    const job = savePending.get(contextId);
+    if (!job) { saveInFlight.delete(contextId); return; }
+    savePending.delete(contextId);
+    const run = api.saveContext(job.payload, job.token)
+        .then(() => true)
+        .catch((e) => { console.error(`[contextSave] FAILED contextId=${contextId}`, e); return false; })
+        .then((ok) => {
+            job.waiters.forEach((w) => w(ok));
+            drainSaves(contextId);
+        });
+    saveInFlight.set(contextId, run);
+}
+
+const mapContexts = (fetched: any[]) => {
+    const contexts: Context[] = fetched.map((c: any) => ({
+        id:           c.id,
+        patientId:    c.patientId,
+        visitId:      c.visitId,
+        studyIds:     c.studyIds,
+        mode:         c.mode,
+        name:         c.name,
+        lastModified: c.lastModified,
+    }));
+    const contextStates: ContextState[] = fetched.map((c: any) => ({
+        contextId:          c.id,
+        measurements:       c.measurements       || [],
+        implants:           c.implants           || [],
+        threeDImplants:     c.threeDImplants     || c.toolState?.threeDImplants     || [],
+        pedicleSimulations: c.pedicleSimulations || c.toolState?.pedicleSimulations || [],
+        annotations:        c.annotations        || [],
+        toolState:          c.toolState          || {},
+        reportConfig:       c.toolState?.reportConfig,
+        currentImage:       c.currentImage ?? undefined,
+    }));
+    return { contexts, contextStates };
+};
 
 export const createPatientSlice: StateCreator<AppState, [], [], PatientSlice> = (set, get) => ({
     patients: [],
@@ -44,30 +118,37 @@ export const createPatientSlice: StateCreator<AppState, [], [], PatientSlice> = 
     activeContextId: null,
     syncStatus: 'synced',
     hasUnsyncedChanges: false,
-    
+
     setSyncStatus: (status) => set({ syncStatus: status }),
     setHasUnsyncedChanges: (has) => set({ hasUnsyncedChanges: has }),
 
-    initializeStore: async () => {
-        try {
-            const workspace = get().activeWorkspace;
-            const token     = get().token;
-            const patients  = await api.getPatients(workspace, token);
-            set({ patients, isAuthenticated: true });
+    refreshPatients: async () => {
+        const { token, activeWorkspace } = get();
+        if (!token) return;
+        const seq = ++patientListSeq;
+        const patients = await api.getPatients(activeWorkspace, token);
+        if (seq !== patientListSeq) return;
+        set({ patients });
+    },
 
-            const currentActiveId = get().activePatientId;
-            if (currentActiveId && patients.length > 0) {
-                const idToActivate = patients.find(p => p.id === currentActiveId) ? currentActiveId : null;
-                if (idToActivate) {
-                    await get().setActivePatient(idToActivate);
-                } else {
-                    set({ activePatientId: null, contexts: [], contextStates: [] });
-                }
-            } else {
-                set({ activePatientId: null, contexts: [], contextStates: [] });
+    /**
+     * Loads the patient list for the active workspace. If the active patient
+     * is still visible it is kept as-is (open workspace untouched); otherwise
+     * the workspace is cleared.
+     */
+    initializeStore: async () => {
+        const { token } = get();
+        if (!token) return;
+        set({ isAuthenticated: true });
+        try {
+            await get().refreshPatients();
+            const { activePatientId, patients } = get();
+            if (activePatientId && !patients.some(p => p.id === activePatientId)) {
+                get().resetWorkspace();
             }
         } catch (e) {
             console.error('Initialization failed', e);
+            set({ patients: [] });
         }
     },
 
@@ -76,84 +157,56 @@ export const createPatientSlice: StateCreator<AppState, [], [], PatientSlice> = 
             console.warn('[setActivePatient] called with falsy id — skipping');
             return;
         }
-
-        // Reset DICOM state immediately when switching to any patient/study.
-        // Also clear currentImage so CanvasWorkspace cannot inherit a stale DICOM
-        // URL from the previous session via Priority-2 of its currentImage useMemo.
-        // When coming out of DICOM mode, additionally clear the managers map so
-        // CanvasWorkspace always creates a fresh CanvasManager.
+        const seq = ++patientLoadSeq;
         const wasDicomMode = get().isDicomMode;
+
+        // Clear EVERYTHING belonging to the previous case before loading.
         set({
+            ...emptyCaseState(get()),
             activePatientId: id,
-            activeContextId: initialContextId,
-            isDicomMode: false,
-            dicomSeries: [],
-            currentImage: null,
+            activeContextId: null,
+            contexts: [],
+            contextStates: [],
             ...(wasDicomMode ? { managers: {} } : {}),
         });
         const token = get().token;
 
         try {
-            // Re-use already-loaded patients from store; only fall back to fresh fetch if missing
-            const currentPatients = get().patients;
-            if (!currentPatients.find(p => p.id === id)) {
-                const workspace  = get().activeWorkspace;
-                const allPatients = await api.getPatients(workspace, token);
-                set({ patients: allPatients });
+            if (!get().patients.find(p => p.id === id)) {
+                await get().refreshPatients();
             }
 
-            const fetchedContexts = await api.getContexts(id, token);
-            const contexts: Context[] = fetchedContexts.map((c: any) => ({
-                id:           c.id,
-                patientId:    c.patientId,
-                visitId:      c.visitId,
-                studyIds:     c.studyIds,
-                mode:         c.mode,
-                name:         c.name,
-                lastModified: c.lastModified,
-            }));
+            const fetched = await api.getContexts(id, token);
+            if (seq !== patientLoadSeq) return; // a newer patient/context was requested
 
-            const contextStates: ContextState[] = fetchedContexts.map((c: any) => ({
-                contextId:          c.id,
-                measurements:       c.measurements       || [],
-                implants:           c.implants           || [],
-                threeDImplants:     c.threeDImplants     || [],
-                pedicleSimulations: c.pedicleSimulations || [],
-                annotations:        c.annotations        || [],
-                toolState:          c.toolState          || {},
-                reportConfig:       c.toolState?.reportConfig,
-                currentImage:       c.currentImage,
-            }));
-
+            const { contexts, contextStates } = mapContexts(fetched);
             const activeState = initialContextId
                 ? contextStates.find((s) => s.contextId === initialContextId)
-                : null;
+                : undefined;
 
             set({
                 contexts,
                 contextStates,
-                ...(activeState ? {
-                    measurements: activeState.measurements ?? [],
-                    implants: activeState.implants ?? [],
-                    ...(activeState.currentImage ? { currentImage: activeState.currentImage } : {}),
-                } : {}),
+                ...(activeState
+                    ? { activeContextId: initialContextId, ...caseStateFromContext(get(), activeState) }
+                    : {}),
             });
         } catch (e) {
             console.error('Failed to fetch contexts', e);
         }
     },
 
-
     addPatient: async (patient) => {
         const token = get().token;
         try {
             await api.savePatient(patient, token);
             set((state: AppState) => ({
-                patients:        [patient, ...state.patients],
+                patients:        [patient, ...state.patients.filter(p => p.id !== patient.id)],
                 activePatientId: patient.id,
             }));
         } catch (e) {
             console.error('Save patient failed', e);
+            throw e;
         }
     },
 
@@ -187,9 +240,10 @@ export const createPatientSlice: StateCreator<AppState, [], [], PatientSlice> = 
         const token = get().token;
         try {
             await api.saveVisit(patientId, visit, token);
-            await get().initializeStore();
+            await get().refreshPatients();
         } catch (e) {
             console.error('Failed to add visit', e);
+            throw e;
         }
     },
 
@@ -210,37 +264,36 @@ export const createPatientSlice: StateCreator<AppState, [], [], PatientSlice> = 
         }
     },
 
-    deleteVisit: (patientId, visitId) => {
+    deleteVisit: async (patientId, visitId) => {
         const token = get().token;
-        set((state: AppState) => {
-            const updatedPatients = state.patients.map((p: Patient) =>
-                p.id === patientId
-                    ? { ...p, visits: p.visits.filter((v: Visit) => v.id !== visitId) }
-                    : p
-            );
-            api.deleteVisit(visitId, token);
-            return { patients: updatedPatients };
-        });
+        try {
+            await api.deleteVisit(visitId, token);
+            set((state: AppState) => ({
+                patients: state.patients.map((p: Patient) =>
+                    p.id === patientId
+                        ? { ...p, visits: p.visits.filter((v: Visit) => v.id !== visitId) }
+                        : p
+                ),
+            }));
+        } catch (e) {
+            console.error('Failed to delete visit', e);
+            throw e;
+        }
     },
 
     reorderVisits: async (patientId, visits) => {
         const token = get().token;
+        const renumbered = visits.map((v: Visit, index: number) => ({
+            ...v,
+            visitNumber: `#${String(visits.length - index).padStart(4, '0')}`,
+        }));
+        set((state: AppState) => ({
+            patients: state.patients.map((p: Patient) =>
+                p.id === patientId ? { ...p, visits: renumbered } : p
+            ),
+        }));
         try {
-            set((state: AppState) => {
-                const updatedPatients = state.patients.map((p: Patient) =>
-                    p.id === patientId
-                        ? {
-                            ...p,
-                            visits: visits.map((v: Visit, index: number) => ({
-                                ...v,
-                                visitNumber: `#${String(visits.length - index).padStart(4, '0')}`,
-                            })),
-                          }
-                        : p
-                );
-                return { patients: updatedPatients };
-            });
-            await Promise.all(visits.map(v => api.saveVisit(patientId, v, token)));
+            await Promise.all(renumbered.map(v => api.saveVisit(patientId, v, token)));
         } catch (e) {
             console.error('Failed to reorder visits', e);
         }
@@ -254,7 +307,7 @@ export const createPatientSlice: StateCreator<AppState, [], [], PatientSlice> = 
             const organizationId = workspace.type === 'organization' ? workspace.orgId : null;
             const studyWithOrg   = { ...study, organizationId, status: study.status ?? 'Draft' } as Study;
             await api.saveStudy(studyWithOrg, token);
-            await get().initializeStore();
+            await get().refreshPatients();
         } catch (e) {
             console.error('Add study failed', e);
             throw e;
@@ -322,6 +375,7 @@ export const createPatientSlice: StateCreator<AppState, [], [], PatientSlice> = 
                 );
                 return { patients: updatedPatients };
             });
+            return imageUrl;
         } catch (e) {
             console.error('Upload failed', e);
             throw e;
@@ -331,7 +385,11 @@ export const createPatientSlice: StateCreator<AppState, [], [], PatientSlice> = 
     addContext: async (context) => {
         const token = get().token;
         const state = get();
+        // Carry over the canvas only from an untitled session: no context is
+        // active and the patient has none yet. setActivePatient clears the
+        // canvas, so another patient's work can never be carried over here.
         const isFirstContextFromUntitled =
+            !state.activeContextId &&
             state.contextStates.length === 0 &&
             (state.measurements.length > 0 ||
                 (state.implants?.length ?? 0) > 0 ||
@@ -341,41 +399,55 @@ export const createPatientSlice: StateCreator<AppState, [], [], PatientSlice> = 
         const implants = isFirstContextFromUntitled ? (state.implants || []) : [];
         const currentImage = isFirstContextFromUntitled ? (state.currentImage ?? undefined) : undefined;
 
-        const payload = isFirstContextFromUntitled
-            ? {
-                ...context,
-                state: {
-                    measurements,
-                    implants,
-                    annotations: [],
-                    toolState: {},
-                    currentImage: currentImage ?? null,
-                },
-            }
-            : context;
+        // The untitled session's image only exists in this tab (blob: URL).
+        // Now that it has a study, upload it and persist the server URL. The
+        // live canvas keeps the blob so in-progress work isn't re-initialised;
+        // the server ignores blob URLs on later saves and keeps this one.
+        let persistedImage = currentImage;
+        const studyId = context.studyIds?.[0];
+        if (isFirstContextFromUntitled && state.pendingImageFile && currentImage?.startsWith('blob:') && studyId) {
+            const today = new Date().toISOString().split('T')[0];
+            persistedImage = await get().addScan(
+                context.patientId,
+                studyId,
+                { id: `scan-${crypto.randomUUID()}`, type: 'Pre-op', date: today },
+                state.pendingImageFile,
+            );
+            set({ pendingImageFile: null });
+        }
 
-        try {
-            console.log(`[addContext] Saving new context id=${context.id} patient=${context.patientId} studyIds=${JSON.stringify(context.studyIds)} measurements=${measurements.length}`);
-            await api.saveContext(payload, token);
-            console.log(`[addContext] Save OK id=${context.id}`);
-            set((state: AppState) => ({
-                contexts:      [...state.contexts, context],
-                activeContextId: context.id,
-                contextStates: [
-                    ...state.contextStates,
-                    {
-                        contextId:    context.id,
-                        measurements,
-                        implants,
-                        annotations:  [],
-                        toolState:    {},
-                        reportConfig: undefined,
-                        ...(currentImage ? { currentImage } : {}),
-                    },
-                ],
+        const payload = {
+            ...context,
+            state: {
                 measurements,
                 implants,
-                ...(currentImage ? { currentImage } : {}),
+                annotations: [],
+                toolState: {},
+                currentImage: persistedImage ?? null,
+            },
+        };
+
+        try {
+            await api.saveContext(payload, token);
+            const newState: ContextState = {
+                contextId:          context.id,
+                measurements,
+                implants,
+                threeDImplants:     [],
+                pedicleSimulations: [],
+                annotations:        [],
+                toolState:          {},
+                reportConfig:       undefined,
+                currentImage:       persistedImage,
+            };
+            set((s: AppState) => ({
+                contexts:        [...s.contexts.filter(c => c.id !== context.id), context],
+                contextStates:   [...s.contextStates.filter(c => c.contextId !== context.id), newState],
+                activeContextId: context.id,
+                ...(isFirstContextFromUntitled
+                    // keep the live canvas (blob image, tool state) untouched
+                    ? { measurements, implants }
+                    : caseStateFromContext(s, newState)),
             }));
         } catch (e) {
             console.error(`[addContext] FAILED id=${context.id}`, e);
@@ -384,116 +456,127 @@ export const createPatientSlice: StateCreator<AppState, [], [], PatientSlice> = 
     },
 
     updateContextState: async (contextId: string, updates: Partial<ContextState>) => {
-        const token = get().token;
-        let payloadToSave: any = null;
+        const state = get();
+        const context = state.contexts.find((c: Context) => c.id === contextId);
+        if (!context) {
+            console.warn(`[updateContextState] context ${contextId} not found — nothing saved`);
+            return false;
+        }
 
-        set((state: AppState) => {
-            const context = state.contexts.find((c: Context) => c.id === contextId);
-            if (!context) {
-                console.warn(`[updateContextState] EARLY RETURN — context ${contextId} not found`);
-                return state;
-            }
+        const prev = state.contextStates.find((s) => s.contextId === contextId);
+        const merged: ContextState = {
+            contextId,
+            measurements: [],
+            implants: [],
+            annotations: [],
+            toolState: {},
+            ...prev,
+            ...updates,
+        };
+        const isActive = contextId === state.activeContextId;
 
-            const updatedStates = state.contextStates.map((s: ContextState) =>
-                s.contextId === contextId ? { ...s, ...updates } : s
-            );
+        // Mirror into the live top-level fields for the active context.
+        const mirror: Partial<AppState> = isActive ? {
+            ...(updates.measurements !== undefined ? { measurements: merged.measurements } : {}),
+            ...(updates.implants !== undefined ? { implants: merged.implants || [] } : {}),
+            ...(updates.threeDImplants !== undefined ? { threeDImplants: merged.threeDImplants || [] } : {}),
+            ...(updates.pedicleSimulations !== undefined ? { pedicleSimulations: merged.pedicleSimulations || [] } : {}),
+            ...(updates.currentImage !== undefined && merged.currentImage ? { currentImage: merged.currentImage } : {}),
+        } : {};
 
-            const stateForServer = updatedStates.find((s: ContextState) => s.contextId === contextId);
-            const mirrorActiveContext = contextId === state.activeContextId && stateForServer;
-            const storeMirror: Partial<AppState> = mirrorActiveContext ? {
-                ...(updates.measurements !== undefined ? { measurements: stateForServer!.measurements } : {}),
-                ...(updates.implants !== undefined ? { implants: stateForServer!.implants || [] } : {}),
-                ...(updates.currentImage !== undefined && stateForServer!.currentImage
-                    ? { currentImage: stateForServer!.currentImage }
-                    : {}),
-            } : {};
-
-            if (stateForServer) {
-                const currentImage = updates.currentImage ?? state.currentImage ?? stateForServer.currentImage ?? null;
-                payloadToSave = {
-                    ...context,
-                    state: {
-                        measurements:       stateForServer.measurements,
-                        annotations:        stateForServer.annotations,
-                        toolState:          {
-                            ...stateForServer.toolState,
-                            ...(stateForServer.reportConfig ? { reportConfig: stateForServer.reportConfig } : {})
-                        },
-                        implants:           stateForServer.implants           || [],
-                        threeDImplants:     stateForServer.threeDImplants     || [],
-                        pedicleSimulations: stateForServer.pedicleSimulations || [],
-                        currentImage,
-                    },
-                };
-            }
-            return { contextStates: updatedStates, ...storeMirror };
+        set({
+            contextStates: prev
+                ? state.contextStates.map((s) => s.contextId === contextId ? merged : s)
+                : [...state.contextStates, merged],
+            ...mirror,
         });
 
-        if (payloadToSave) {
-            try {
-                await api.saveContext(payloadToSave, token);
-                return true;
-            } catch (e) {
-                console.error(`[updateContextState] SAVE FAILED contextId=${contextId}`, e);
-                return false;
-            }
-        }
-        return true;
+        const currentImage = updates.currentImage
+            ?? (isActive ? get().currentImage : null)
+            ?? merged.currentImage
+            ?? null;
+
+        const payload = {
+            ...context,
+            state: {
+                measurements:       merged.measurements,
+                annotations:        merged.annotations,
+                toolState: {
+                    ...merged.toolState,
+                    ...(merged.reportConfig ? { reportConfig: merged.reportConfig } : {}),
+                    // 3D plan is stored inside toolState so it persists even
+                    // before the server has dedicated columns (BUGS SRV-15).
+                    threeDImplants:     merged.threeDImplants     || [],
+                    pedicleSimulations: merged.pedicleSimulations || [],
+                },
+                implants:           merged.implants           || [],
+                threeDImplants:     merged.threeDImplants     || [],
+                pedicleSimulations: merged.pedicleSimulations || [],
+                currentImage,
+            },
+        };
+        return enqueueContextSave(contextId, payload, get().token);
     },
 
-    setActiveContextId: (contextId) => set((state) => {
+    setActiveContextId: (contextId) => {
         if (!contextId) {
-            return { activeContextId: null };
+            set({ activeContextId: null });
+            return;
         }
-
+        const state = get();
         const ctxState = state.contextStates.find((s) => s.contextId === contextId);
-        return {
+        set({
             activeContextId: contextId,
-            ...(ctxState ? {
-                measurements: ctxState.measurements ?? [],
-                implants: ctxState.implants ?? [],
-                ...(ctxState.currentImage ? { currentImage: ctxState.currentImage } : {}),
-            } : {}),
-        };
-    }),
-    resetWorkspace: () => set({
-        activePatientId: null,
+            ...(ctxState ? caseStateFromContext(state, ctxState) : emptyCaseState(state)),
+        });
+    },
+
+    openStudy: async (patientId, studyId) => {
+        await get().setActivePatient(patientId);
+        if (get().activePatientId !== patientId) return; // superseded
+        const existing = get().contexts
+            .filter(c => c.studyIds?.includes(studyId))
+            .sort((a, b) => String(b.lastModified).localeCompare(String(a.lastModified)))[0];
+        if (existing) {
+            get().setActiveContextId(existing.id);
+            return;
+        }
+        const patient = get().patients.find(p => p.id === patientId);
+        const study = patient?.studies.find(s => s.id === studyId)
+            ?? patient?.visits.flatMap(v => v.studies || []).find(s => s.id === studyId);
+        await get().addContext({
+            id: `ctx-${crypto.randomUUID()}`,
+            patientId,
+            visitId: study?.visitId,
+            studyIds: [studyId],
+            mode: 'plan',
+            name: study?.name || `${study?.modality ?? 'Study'} session`,
+            lastModified: new Date().toISOString(),
+        });
+    },
+
+    closeCase: () => set({
+        ...emptyCaseState(get()),
         activeContextId: null,
-        contexts: [],
-        contextStates: [],
-        currentImage: null,
-        measurements: [],
-        implants: [],
-        isDicomMode: false,
-        dicomSeries: [],
-        inspectionMode: null,
         isComparisonMode: false,
         activeCanvasSide: 'left',
-        canvas: {
-            zoom: 1,
-            rotation: 0,
-            brightness: 100,
-            contrast: 100,
-            sharpness: 0,
-            flipX: false,
-            pan: { x: 0, y: 0 },
-            pixelToMm: null,
-            calibrationApplied: false,
-            calibrationEnabledAt: null
-        },
-        comparison: {
-            left: {
-                image: null,
-                measurements: [],
-                implants: [],
-                canvas: { zoom: 1, rotation: 0, brightness: 100, contrast: 100, sharpness: 0, flipX: false, pan: { x: 0, y: 0 }, pixelToMm: null, calibrationApplied: false, calibrationEnabledAt: null }
-            },
-            right: {
-                image: null,
-                measurements: [],
-                implants: [],
-                canvas: { zoom: 1, rotation: 0, brightness: 100, contrast: 100, sharpness: 0, flipX: false, pan: { x: 0, y: 0 }, pixelToMm: null, calibrationApplied: false, calibrationEnabledAt: null }
-            }
-        }
+        managers: {},
     }),
+
+    resetWorkspace: () => {
+        patientLoadSeq++; // invalidate any in-flight patient load
+        set({
+            ...emptyCaseState(get()),
+            activePatientId: null,
+            activeContextId: null,
+            contexts: [],
+            contextStates: [],
+            inspectionMode: null,
+            isComparisonMode: false,
+            activeCanvasSide: 'left',
+            managers: {},
+            syncStatus: 'synced',
+            hasUnsyncedChanges: false,
+        });
+    },
 });

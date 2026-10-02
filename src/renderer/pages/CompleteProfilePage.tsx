@@ -21,6 +21,8 @@ import {
     SelectTrigger,
     SelectValue,
 } from '@/components/ui/select';
+import { API_BASE, resolveAssetUrl } from '@/lib/api';
+import { normalizeUser } from '@/lib/store/authSlice';
 
 const DESIGNATIONS = [
     'Surgeon',
@@ -80,7 +82,7 @@ const CompleteProfilePage = () => {
             const formData = new FormData();
             formData.append('avatar', file);
 
-            const res = await axios.post('http://localhost:3001/auth/upload-avatar', formData, {
+            const res = await axios.post(`${API_BASE}/auth/upload-avatar`, formData, {
                 headers: {
                     Authorization: `Bearer ${token}`,
                     'Content-Type': 'multipart/form-data',
@@ -89,7 +91,7 @@ const CompleteProfilePage = () => {
 
             const { url } = res.data;
             setAvatarUrl(url);
-            setAvatarPreview(url);
+            setAvatarPreview(resolveAssetUrl(url) ?? null);
         } catch (err: unknown) {
             const message =
                 axios.isAxiosError(err) && err.response?.data?.error
@@ -124,7 +126,7 @@ const CompleteProfilePage = () => {
             }
 
             const res = await axios.post(
-                'http://localhost:3001/auth/complete-profile',
+                `${API_BASE}/auth/complete-profile`,
                 payload,
                 {
                     headers: { Authorization: `Bearer ${token}` },
@@ -136,7 +138,7 @@ const CompleteProfilePage = () => {
                 const data = res.data;
                 setProfileCompleted(true);
                 setToken(data.token);
-                updateUser(data.user);
+                updateUser(normalizeUser(data.user) ?? {});
                 navigate('/dashboard');
             } else {
                 setApiError(res.data?.error ?? 'Something went wrong. Please try again.');

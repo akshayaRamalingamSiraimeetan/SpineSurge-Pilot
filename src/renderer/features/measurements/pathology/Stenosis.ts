@@ -1,6 +1,6 @@
 import { Point, getPolygonCenter } from "@/lib/canvas/GeometryUtils";
 import { Measurement } from "@/lib/canvas/CanvasManager";
-import { drawMeasurementLabel, drawPoint } from "@/lib/canvas/CanvasUtils";
+import { drawMeasurementLabel } from "@/lib/canvas/CanvasUtils";
 
 export function calculateStenosisArea(points: Point[], pixelToMm: number | null) {
     if (points.length < 3) return null;

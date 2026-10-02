@@ -221,6 +221,14 @@ const MemberWorkspacePage = () => {
         // We use the real patientId and studyId so the existing API data is picked up.
         const syntheticContextId = `inspect-${study.id}-${Date.now()}`;
 
+        // Load the patient data so contexts/measurements are available.
+        // setActivePatient fetches contexts for this patient from the backend.
+        // The member's patient/study data is already in the DB — we just need to load it.
+        // Load the case first (clears previous case state), THEN enter
+        // inspection mode so nothing resets it (BUGS NAV-01).
+        clearImage();
+        await setActivePatient(study.patientId);
+
         // Set inspection mode BEFORE navigating so MainLayout renders the banner
         setInspectionMode({
             active:      true,
@@ -232,11 +240,6 @@ const MemberWorkspacePage = () => {
             contextId:   syntheticContextId,
         } satisfies InspectionMode);
 
-        // Load the patient data so contexts/measurements are available.
-        // setActivePatient fetches contexts for this patient from the backend.
-        // The member's patient/study data is already in the DB — we just need to load it.
-        clearImage();
-        await setActivePatient(study.patientId);
 
         // Load the first scan image into the canvas
         loadImage(imageUrl);

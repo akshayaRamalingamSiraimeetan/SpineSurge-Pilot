@@ -2,6 +2,7 @@ import { StateCreator } from 'zustand';
 import { Measurement } from './types';
 import type { AppState } from './index';
 import { resolveActiveMeasurements, syncManagerMeasurements } from '@/lib/canvas/measurementSync';
+import { defaultCanvas } from './caseState';
 
 export { syncManagerMeasurements } from '@/lib/canvas/measurementSync';
 
@@ -17,6 +18,9 @@ export interface InspectionMode {
 
 export interface CanvasSlice {
     currentImage: string | null;
+    // File behind a local blob: currentImage that has no study to upload to
+    // yet (untitled Quick Use). Uploaded when the session becomes a study.
+    pendingImageFile: File | null;
     canvas: {
         zoom: number;
         rotation: number;
@@ -52,6 +56,7 @@ export interface CanvasSlice {
     setInspectionMode: (mode: InspectionMode | null) => void;
 
     loadImage: (imageUrl: string) => void;
+    loadLocalImage: (file: File) => void;
     setCurrentImage: (imageUrl: string | null) => void;
     clearImage: () => void;
     setActiveTool: (toolId: string | null) => void;
@@ -117,8 +122,20 @@ const convertPxResultToMm = (result: unknown, ratio: number): { result: unknown;
     return { result: withDistanceConverted, changed };
 };
 
+/** Store the active context's calibration in its toolState (BUGS WS-08). */
+const persistCalibration = (get: () => AppState) => {
+    const state = get();
+    if (state.isComparisonMode || !state.activeContextId) return;
+    const ctx = state.contextStates.find(c => c.contextId === state.activeContextId);
+    const { pixelToMm, calibrationApplied, calibrationEnabledAt } = state.canvas;
+    state.updateContextState(state.activeContextId, {
+        toolState: { ...(ctx?.toolState ?? {}), calibration: { pixelToMm, calibrationApplied, calibrationEnabledAt } },
+    });
+};
+
 export const createCanvasSlice: StateCreator<AppState, [], [], CanvasSlice> = (set, get) => ({
     currentImage: null,
+    pendingImageFile: null,
     canvas: {
         zoom: 1,
         rotation: 0,
@@ -146,19 +163,24 @@ export const createCanvasSlice: StateCreator<AppState, [], [], CanvasSlice> = (s
     managers: {},
     inspectionMode: null,
 
-    loadImage: (imageUrl: string) => set((state) => {
-        console.log('[CanvasSlice] loadImage called', imageUrl);
-        console.log('[CanvasSlice] Current measurements count:', state.measurements.length);
-        console.log('[CanvasSlice] Resetting canvas state...');
-        return {
-            currentImage: imageUrl,
-            isDicomMode: false,
-            dicomSeries: [],
-            canvas: { ...state.canvas, zoom: 1, pan: { x: 0, y: 0 }, rotation: 0, brightness: 100, contrast: 100, sharpness: 0, flipX: false }
-        };
+    // A new image invalidates the previous image's view AND calibration.
+    loadImage: (imageUrl: string) => set({
+        currentImage: imageUrl,
+        pendingImageFile: null,
+        isDicomMode: false,
+        dicomSeries: [],
+        activeTool: null,
+        selection: null,
+        canvas: defaultCanvas(),
     }),
+    loadLocalImage: (file: File) => {
+        get().loadImage(URL.createObjectURL(file));
+        set({ pendingImageFile: file });
+    },
     setCurrentImage: (imageUrl: string | null) => set({ currentImage: imageUrl }),
-    clearImage: () => set({ currentImage: null, isDicomMode: false, dicomSeries: [], inspectionMode: null }),
+    // Does NOT touch inspectionMode — callers that leave inspection call
+    // setInspectionMode(null) explicitly (BUGS NAV-01).
+    clearImage: () => set({ currentImage: null, pendingImageFile: null, isDicomMode: false, dicomSeries: [], activeTool: null, selection: null }),
 
     setActiveTool: (toolId) => set({ activeTool: toolId }),
     setSelection: (selection) => set({ selection }),
@@ -322,18 +344,28 @@ export const createCanvasSlice: StateCreator<AppState, [], [], CanvasSlice> = (s
             set({ measurements: updated });
         }
     },
-    deleteImplant: (id) => set((state) => {
+    deleteImplant: (id) => {
+        const state = get();
         if (state.isComparisonMode) {
             const side = state.activeCanvasSide;
-            return {
+            set({
                 comparison: {
                     ...state.comparison,
-                    [side]: { ...state.comparison[side], implants: state.comparison[side].implants.filter(i => i.id !== id) }
-                }
-            };
+                    [side]: { ...state.comparison[side], implants: state.comparison[side].implants.filter(i => i.id !== id) },
+                },
+            });
+            return;
         }
-        return { implants: state.implants.filter(i => i.id !== id) };
-    }),
+        // Remove from the live manager AND the persisted context (BUGS CV-10).
+        void state.managers.main?.applyOperation?.('DELETE_IMPLANT', { id });
+        const ctx = state.contextStates.find(c => c.contextId === state.activeContextId);
+        const updated = (ctx?.implants ?? state.implants).filter((i: any) => i.id !== id);
+        if (state.activeContextId) {
+            void get().updateContextState(state.activeContextId, { implants: updated });
+        } else {
+            set({ implants: updated });
+        }
+    },
     toggleMeasurementSelection: (id, selected) => {
         const state = get();
         const mapSelection = (measurements: Measurement[]) =>
@@ -381,7 +413,7 @@ export const createCanvasSlice: StateCreator<AppState, [], [], CanvasSlice> = (s
         return undefined;
     },
     setInspectionMode: (mode) => set({ inspectionMode: mode }),
-    setCalibration: (ratio) => set((state) => {
+    setCalibration: (ratio) => { set((state) => {
         const side = state.isComparisonMode ? state.activeCanvasSide : null;
         const calibrationEnabledAt = ratio ? Date.now() : null;
 
@@ -426,8 +458,8 @@ export const createCanvasSlice: StateCreator<AppState, [], [], CanvasSlice> = (s
                 calibrationEnabledAt,
             },
         };
-    }),
-    setCalibrationApplied: (applied) => set((state) => {
+    }); persistCalibration(get); },
+    setCalibrationApplied: (applied) => { set((state) => {
         if (state.isComparisonMode) {
             const side = state.activeCanvasSide;
             return {
@@ -450,7 +482,7 @@ export const createCanvasSlice: StateCreator<AppState, [], [], CanvasSlice> = (s
                 calibrationApplied: applied,
             },
         };
-    }),
+    }); persistCalibration(get); },
     applyCalibrationToExistingMeasurements: () => set((state) => {
         if (state.isComparisonMode) {
             const side = state.activeCanvasSide;

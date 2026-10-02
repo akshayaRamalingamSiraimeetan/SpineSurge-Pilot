@@ -83,7 +83,9 @@ export interface DicomSlice {
     loadDicomURLs: (urls: string[]) => void;
     exitDicomMode: () => void;
     addThreeDImplant: (implant: ThreeDImplant) => void;
-    updateThreeDImplant: (id: string, updates: Partial<ThreeDImplant>) => void;
+    /** persist:false while dragging; call commitThreeDImplants() on pointer-up. */
+    updateThreeDImplant: (id: string, updates: Partial<ThreeDImplant>, opts?: { persist?: boolean }) => void;
+    commitThreeDImplants: () => void;
     removeThreeDImplant: (id: string) => void;
     setSidebarActiveModule: (module: string) => void;
     triggerFocusCrop: () => void;
@@ -91,7 +93,13 @@ export interface DicomSlice {
     sidebarActiveModule: string;
 }
 
-export const createDicomSlice: StateCreator<AppState, [], [], DicomSlice> = (set) => ({
+/** Save 3D plan changes to the active context — never from inside a set() updater. */
+const persist3D = (get: () => AppState, updates: Partial<Pick<AppState, 'threeDImplants' | 'pedicleSimulations'>>) => {
+    const ctxId = get().activeContextId;
+    if (ctxId) get().updateContextState(ctxId, updates);
+};
+
+export const createDicomSlice: StateCreator<AppState, [], [], DicomSlice> = (set, get) => ({
     threeDImplants: [],
     dicomSeries: [],
     isDicomMode: false,
@@ -117,17 +125,20 @@ export const createDicomSlice: StateCreator<AppState, [], [], DicomSlice> = (set
         showClipBox3D: false,
         roiCrop: { x0: 0, x1: 1, y0: 0, y1: 1, z0: 0, z1: 1 },
         focusCropTrigger: 0,
-        screwLevel: 'C3',
+        screwLevel: 'L4',
         screwSide: 'L',
-        screwDiameter: 3.0,
-        screwLength: 18,
+        screwDiameter: 6.5,
+        screwLength: 45,
         screwColor: '#a855f7',
         selectedLandmarkId: null,
     },
     pedicleSimulations: [],
     addPedicleLandmark: (landmark) => set((state) => {
-        let sims = [...state.pedicleSimulations];
-        let sim = sims.find(s => s.label === landmark.label);
+        const sims: PedicleSimulation[] = state.pedicleSimulations.map(s => ({
+            ...s,
+            landmarks: { ...s.landmarks, fiducials: s.landmarks.fiducials ? [...s.landmarks.fiducials] : undefined },
+        }));
+        let sim: PedicleSimulation | undefined = sims.find(s => s.label === landmark.label);
 
         if (!sim) {
             sim = {
@@ -202,11 +213,7 @@ export const createDicomSlice: StateCreator<AppState, [], [], DicomSlice> = (set
             };
         }
 
-        if (state.activeContextId) {
-            state.updateContextState(state.activeContextId, {
-                pedicleSimulations: sims
-            });
-        }
+        queueMicrotask(() => persist3D(get, { pedicleSimulations: sims }));
 
         const newId = existingLandmark?.id || landmark.id;
 
@@ -227,18 +234,14 @@ export const createDicomSlice: StateCreator<AppState, [], [], DicomSlice> = (set
             if (newLandmarks.PIP_R?.id === id) delete newLandmarks.PIP_R;
             return { ...sim, landmarks: newLandmarks };
         });
-        if (state.activeContextId) {
-            state.updateContextState(state.activeContextId, { pedicleSimulations: nextSims });
-        }
+        queueMicrotask(() => persist3D(get, { pedicleSimulations: nextSims }));
         return { pedicleSimulations: nextSims };
     }),
     updatePedicleSimulation: (id: string, updates: Partial<PedicleSimulation>) => set((state) => {
         const nextSims = state.pedicleSimulations.map(sim =>
             sim.id === id ? { ...sim, ...updates } : sim
         );
-        if (state.activeContextId) {
-            state.updateContextState(state.activeContextId, { pedicleSimulations: nextSims });
-        }
+        queueMicrotask(() => persist3D(get, { pedicleSimulations: nextSims }));
         return { pedicleSimulations: nextSims };
     }),
     setDicomSimulationActive: (active) => set(state => ({
@@ -276,41 +279,30 @@ export const createDicomSlice: StateCreator<AppState, [], [], DicomSlice> = (set
         dicom3D: { ...state.dicom3D, isCroppingActive: active }
     })),
     loadDicomSeries: (files: File[]) => {
-        console.log('%c[TRACE] loadDicomSeries() called', 'color:red;font-weight:bold', { fileCount: files.length });
-        console.trace('[TRACE] loadDicomSeries call stack');
         set(() => ({ dicomSeries: files, isDicomMode: true, currentImage: null }));
     },
     loadDicomURLs: (urls: string[]) => {
-        console.log('%c[TRACE] loadDicomURLs() called', 'color:red;font-weight:bold', { count: urls.length, first: urls[0]?.slice(0, 60) });
-        console.trace('[TRACE] loadDicomURLs call stack');
         set(() => ({ dicomSeries: urls, isDicomMode: true, currentImage: null }));
     },
     exitDicomMode: () => {
-        console.log('%c[TRACE] exitDicomMode() called', 'color:green;font-weight:bold');
-        console.trace('[TRACE] exitDicomMode call stack');
         set({ isDicomMode: false, dicomSeries: [] });
     },
-    addThreeDImplant: (implant: ThreeDImplant) => set((state) => {
-        const nextImplants = [...state.threeDImplants, implant];
-        if (state.activeContextId) {
-            state.updateContextState(state.activeContextId, { threeDImplants: nextImplants });
-        }
-        return { threeDImplants: nextImplants };
-    }),
-    updateThreeDImplant: (id: string, updates: Partial<ThreeDImplant>) => set((state) => {
-        const nextImplants = state.threeDImplants.map((imp) => imp.id === id ? { ...imp, ...updates } : imp);
-        if (state.activeContextId) {
-            state.updateContextState(state.activeContextId, { threeDImplants: nextImplants });
-        }
-        return { threeDImplants: nextImplants };
-    }),
-    removeThreeDImplant: (id: string) => set((state) => {
-        const nextImplants = state.threeDImplants.filter((imp) => imp.id !== id);
-        if (state.activeContextId) {
-            state.updateContextState(state.activeContextId, { threeDImplants: nextImplants });
-        }
-        return { threeDImplants: nextImplants };
-    }),
+    addThreeDImplant: (implant: ThreeDImplant) => {
+        const next = [...get().threeDImplants, implant];
+        set({ threeDImplants: next });
+        persist3D(get, { threeDImplants: next });
+    },
+    updateThreeDImplant: (id: string, updates: Partial<ThreeDImplant>, opts?: { persist?: boolean }) => {
+        const next = get().threeDImplants.map((imp) => imp.id === id ? ({ ...imp, ...updates } as ThreeDImplant) : imp);
+        set({ threeDImplants: next });
+        if (opts?.persist !== false) persist3D(get, { threeDImplants: next });
+    },
+    commitThreeDImplants: () => persist3D(get, { threeDImplants: get().threeDImplants }),
+    removeThreeDImplant: (id: string) => {
+        const next = get().threeDImplants.filter((imp) => imp.id !== id);
+        set({ threeDImplants: next });
+        persist3D(get, { threeDImplants: next });
+    },
     sidebarActiveModule: 'generic',
     setSidebarActiveModule: (module: string) => set({ sidebarActiveModule: module }),
     triggerFocusCrop: () => set((state) => ({

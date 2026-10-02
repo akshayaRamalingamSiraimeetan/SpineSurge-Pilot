@@ -3,7 +3,6 @@ import { useAppStore } from "@/lib/store/index";
 import { CanvasManager, Point, Measurement } from "@/lib/canvas/CanvasManager";
 import { measurementsDiffer, syncManagerMeasurements } from "@/lib/canvas/measurementSync";
 import {
-    getPolygonCenter,
     isPointInPolygon,
     getDistance,
     getMidpoint,
@@ -11,7 +10,6 @@ import {
     getPolygonArea,
     getPolygonPerimeter
 } from "@/lib/canvas/GeometryUtils";
-import { MeasurementSystem } from "@/features/measurements/MeasurementSystem";
 import { calculateCobbAngle } from "@/features/measurements/quick/CobbAngle";
 import { calculateVBM, VBMMode } from "@/features/measurements/quick/VBM";
 import { calculateSpinalCurvature } from "@/features/measurements/quick/SpinalCurvatures";
@@ -24,7 +22,7 @@ import {
     calculateTPA, calculateSPA, calculateSSA, calculateSPi, calculateCBVA, calculateRVAD, calculateITilt
 } from "@/features/measurements/deformity/DeformityTools";
 import {
-    MousePointer2, AlertCircle, Ruler, Plus, X
+    AlertCircle, Ruler, Plus, X
 } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -45,11 +43,12 @@ import {
     drawRod,
     drawCage,
     drawPlate,
-    drawImplantHandles,
-    getImplantHandles
+    getImplantHandles,
+    hitTestImplant
 } from "@/features/measurements/planning/ImplantRenderer";
 
 import { performResectionOnFragment, performOpenOsteotomyOnFragment } from "@/lib/canvas/SurgicalOperations";
+import { renderScene } from "@/lib/canvas/renderScene";
 
 interface ViewTransform {
     k: number;
@@ -159,33 +158,20 @@ const CanvasWorkspace = ({ side }: CanvasWorkspaceProps) => {
         // In inspection mode, the admin is viewing a member's study — never write back
         if (store.inspectionMode?.active) return;
 
-        console.log("LOG 1: CanvasManager measurements passed to syncStoreWithCanvas:", JSON.stringify(measurements, null, 2));
-
         if (isComparisonMode && side) {
             setComparisonMeasurements(side, measurements);
             setComparisonImplants(side, implants);
         } else if (store.activeContextId) {
             // Include currentImage so the active scan URL is persisted alongside measurements
-            store.updateContextState(store.activeContextId, {
+            // Saves are serialized + coalesced per context in the store.
+            void store.updateContextState(store.activeContextId, {
                 measurements,
                 implants,
-                currentImage: store.currentImage ?? undefined,
-            }).then(() => {
-                const latestContextState = store.contextStates.find(s => s.contextId === store.activeContextId);
-                console.log("LOG 2 (Context Active): Store measurements immediately after insertion:", {
-                    activeContextId: store.activeContextId,
-                    contextStateMeasurements: latestContextState?.measurements,
-                    storeMeasurementsFallback: store.measurements
-                });
+                ...(store.currentImage ? { currentImage: store.currentImage } : {}),
             });
         } else {
             storeSetMeasurements(measurements);
             storeSetImplants(implants);
-            setTimeout(() => {
-                console.log("LOG 2 (No Context): Store measurements immediately after insertion:", {
-                    storeMeasurements: store.measurements
-                });
-            }, 0);
         }
     }, [isComparisonMode, side, storeSetMeasurements, storeSetImplants, store.activeContextId, store.updateContextState, setComparisonMeasurements, setComparisonImplants, store.inspectionMode, store.currentImage, store.contextStates, store.measurements]);
 
@@ -285,16 +271,17 @@ const CanvasWorkspace = ({ side }: CanvasWorkspaceProps) => {
         const cx = containerRef.current.clientWidth / 2;
         const cy = containerRef.current.clientHeight / 2;
 
-        // 1. Relativize to View Center & Un-flip if needed
-        let tx = mouseX - cx;
-        let ty = mouseY - cy;
-        if (storeCanvas.flipX) tx = -tx;
-
-        // 2. Un-rotate around center
+        // draw() applies: translate(c) · rotate · flip · translate(-c).
+        // Inverse = un-rotate first, THEN un-flip (BUGS CV-04).
+        const tx = mouseX - cx;
+        const ty = mouseY - cy;
         const cos = Math.cos(-rad);
         const sin = Math.sin(-rad);
-        const rx = tx * cos - ty * sin + cx;
-        const ry = tx * sin + ty * cos + cy;
+        let ux = tx * cos - ty * sin;
+        const uy = tx * sin + ty * cos;
+        if (storeCanvas.flipX) ux = -ux;
+        const rx = ux + cx;
+        const ry = uy + cy;
 
         // 3. Un-translate and Un-scale
         return {
@@ -310,8 +297,9 @@ const CanvasWorkspace = ({ side }: CanvasWorkspaceProps) => {
             const entry = entries[0];
             if (entry && canvasRef.current) {
                 const { width, height } = entry.contentRect;
-                canvasRef.current.width = width;
-                canvasRef.current.height = height;
+                const dpr = window.devicePixelRatio || 1;
+                canvasRef.current.width = Math.round(width * dpr);
+                canvasRef.current.height = Math.round(height * dpr);
             }
         });
         observer.observe(containerRef.current);
@@ -325,7 +313,6 @@ const CanvasWorkspace = ({ side }: CanvasWorkspaceProps) => {
         img.crossOrigin = 'anonymous'; // Added for CORS support
         img.src = url;
         img.onerror = (e) => console.error(`[CanvasWorkspace] Image failed to load: ${url}`, e);
-        img.onload = () => console.log(`[CanvasWorkspace] Image loaded successfully: ${url}`);
         imageCacheRef.current.set(url, img);
         return img;
     }, []);
@@ -354,6 +341,8 @@ const CanvasWorkspace = ({ side }: CanvasWorkspaceProps) => {
     }, [storeMeasurements, storeImplants, managerReady]);
 
     useEffect(() => {
+        // A newer image (or unmount) supersedes this init (BUGS RPT-02).
+        let cancelled = false;
         const init = async () => {
             if (currentImage) {
                 const mgrKey = side || 'main';
@@ -365,32 +354,27 @@ const CanvasWorkspace = ({ side }: CanvasWorkspaceProps) => {
                 // Within the same mount, managerRef.current === mgr, so intra-session reuse
                 // still works (e.g., when measurements update without changing the image).
                 if (mgr && (mgr as any)._baseImage === currentImage && managerRef.current === mgr) {
-                    console.log('[CanvasWorkspace] Reusing existing manager for image', currentImage);
-                    const managerMeasurements = mgr.current?.data.measurements || [];
+                        const managerMeasurements = mgr.current?.data.measurements || [];
                     // Hydrate canvas FROM store/context — never overwrite persisted data with stale manager state
                     if (measurementsDiffer(managerMeasurements, storeMeasurements)) {
-                        console.log('[CanvasWorkspace] Syncing manager from store/context measurements:', storeMeasurements.length);
                         syncManagerMeasurements(mgr, storeMeasurements);
                     }
                     setManagerReady(true);
                     return;
                 }
 
-                console.log('[CanvasWorkspace] Creating new CanvasManager for image', currentImage);
-                console.log('[CanvasWorkspace] Initial measurements passed to init:', storeMeasurements.length);
                 mgr = new CanvasManager();
                 const initialState = await mgr.initialize(currentImage, storeMeasurements);
+                if (cancelled) return;
 
                 // Add initial implants to the first state if any exist in store
                 if (storeImplants.length > 0) {
                     initialState.data.implants = storeImplants.map(i => ({ ...i }));
                 }
 
-                console.log('[CanvasWorkspace] initialized state measurements count:', initialState.data.measurements.length);
                 (mgr as any)._baseImage = currentImage;
                 managerRef.current = mgr;
                 registerManager(mgrKey, mgr);
-                (window as any).canvasManager = mgr;
 
                 if (containerRef.current) {
                     const { clientWidth, clientHeight } = containerRef.current;
@@ -407,7 +391,8 @@ const CanvasWorkspace = ({ side }: CanvasWorkspaceProps) => {
                 setManagerReady(false);
             }
         };
-        init();
+        init().catch((e) => console.error('[CanvasWorkspace] init failed', e));
+        return () => { cancelled = true; };
     }, [currentImage, side, registerManager]);
 
     // Re-hydrate canvas overlays when context measurements arrive after async load
@@ -418,7 +403,6 @@ const CanvasWorkspace = ({ side }: CanvasWorkspaceProps) => {
 
         const managerMeasurements = managerRef.current.current?.data.measurements ?? [];
         if (measurementsDiffer(managerMeasurements, storeMeasurements)) {
-            console.log('[CanvasWorkspace] Hydrating manager after context/store update:', storeMeasurements.length);
             syncManagerMeasurements(managerRef.current, storeMeasurements);
         }
     }, [storeMeasurements, managerReady, currentImage]);
@@ -437,7 +421,11 @@ const CanvasWorkspace = ({ side }: CanvasWorkspaceProps) => {
         const cx = containerRef.current.clientWidth / 2;
         const cy = containerRef.current.clientHeight / 2;
 
+        // Draw in CSS pixels on a devicePixelRatio-sized backing store (BUGS CV-21).
+        const dpr = canvas.width / Math.max(1, containerRef.current.clientWidth);
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
         ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
         ctx.save();
 
@@ -451,145 +439,16 @@ const CanvasWorkspace = ({ side }: CanvasWorkspaceProps) => {
         ctx.translate(x, y);
         ctx.scale(ek, ek);
 
-        // High Quality Rendering
-        ctx.imageSmoothingEnabled = true;
-        ctx.imageSmoothingQuality = 'high';
-
-        // Apply Global Filters
-        const b = storeCanvas.brightness;
-        const c = storeCanvas.contrast;
-        const s = storeCanvas.sharpness;
-        ctx.filter = `brightness(${b}%) contrast(${c + (s / 2)}%) saturate(${100 + (s / 4)}%)`;
-
-        // PRE-PASS: Populate osteotomy calculation data (rays, angles, translation) before fragment clipping/rendering
-        const dummyCtx = document.createElement('canvas').getContext('2d')!;
-        state.data.measurements.forEach((m: Measurement) => {
-            if (['ost-pso', 'ost-spo', 'ost-resect', 'ost-open'].includes(m.toolKey)) {
-                if (m.toolKey === 'ost-resect') {
-                    drawResection(dummyCtx, m, ek); // Calculates rays & transform
-                } else {
-                    drawWedgeOsteotomy(dummyCtx, m, ek);
-                }
-            }
+        renderScene(ctx, state.data, {
+            ek,
+            getImage: getCachedImage,
+            brightness: storeCanvas.brightness,
+            contrast: storeCanvas.contrast,
+            sharpness: storeCanvas.sharpness,
+            displayRatio: storeCanvas.calibrationApplied ? storeCanvas.pixelToMm : null,
+            calibrationEnabledAt: storeCanvas.calibrationEnabledAt,
+            selectedImplantId: selection?.type === 'implant' ? selection.measurementId : null,
         });
-
-
-        state.data.fragments.forEach((frag: any) => {
-            if (frag.isSourceOf) return; // Hidden source kept for updates
-            const img = getCachedImage(frag.image);
-
-            // 1. New: Check for active planning/resection lines that affect this fragment's visual boundary
-            const activePlanning = state.data.measurements.find(m =>
-                m.fragmentId === frag.id && ['ost-pso', 'ost-spo', 'ost-resect', 'ost-open'].includes(m.toolKey)
-            );
-
-            // 2. CLIP PASS: Combine fragment boundary + planning cut logic
-            ctx.save();
-            ctx.beginPath();
-            frag.polygon.forEach((p: Point, i: number) => {
-                if (i === 0) ctx.moveTo(p.x, p.y);
-                else ctx.lineTo(p.x, p.y);
-            });
-            ctx.closePath();
-            ctx.clip(); // Fragment Boundary Clip
-
-            // If planning tool is active, clip the "moving" side out of the base fragment visually
-            if (activePlanning) {
-                // ... (Original planning clip logic for inferior segment would go here if needed)
-                // Actually, the original code had complex clipping for inferior side. 
-                // For simplicity, we keep the world-space polygon as the primary truth.
-            }
-
-            // 3. IMAGE CONTENT PASS: Transform image content relative to frag.rotation/pivot
-            const pivot = frag.pivot || getPolygonCenter(frag.polygon);
-            ctx.translate(pivot.x, pivot.y);
-            // Disable rotation for Resect fragments (baked into geometry)
-            if (!activePlanning || activePlanning.toolKey !== 'ost-resect') {
-                ctx.rotate((frag.rotation * Math.PI) / 180);
-            }
-            ctx.translate(-pivot.x, -pivot.y);
-
-            if (img.complete) {
-                ctx.drawImage(img, frag.imageX, frag.imageY, frag.imageWidth, frag.imageHeight);
-            }
-            ctx.restore();
-
-            return; // Done with this fragment
-        });
-
-        ctx.filter = 'none';
-
-        // MEASUREMENTS: Stay pinned precisely to the pixels
-        const bounds = state.data.fragments.reduce((acc, frag) => {
-            const fMinY = Math.min(...frag.polygon.map(p => p.y));
-            const fMaxY = Math.max(...frag.polygon.map(p => p.y));
-            return {
-                minY: Math.min(acc.minY, fMinY),
-                maxY: Math.max(acc.maxY, fMaxY)
-            };
-        }, { minY: Infinity, maxY: -Infinity });
-
-        state.data.measurements.forEach((m: Measurement) => {
-            if (m.measurement?.isCalibration) {
-                return;
-            }
-
-            // SPECIAL: Osteotomy/Resection Deformation Rendering
-            if (['ost-pso', 'ost-spo', 'ost-resect', 'ost-open'].includes(m.toolKey)) {
-                console.log('[CanvasWorkspace RENDER] Found measurement:', m.toolKey, 'fragmentId:', m.fragmentId, 'points:', m.points.length);
-
-                const targetFrag = state.data.fragments.find(f => f.id === m.fragmentId) || state.data.fragments[0];
-                if (targetFrag) {
-                    const img = getCachedImage(targetFrag.image);
-                    if (img.complete) {
-                        if (m.toolKey === 'ost-resect') {
-                            drawResection(ctx, m, ek); // Draw annotation (lines/shading)
-                        } else if (m.toolKey === 'ost-open') {
-                            // OPEN OSTEOTOMY: Skip deformed segment rendering
-                            // The new implementation handles fragment transformations directly
-                            // through CanvasManager operations (CUT, ROTATE, MOVE)
-                            // No additional rendering needed here
-                            console.log('[CanvasWorkspace RENDER] Skipping deformed segment rendering for ost-open');
-                        } else {
-                            // PSO/SPO: Rays already populated in pre-pass
-                            console.log('[CanvasWorkspace RENDER] Drawing deformed segment for:', m.toolKey);
-                            drawDeformedSuperiorSegment(ctx, img, m, targetFrag);
-                        }
-                    }
-                }
-            }
-
-            const displayRatio = storeCanvas.calibrationApplied ? storeCanvas.pixelToMm : null;
-            MeasurementSystem.draw(
-                ctx,
-                m,
-                ek,
-                displayRatio,
-                bounds.minY === Infinity ? undefined : bounds,
-                storeCanvas.calibrationEnabledAt,
-            );
-        });
-
-        // IMPLANTS Rendering
-        if (state.data.implants) {
-            state.data.implants.forEach((i: any) => {
-                if (i.type === 'screw') {
-                    drawScrew(ctx, i.position, i.angle, i.properties, ek, i.properties.color || '#94a3b8');
-                } else if (i.type === 'cage') {
-                    drawCage(ctx, i.position, i.angle, i.properties, ek, i.properties.color || '#10b981');
-                } else if (i.type === 'rod') {
-                    drawRod(ctx, i.properties.points, ek, i.properties.diameter || 6, i.properties.color || '#94a3b8');
-                } else if (i.type === 'plate') {
-                    drawPlate(ctx, i.position, i.angle, i.properties, ek, i.properties.color || '#64748b');
-                }
-
-                // Selected implant handles
-                if (selection?.type === 'implant' && i.id === selection.measurementId) {
-                    drawImplantHandles(ctx, i, ek);
-                }
-            });
-        }
-
 
         const isAnyDialogOpen = isCalibrationDialogOpen || isVBMDialogOpen || isTiltDialogOpen || isTextDialogOpen;
 
@@ -872,9 +731,14 @@ const CanvasWorkspace = ({ side }: CanvasWorkspaceProps) => {
 
     useEffect(() => {
         let rafId: number;
+        // Schedule first, then draw: one exception must not kill the loop (RPT-15).
         const loop = () => {
-            draw();
             rafId = requestAnimationFrame(loop);
+            try {
+                draw();
+            } catch (e) {
+                console.error('[CanvasWorkspace] draw failed', e);
+            }
         };
         loop();
         return () => cancelAnimationFrame(rafId);
@@ -883,8 +747,9 @@ const CanvasWorkspace = ({ side }: CanvasWorkspaceProps) => {
     useEffect(() => {
         const resize = () => {
             if (containerRef.current && canvasRef.current) {
-                canvasRef.current.width = containerRef.current.clientWidth;
-                canvasRef.current.height = containerRef.current.clientHeight;
+                const dpr = window.devicePixelRatio || 1;
+                canvasRef.current.width = Math.round(containerRef.current.clientWidth * dpr);
+                canvasRef.current.height = Math.round(containerRef.current.clientHeight * dpr);
             }
         }
         window.addEventListener('resize', resize);
@@ -895,18 +760,32 @@ const CanvasWorkspace = ({ side }: CanvasWorkspaceProps) => {
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
             if (!isInteractive) return;
+            // Never hijack typing in inputs / notes / dialogs.
+            const t = e.target as HTMLElement | null;
+            if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return;
+            if (useAppStore.getState().activeDialog) return;
+
             const key = e.key.toLowerCase();
-            const isUndoShortcut = e.ctrlKey && !e.shiftKey && key === 'z';
-            const isRedoShortcut = e.ctrlKey && key === 'y';
+            const mod = e.ctrlKey || e.metaKey;
+            const isUndoShortcut = mod && !e.shiftKey && key === 'z';
+            const isRedoShortcut = mod && (key === 'y' || (e.shiftKey && key === 'z'));
 
-            if (e.key === 'Escape') {
+            if ((e.key === 'Delete' || e.key === 'Backspace') && selection?.type === 'implant' && managerRef.current) {
                 e.preventDefault();
-                e.stopPropagation();
-
+                const id = selection.measurementId;
+                managerRef.current.applyOperation('DELETE_IMPLANT', { id }).then((st) => {
+                    if (st) syncStoreWithCanvas(st.data.measurements, st.data.implants);
+                });
+                setSelection(null);
                 return;
-
+            }
+            if (e.key === 'Escape') {
+                // Cancel the in-progress tool / selection.
                 setTempPoints([]);
+                setCropRect(null);
                 setActiveTool(null);
+                setSelection(null);
+                return;
             }
             if (e.key === 'Enter' && activeTool === 'polygon' && tempPoints.length >= 3) {
                 // Close polygon on Enter
@@ -952,6 +831,19 @@ const CanvasWorkspace = ({ side }: CanvasWorkspaceProps) => {
         setTempPoints([]);
     }, [activeTool]);
 
+    /** Begin a drag: one undo step for the whole drag (BUGS CV-07). */
+    const startDrag = () => {
+        managerRef.current?.beginHistoryTransaction('drag');
+        setIsDragging(true);
+    };
+
+    /** px per mm for new implants: calibration, else assume a ~300 mm field of view. */
+    const mmToPx = () => {
+        if (storeCanvas.calibrationApplied && storeCanvas.pixelToMm) return 1 / storeCanvas.pixelToMm;
+        const w = managerRef.current?.current?.data.fragments[0]?.imageWidth ?? 1500;
+        return w / 300;
+    };
+
     const handleMouseDown = async (e: React.MouseEvent) => {
         handleCanvasClick();
 
@@ -967,6 +859,7 @@ const CanvasWorkspace = ({ side }: CanvasWorkspaceProps) => {
         if (!containerRef.current) return;
         const rect = containerRef.current.getBoundingClientRect();
         const worldPos = getWorldPos(e.clientX - rect.left, e.clientY - rect.top);
+        lastWorldPosRef.current = worldPos;
         const { k } = viewTransformRef.current;
         const ek = k * (storeCanvas.zoom || 1);
         const currentState = managerRef.current?.current;
@@ -1566,10 +1459,11 @@ const CanvasWorkspace = ({ side }: CanvasWorkspaceProps) => {
                     }
                 }
 
-                const properties: any = { length, diameter: 6 };
-                if (type === 'cage') { properties.width = length; properties.height = 10; properties.wedgeAngle = 5; properties.color = '#10b981'; }
-                if (type === 'plate') { properties.width = 15; properties.height = length; properties.holes = 4; properties.color = '#64748b'; }
-                if (type === 'screw') { properties.color = '#94a3b8'; }
+                // Sizes in mm converted with the calibration (fallback ≈ 300 mm field of view).
+                const pxPerMm = mmToPx();
+                const properties: any = { length, diameter: 6.5 * pxPerMm };
+                if (type === 'cage') { properties.width = length; properties.height = 10 * pxPerMm; properties.wedgeAngle = 6; }
+                if (type === 'plate') { properties.width = 16 * pxPerMm; properties.height = length; properties.holes = 4; }
 
                 const newState = await managerRef.current?.applyOperation('ADD_IMPLANT', {
                     type,
@@ -1596,7 +1490,7 @@ const CanvasWorkspace = ({ side }: CanvasWorkspaceProps) => {
                 if (tempPoints.length >= 2) {
                     const newState = await managerRef.current?.applyOperation('ADD_IMPLANT', {
                         type: 'rod',
-                        properties: { points: tempPoints, diameter: 6, color: '#94a3b8' }
+                        properties: { points: tempPoints, diameter: 5.5 * mmToPx() }
                     });
                     if (newState) {
                         syncStoreWithCanvas(newState.data.measurements, newState.data.implants);
@@ -1613,21 +1507,27 @@ const CanvasWorkspace = ({ side }: CanvasWorkspaceProps) => {
         }
 
         if (currentState) {
-            // Check Implants first
-            for (const imp of currentState.data.implants) {
-                if (imp.position && getDistance(worldPos, imp.position) < 30 / ek) {
-                    setSelection({ type: 'implant', measurementId: imp.id });
-                    setIsDragging(true);
-                    return;
-                }
-                if (imp.properties?.points) {
-                    for (let i = 0; i < imp.properties.points.length; i++) {
-                        if (getDistance(worldPos, imp.properties.points[i]) < 20 / ek) {
-                            setSelection({ type: 'implant-point', measurementId: imp.id, pointIndex: i });
-                            setIsDragging(true);
-                            return;
-                        }
+            const imps = currentState.data.implants;
+            // 1. Handles of the selected implant win (so short screws' tips are grabbable)
+            const selImp = selection && (selection.type === 'implant' || selection.type === 'implant-point')
+                ? imps.find(i => i.id === selection.measurementId) : null;
+            if (selImp) {
+                const hs = getImplantHandles(selImp);
+                for (let i = 0; i < hs.length; i++) {
+                    if (getDistance(worldPos, hs[i]) < 9 / ek) {
+                        if (selImp.type !== 'rod' && i === 0) setSelection({ type: 'implant', measurementId: selImp.id });
+                        else setSelection({ type: 'implant-point', measurementId: selImp.id, pointIndex: i });
+                        startDrag();
+                        return;
                     }
+                }
+            }
+            // 2. Implant bodies, topmost first (exact silhouette hit test)
+            for (let i = imps.length - 1; i >= 0; i--) {
+                if (hitTestImplant(imps[i], worldPos, ek)) {
+                    setSelection({ type: 'implant', measurementId: imps[i].id });
+                    startDrag();
+                    return;
                 }
             }
 
@@ -1635,7 +1535,7 @@ const CanvasWorkspace = ({ side }: CanvasWorkspaceProps) => {
                 for (let i = 0; i < m.points.length; i++) {
                     if (getDistance(worldPos, m.points[i]) < 20 / ek) {
                         setSelection({ type: 'point', measurementId: m.id, pointIndex: i });
-                        setIsDragging(true);
+                        startDrag();
                         return;
                     }
                 }
@@ -1721,9 +1621,18 @@ const CanvasWorkspace = ({ side }: CanvasWorkspaceProps) => {
                     }
                 }
 
+                if (['cl', 'tk', 'll', 'sc'].includes(m.toolKey)) {
+                    const hp = (m.measurement as any)?.handlePos;
+                    if (hp && getDistance(worldPos, hp) < 20 / ek) {
+                        setSelection({ type: 'curvatureHandle', measurementId: m.id });
+                        startDrag();
+                        return;
+                    }
+                }
+
                 if (lp && getDistance(worldPos, lp) < 60 / ek) {
                     setSelection({ type: 'label', measurementId: m.id });
-                    setIsDragging(true);
+                    startDrag();
                     return;
                 }
 
@@ -1732,31 +1641,16 @@ const CanvasWorkspace = ({ side }: CanvasWorkspaceProps) => {
                     const handlePos = (m.measurement as any)?.handlePos;
                     if (handlePos && getDistance(worldPos, handlePos) < 20 / ek) {
                         setSelection({ type: 'curvatureHandle', measurementId: m.id });
-                        setIsDragging(true);
+                        startDrag();
                         return;
                     }
                 }
             }
         }
 
-        // Check implant handles
-        const implants = useAppStore.getState().implants;
-        for (const imp of implants) {
-            const handles = getImplantHandles(imp);
-            for (let i = 0; i < handles.length; i++) {
-                if (getDistance(worldPos, handles[i]) < 10 / ek) {
-                    setSelection({
-                        type: 'implant-point',
-                        measurementId: imp.id,
-                        pointIndex: i
-                    });
-                    setIsDragging(true);
-                    return;
-                }
-            }
-        }
-
-        if (!activeTool && !selection) {
+        // Empty canvas: deselect and pan (BUGS CV-12)
+        if (!activeTool) {
+            if (selection) setSelection(null);
             setIsPanning(true);
             lastPanPos.current = { x: e.clientX, y: e.clientY };
         }
@@ -2148,7 +2042,15 @@ const CanvasWorkspace = ({ side }: CanvasWorkspaceProps) => {
 
         if (isDragging) {
             setIsDragging(false);
-            setSelection(null);
+            managerRef.current?.commitHistoryTransaction();
+            const mgrData = managerRef.current?.current?.data;
+            if (selection && (selection.type === 'implant' || selection.type === 'implant-point')) {
+                // Keep the implant selected and persist the final geometry once.
+                setSelection({ type: 'implant', measurementId: selection.measurementId });
+                if (mgrData) syncStoreWithCanvas(mgrData.measurements, mgrData.implants);
+            } else {
+                setSelection(null);
+            }
         }
         setIsPanning(false);
         lastPanPos.current = null;
@@ -2189,15 +2091,16 @@ const CanvasWorkspace = ({ side }: CanvasWorkspaceProps) => {
         const cx = containerRef.current.clientWidth / 2;
         const cy = containerRef.current.clientHeight / 2;
 
-        // Rotate/Flip mouse back
-        let tx = mouseX - cx;
-        let ty = mouseY - cy;
-        if (storeCanvas.flipX) tx = -tx;
-
+        // Un-rotate then un-flip (same inverse as getWorldPos — CV-04)
+        const tx = mouseX - cx;
+        const ty = mouseY - cy;
         const cos = Math.cos(-rad);
         const sin = Math.sin(-rad);
-        const rx = tx * cos - ty * sin + cx;
-        const ry = tx * sin + ty * cos + cy;
+        let ux = tx * cos - ty * sin;
+        const uy = tx * sin + ty * cos;
+        if (storeCanvas.flipX) ux = -ux;
+        const rx = ux + cx;
+        const ry = uy + cy;
 
         // rx = worldPosBefore.x * newEk + newX => newX = rx - worldPosBefore.x * newEk
         viewTransformRef.current.x = rx - worldPosBefore.x * newEk;
@@ -2366,9 +2269,9 @@ const CanvasWorkspace = ({ side }: CanvasWorkspaceProps) => {
             if (tempPoints.length === 1) return "2 pt angle: Select 2nd point to complete";
         }
         if (activeTool === 'angle-3pt') {
-            if (tempPoints.length === 0) return "3 pt angle: Select Vertex (1st point)";
-            if (tempPoints.length === 1) return "3 pt angle: Select 2nd point (Line 1)";
-            if (tempPoints.length === 2) return "3 pt angle: Select 3rd point (Line 2)";
+            if (tempPoints.length === 0) return "3 pt angle: Click a point on the 1st arm";
+            if (tempPoints.length === 1) return "3 pt angle: Click the vertex";
+            if (tempPoints.length === 2) return "3 pt angle: Click a point on the 2nd arm";
         }
         if (activeTool === 'angle-4pt' || activeTool === 'cobb') {
             const prefix = activeTool === 'cobb' ? '4 pt angle' : '4 pt angle';
@@ -2422,6 +2325,7 @@ const CanvasWorkspace = ({ side }: CanvasWorkspaceProps) => {
             onMouseMove={handleMouseMove}
             onMouseUp={handleMouseUp}
             onMouseLeave={handleMouseUp}
+            onContextMenu={(e) => e.preventDefault()}
             className={`w-full h-full bg-black relative overflow-hidden group border-2 transition-all duration-300 ${isComparisonMode ? (isInteractive ? 'border-primary shadow-[inset_0_0_40px_rgba(var(--primary),0.05)]' : 'border-border opacity-70 grayscale-[0.3]') : 'border-transparent'}`}        >
 
 
@@ -2626,6 +2530,7 @@ const CanvasWorkspace = ({ side }: CanvasWorkspaceProps) => {
             <Dialog open={isCalibrationDialogOpen} onOpenChange={(o) => {
                 setIsCalibrationDialogOpen(o);
                 setActiveDialog(o ? 'calibration' : null);
+                if (!o) { setTempPoints([]); setCalibrationPoints(null); } // BUGS CV-18
             }}>
                 <DialogContent className={cn(
                     "sm:max-w-md border shadow-[0_1px_2px_rgba(0,0,0,.04),0_8px_24px_rgba(0,0,0,.12)]",

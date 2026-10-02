@@ -42,6 +42,9 @@ import cornerstoneDICOMImageLoader from '@cornerstonejs/dicom-image-loader';
 let initPromise: Promise<void> | null = null;
 const localMetaDataMap = new Map<string, any>();
 
+/** Canonical metadata key: scheme prefix, query and hash removed. */
+const metaKey = (id: string) => id.replace(/^(wadouri:|dicomfile:)/, '').split('?')[0].split('#')[0].replace(/\\/g, '/');
+
 // Custom provider to ensure metadata is available for volumes from local files
 function localMetaDataProvider(type: string, imageId: string) {
     if (type === 'imageRetrieveConfiguration') {
@@ -51,46 +54,10 @@ function localMetaDataProvider(type: string, imageId: string) {
     }
 
 
-    // Normalize imageId for matching (strip known prefixes and query params)
-    const normalize = (id: string) => {
-        let n = id.replace(/^(wadouri:|dicomfile:)/, '');
-        // Remove trailing query params or hashes
-        n = n.split('?')[0].split('#')[0];
-        // Ensure forward slashes for matching
-        n = n.replace(/\\/g, '/');
-        // If it's a URL, just take the pathname or filename
-        try {
-            if (n.startsWith('http')) {
-                const url = new URL(n);
-                return url.pathname;
-            }
-        } catch (e) {
-            // not a valid URL, continue
-        }
-        return n;
-    };
-    const normImageId = normalize(imageId);
-
-    let dataset = localMetaDataMap.get(imageId);
-
-    // Fuzzy matching for various URI formats
-    if (!dataset) {
-        for (const [key, value] of localMetaDataMap.entries()) {
-            const normKey = normalize(key);
-            if (normImageId === normKey || normImageId.endsWith(normKey) || normKey.endsWith(normImageId)) {
-                dataset = value;
-                break;
-            }
-        }
-    }
-
-    if (!dataset) {
-        // Only log if it's a DICOM image ID (to avoid noise from other providers)
-        if (imageId.includes('wadouri') || imageId.includes('dicomfile') || imageId.includes('.dcm')) {
-            console.log(`[Cornerstone] Metadata requested for ${type} on ${imageId} (Norm: ${normImageId}). Cache keys:`, Array.from(localMetaDataMap.keys()).length);
-        }
-        return;
-    }
+    // Exact lookups only. The old fuzzy `endsWith` match returned CT metadata
+    // for derived labelmap images (ids like derived:<uuid>) — BUGS 3D-07.
+    const dataset = localMetaDataMap.get(imageId) ?? localMetaDataMap.get(metaKey(imageId));
+    if (!dataset) return;
 
     try {
         const { dataSet } = dataset;
@@ -129,7 +96,6 @@ function localMetaDataProvider(type: string, imageId: string) {
                 rescaleIntercept,
                 rescaleSlope,
             };
-            console.log(`[Cornerstone] Returning imagePixelModule for ${imageId}:`, result);
             return result;
         }
 
@@ -402,7 +368,10 @@ export function initCornerstone() {
         addTool(CircleROITool);
 
         // 6. Register Metadata Provider with extremely high priority
-        metaData.addProvider(localMetaDataProvider, 100000);
+        if (!(window as any).__ssMetaProviderAdded) {
+            metaData.addProvider(localMetaDataProvider, 100000);
+            (window as any).__ssMetaProviderAdded = true;
+        }
 
         // 7. Define Tool Groups
         // 2D Tool Group
@@ -481,26 +450,24 @@ export function initCornerstone() {
     return initPromise;
 }
 
-export function destroyCornerstone() {
-    console.log('[Cornerstone] Cleaning up...');
-
-    // 1. Destroy Tool Groups
-    [TOOL_GROUP_2D_ID, TOOL_GROUP_3D_ID].forEach(id => {
-        const toolGroup = ToolGroupManager.getToolGroup(id);
-        if (toolGroup) {
-            ToolGroupManager.destroyToolGroup(id);
-        }
-    });
-
-    // 2. Clear Caches
-    cache.purgeCache();
+/**
+ * Release everything a loaded series holds: cached volumes/images, our parsed
+ * headers and the DICOM loader's file + dataset caches (which otherwise keep
+ * every imported file in RAM — BUGS 3D-10). Cornerstone core/tools stay
+ * initialised for the app lifetime; viewers own and destroy their own
+ * rendering engines and tool groups.
+ */
+export function releaseSeriesMemory() {
+    try { cache.purgeCache(); } catch { /* ignore */ }
     localMetaDataMap.clear();
+    const loader = getLoader();
+    try { loader?.wadouri?.fileManager?.purge?.(); } catch { /* ignore */ }
+    try { loader?.wadouri?.dataSetCacheManager?.purge?.(); } catch { /* ignore */ }
+}
 
-    // 3. Reset state
-    initPromise = null;
-
-    // 4. Tools and Core cleanup
-    toolsDestroy();
+/** @deprecated use releaseSeriesMemory(); kept for existing callers. */
+export function destroyCornerstone() {
+    releaseSeriesMemory();
 }
 
 export async function isCornerstoneInitialized() {
@@ -573,14 +540,10 @@ export async function addFileToLoader(file: File | any) {
         // Add the original file object to the file manager
         const imageId = loader.wadouri.fileManager.add(fileObj);
 
-        console.log(`[Cornerstone] ✓ Added VALID DICOM: ${fileObj.name} -> ${imageId} (Instance: ${instanceNumber}, Location: ${sliceLocation})`);
-
         // Store metadata locally
         localMetaDataMap.set(imageId, { dataSet });
+        localMetaDataMap.set(metaKey(imageId), { dataSet });
         const parsed = loader.wadouri.parseImageId(imageId);
-        if (parsed.url) localMetaDataMap.set(parsed.url, { dataSet });
-
-        console.log(`[Cornerstone] Successfully parsed and cached metadata locally for ${imageId}`);
 
         // Restore dataset cache injection for full files to avoid re-parsing in production
         // This is necessary because the loader's own fetch in bundled environments 
@@ -598,7 +561,6 @@ export async function addFileToLoader(file: File | any) {
                 dataSet: dataSet,
                 cacheCount: 1
             };
-            console.log(`[Cornerstone] ✓ Injected ${imageId} into loader cache. Has Pixel Data? ${hasPixelData}`);
         }
 
         return imageId;
@@ -611,20 +573,11 @@ export async function addFileToLoader(file: File | any) {
 export async function addURLToLoader(url: string) {
     const imageId = url.startsWith('wadouri:') ? url : `wadouri:${url}`;
 
-    // Normalize for matching
-    const normalize = (id: string) => {
-        let n = id.replace(/^(wadouri:|dicomfile:)/, '');
-        n = n.split('?')[0].split('#')[0];
-        n = n.replace(/\\/g, '/');
-        return n;
-    };
-    const normImageId = normalize(imageId);
+    const normImageId = metaKey(imageId);
 
     if (localMetaDataMap.has(imageId) || localMetaDataMap.has(normImageId)) {
         return imageId;
     }
-
-    console.log(`[Cornerstone] Pre-parsing metadata for URL: ${url}`);
 
     try {
         // Fetch only the first 2MB to get the DICOM header
@@ -645,24 +598,16 @@ export async function addURLToLoader(url: string) {
         }
 
         const buffer = await response.arrayBuffer();
-        console.log(`[Cornerstone] URL ${url} fetched: ${buffer.byteLength} bytes`);
 
         if (buffer.byteLength < 132) {
             throw new Error(`Buffer too small (${buffer.byteLength} bytes)`);
         }
 
         const dataSet = dicomParser.parseDicom(new Uint8Array(buffer));
-        console.log(`[Cornerstone] DICOM parsed for ${url}. Slices spacing hinted? ${dataSet.string('x00280030')}`);
 
         // Store in our local map for metadata providers
         localMetaDataMap.set(imageId, { dataSet });
         localMetaDataMap.set(normImageId, { dataSet });
-
-        const parts = url.split('/');
-        const filename = parts[parts.length - 1];
-        if (filename) {
-            localMetaDataMap.set(filename, { dataSet });
-        }
 
         // IMPORTANT: DO NOT manually inject into the loader's internal dataset cache.
         // Doing so can cause "pixel data is missing" errors in bundled production environments

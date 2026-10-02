@@ -10,40 +10,40 @@ interface UnfinishedRow {
   lastEdited:  string;
   status:      string;
   patientId:   string;
-  contextId:   string;
+  studyId:     string;
 }
+
+const DONE = new Set(['Completed', 'Archived']);
 
 /**
  * UnfinishedStudiesSection
- * Surfaces contexts whose mode is 'plan' — these represent in-progress
- * planning sessions the user hasn't finalized. Falls back to empty state.
+ * Studies across ALL loaded patients that are not Completed/Archived.
+ * (Previously built from `contexts`, which only holds the active patient's
+ * sessions — so the list was empty after every refresh. BUGS NAV-16.)
  */
 const UnfinishedStudiesSection = () => {
   const navigate   = useNavigate();
   const patients   = useAppStore((state) => state.patients);
-  const contexts   = useAppStore((state) => state.contexts);
+  const openStudy  = useAppStore((state) => state.openStudy);
 
-  // Build a quick lookup: patientId → patient
-  const patientMap = new Map(patients.map((p) => [p.id, p]));
-
-  // Contexts in 'plan' mode are "unfinished"
-  const rows: UnfinishedRow[] = contexts
-    .filter((c) => c.mode === 'plan')
-    .map((c) => {
-      const patient = patientMap.get(c.patientId);
-      const visit   = patient?.visits?.find((v) => v.id === c.visitId);
-      const linkedStudy = patient?.studies?.find(s => c.studyIds?.includes(s.id))
-        || patient?.visits?.flatMap(v => v.studies || []).find(s => c.studyIds?.includes(s.id));
-      return {
-        id:         c.id,
-        studyName:  linkedStudy ? getStudyDisplayName(linkedStudy) : (c.name || 'Untitled Study'),
-        diagnosis:  visit?.diagnosis || '—',
-        lastEdited: c.lastModified || '—',
-        status:     linkedStudy?.status || 'In Progress',
-        patientId:  c.patientId,
-        contextId:  c.id,
-      };
+  const rows: UnfinishedRow[] = patients
+    .filter((p) => !p.isArchived)
+    .flatMap((p) => {
+      const all = [...(p.studies ?? []), ...(p.visits ?? []).flatMap((v) => v.studies ?? [])];
+      const unique = Array.from(new Map(all.map((s) => [s.id, s])).values());
+      return unique
+        .filter((s) => !DONE.has(String(s.status ?? 'Draft')))
+        .map((s) => ({
+          id:         s.id,
+          studyName:  `${getStudyDisplayName(s)} · ${p.name || p.id}`,
+          diagnosis:  p.visits?.find((v) => v.id === s.visitId)?.diagnosis || '—',
+          lastEdited: s.acquisitionDate || '—',
+          status:     String(s.status ?? 'Draft'),
+          patientId:  p.id,
+          studyId:    s.id,
+        }));
     })
+    .sort((a, b) => (Date.parse(b.lastEdited) || 0) - (Date.parse(a.lastEdited) || 0))
     .slice(0, 10);
 
   return (
@@ -99,7 +99,10 @@ const UnfinishedStudiesSection = () => {
 
               {/* Action */}
               <button
-                onClick={() => navigate(`/workspace?patientId=${row.patientId}&contextId=${row.contextId}`)}
+                onClick={async () => {
+                  await openStudy(row.patientId, row.studyId);
+                  navigate('/workspace');
+                }}
                 className="flex items-center gap-1.5 rounded-md border border-[#242427] bg-[#1B1B1E] px-3 py-1.5 text-xs text-[#9CA3AF] transition-colors hover:bg-[#242427] hover:text-[#F5F5F7]"
               >
                 <CheckCircle2 className="h-3.5 w-3.5" />

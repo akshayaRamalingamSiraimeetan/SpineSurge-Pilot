@@ -433,6 +433,8 @@ const DicomLeftSidebar = () => {
     setDicom3DVolumeThreshold,
     setDicom3DMode,
     setScrewConfig,
+    setDicomCroppingActive,
+    updateRoiCrop,
   } = useAppStore();
 
   const isSegMode = dicom3D.renderMode === 'segmentation';
@@ -443,8 +445,9 @@ const DicomLeftSidebar = () => {
     else setDicom3DVolumeThreshold(v);
   };
 
-  const toggleScrew = () =>
-    setDicom3DMode(dicom3D.interactionMode === 'place_screw' ? 'view' : 'place_screw');
+  const toggleMode = (m: 'place_screw' | 'place_rod' | 'place_cage') =>
+    setDicom3DMode(dicom3D.interactionMode === m ? 'view' : m);
+  const toggleScrew = () => toggleMode('place_screw');
 
   const thresholdPct = ((currentThreshold + 1024) / (3071 + 1024)) * 100;
 
@@ -476,7 +479,7 @@ const DicomLeftSidebar = () => {
             )}
           >
             <Box className="w-4 h-4 flex-shrink-0" />
-            Volume Rendering
+            Volume (soft bone)
           </button>
 
           {/* Segmentation */}
@@ -490,7 +493,7 @@ const DicomLeftSidebar = () => {
             )}
           >
             <Layers className="w-4 h-4 flex-shrink-0" />
-            Segmentation
+            Bone segmentation
           </button>
         </div>
       </div>
@@ -582,21 +585,76 @@ const DicomLeftSidebar = () => {
           </button>
 
           {/* Rod */}
-          <div className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs text-white/20 border border-transparent select-none cursor-not-allowed">
-            <div className="w-2 h-2 rounded-full bg-emerald-400/30 flex-shrink-0" />
+          <button
+            onClick={() => toggleMode('place_rod')}
+            className={cn(
+              'flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-semibold transition-all duration-200 border text-left',
+              dicom3D.interactionMode === 'place_rod'
+                ? 'bg-emerald-500/10 text-emerald-300 border-emerald-500/25'
+                : 'text-white/50 hover:text-white/80 hover:bg-white/5 border-transparent',
+            )}
+          >
+            <div className="w-2 h-2 rounded-full bg-emerald-400/60 flex-shrink-0" />
             <RodIcon className="w-3.5 h-3.5 flex-shrink-0" />
             Rod
-            <span className="ml-auto text-[9px] text-white/15">Phase 2</span>
-          </div>
+            {dicom3D.interactionMode === 'place_rod' && (
+              <span className="ml-auto text-[9px] text-emerald-300/70 animate-pulse">Active</span>
+            )}
+          </button>
 
           {/* Cage */}
-          <div className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs text-white/15 border border-transparent select-none cursor-not-allowed">
-            <div className="w-2 h-2 rounded-full bg-gray-400/15 flex-shrink-0" />
+          <button
+            onClick={() => toggleMode('place_cage')}
+            className={cn(
+              'flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-semibold transition-all duration-200 border text-left',
+              dicom3D.interactionMode === 'place_cage'
+                ? 'bg-amber-500/10 text-amber-300 border-amber-500/25'
+                : 'text-white/50 hover:text-white/80 hover:bg-white/5 border-transparent',
+            )}
+          >
+            <div className="w-2 h-2 rounded-full bg-amber-400/60 flex-shrink-0" />
             <CageIcon className="w-3.5 h-3.5 flex-shrink-0" />
             Cage
-            <span className="ml-auto text-[9px] text-white/15">N/A</span>
-          </div>
+            {dicom3D.interactionMode === 'place_cage' && (
+              <span className="ml-auto text-[9px] text-amber-300/70 animate-pulse">Active</span>
+            )}
+          </button>
         </div>
+      </div>
+
+      {/* ── Crop (3D) ─────────────────────────────────────────── */}
+      <div>
+        <div className="flex items-center justify-between mb-2">
+          <p className="text-[10px] font-bold tracking-[0.15em] uppercase text-white/25">Crop 3D</p>
+          <button
+            onClick={() => setDicomCroppingActive(!dicom3D.isCroppingActive)}
+            className={cn('text-[10px] px-2 py-0.5 rounded border',
+              dicom3D.isCroppingActive ? 'border-primary/40 text-primary bg-primary/10' : 'border-white/10 text-white/40')}
+          >
+            {dicom3D.isCroppingActive ? 'On' : 'Off'}
+          </button>
+        </div>
+        {dicom3D.isCroppingActive && (
+          <div className="space-y-2">
+            {([['x', 'Right ↔ Left'], ['y', 'Anterior ↔ Posterior'], ['z', 'Inferior ↔ Superior']] as const).map(([axis, name]) => {
+              const lo = dicom3D.roiCrop[`${axis}0` as const];
+              const hi = dicom3D.roiCrop[`${axis}1` as const];
+              return (
+                <div key={axis}>
+                  <div className="text-[9px] text-white/30 mb-1">{name}</div>
+                  <div className="flex gap-2">
+                    <input type="range" min={0} max={100} value={Math.round(lo * 100)} className="w-full"
+                      onChange={(e) => updateRoiCrop({ [`${axis}0`]: Math.min(parseInt(e.target.value) / 100, hi - 0.02) })} />
+                    <input type="range" min={0} max={100} value={Math.round(hi * 100)} className="w-full"
+                      onChange={(e) => updateRoiCrop({ [`${axis}1`]: Math.max(parseInt(e.target.value) / 100, lo + 0.02) })} />
+                  </div>
+                </div>
+              );
+            })}
+            <button onClick={() => updateRoiCrop({ x0: 0, x1: 1, y0: 0, y1: 1, z0: 0, z1: 1 })}
+              className="text-[10px] text-white/40 hover:text-white/70">Reset crop</button>
+          </div>
+        )}
       </div>
 
       {/* ── Screw configuration form ──────────────────────────── */}
@@ -1129,7 +1187,8 @@ const ReportLeftSidebar = () => {
   const isDark = resolvedTheme === "dark";
   
   const activeState = contextStates.find((s) => s.contextId === activeContextId);
-  const reportConfig = activeState?.reportConfig;
+  // Missing config = defaults; the first edit persists it (no init-on-mount write — RPT-10).
+  const reportConfig = activeState?.reportConfig ?? getDefaultReportConfig();
 
   if (!reportConfig) return null;
 

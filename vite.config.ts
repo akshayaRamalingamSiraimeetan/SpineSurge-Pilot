@@ -7,6 +7,8 @@ export default defineConfig({
   test: {
     environment: 'jsdom',
     globals: true,
+    // `root` is src/renderer, so anchor test discovery at the repo root.
+    dir: __dirname,
     include: [
       'server/**/*.test.ts',
       'src/**/*.test.tsx',

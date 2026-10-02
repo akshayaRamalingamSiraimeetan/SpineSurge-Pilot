@@ -1,15 +1,14 @@
 import { useState } from 'react';
 import { NavLink } from 'react-router-dom';
-import { Home, BookOpen, Users, FolderOpen, Settings } from 'lucide-react';
+import { Home, Users } from 'lucide-react';
 import { useAppStore } from '@/lib/store/index';
 import WorkspaceSwitcher from './WorkspaceSwitcher';
+import { resolveAssetUrl } from '@/lib/api';
 
+// Only routes that exist (Studies/Resources/Settings had no pages — BUGS NAV-14).
 const NAV_ITEMS = [
   { icon: Home,       label: 'Home',      to: '/dashboard' },
-  { icon: BookOpen,   label: 'Studies',   to: '/studies'   },
   { icon: Users,      label: 'Patients',  to: '/patients'  },
-  { icon: FolderOpen, label: 'Resources', to: '/resources' },
-  { icon: Settings,   label: 'Settings',  to: '/settings'  },
 ] as const;
 
 /**
@@ -89,7 +88,7 @@ const DashboardSidebar = ({ collapsible = false }: DashboardSidebarProps) => {
             >
               {avatarUrl ? (
                 <img
-                  src={`http://localhost:3001${avatarUrl}`}
+                  src={resolveAssetUrl(avatarUrl)}
                   alt={displayName}
                   className="h-full w-full object-cover"
                 />

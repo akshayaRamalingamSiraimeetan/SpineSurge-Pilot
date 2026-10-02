@@ -9,6 +9,13 @@ export const API_BASE = (rawApiUrl && !rawApiUrl.startsWith('http'))
     ? `https://${rawApiUrl}`
     : rawApiUrl;
 
+/** Absolute URL for a server asset path like `/uploads/x.png` (absolute/blob URLs pass through). */
+export function resolveAssetUrl(url: string | null | undefined): string | undefined {
+    if (!url) return undefined;
+    if (/^(https?:|blob:|data:)/.test(url)) return url;
+    return `${API_BASE}${url.startsWith('/') ? '' : '/'}${url}`;
+}
+
 /**
  * Workspace context passed to data-fetching calls.
  * personal     → only caller's own studies with organization_id IS NULL
@@ -18,6 +25,15 @@ export const API_BASE = (rawApiUrl && !rawApiUrl.startsWith('http'))
 export type WorkspaceContext =
     | { type: 'personal' }
     | { type: 'organization'; orgId: string };
+
+/** Fired when the server rejects our token; App signs the user out. */
+export const UNAUTHORIZED_EVENT = 'spinesurge:unauthorized';
+
+async function authedFetch(input: string, init?: RequestInit): Promise<Response> {
+    const res = await authedFetch(input, init);
+    if (res.status === 401) window.dispatchEvent(new Event(UNAUTHORIZED_EVENT));
+    return res;
+}
 
 /** Build auth header object from token */
 function authHeader(token: string | null): Record<string, string> {
@@ -39,7 +55,7 @@ export const api = {
             }
             url += `?${params.toString()}`;
         }
-        const response = await fetch(url, {
+        const response = await authedFetch(url, {
             headers: { ...authHeader(token ?? null) },
         });
         if (!response.ok) throw new Error('Failed to fetch patients');
@@ -47,7 +63,7 @@ export const api = {
     },
 
     async savePatient(patient: Patient, token?: string | null) {
-        const response = await fetch(`${API_BASE}/api/patients`, {
+        const response = await authedFetch(`${API_BASE}/api/patients`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', ...authHeader(token ?? null) },
             body: JSON.stringify(patient),
@@ -57,7 +73,7 @@ export const api = {
     },
 
     async saveVisit(patientId: string, visit: Visit, token?: string | null) {
-        const response = await fetch(`${API_BASE}/api/visits`, {
+        const response = await authedFetch(`${API_BASE}/api/visits`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', ...authHeader(token ?? null) },
             body: JSON.stringify({ ...visit, patientId }),
@@ -67,7 +83,7 @@ export const api = {
     },
 
     async deleteVisit(visitId: string, token?: string | null) {
-        const response = await fetch(`${API_BASE}/api/visits/${visitId}`, {
+        const response = await authedFetch(`${API_BASE}/api/visits/${visitId}`, {
             method: 'DELETE',
             headers: { ...authHeader(token ?? null) },
         });
@@ -80,7 +96,7 @@ export const api = {
      * organizationId is set by the caller based on active workspace.
      */
     async saveStudy(study: Study, token?: string | null) {
-        const response = await fetch(`${API_BASE}/api/studies`, {
+        const response = await authedFetch(`${API_BASE}/api/studies`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', ...authHeader(token ?? null) },
             body: JSON.stringify({
@@ -100,7 +116,7 @@ export const api = {
         formData.append('type', scan.type);
         formData.append('date', scan.date);
 
-        const response = await fetch(`${API_BASE}/api/scans`, {
+        const response = await authedFetch(`${API_BASE}/api/scans`, {
             method: 'POST',
             headers: { ...authHeader(token ?? null) },
             body: formData,
@@ -110,7 +126,7 @@ export const api = {
     },
 
     async importFolder(folderPath: string, patientId?: string, visitId?: string, token?: string | null) {
-        const response = await fetch(`${API_BASE}/api/import`, {
+        const response = await authedFetch(`${API_BASE}/api/import`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', ...authHeader(token ?? null) },
             body: JSON.stringify({ folderPath, patientId, visitId }),
@@ -125,9 +141,9 @@ export const api = {
         formData.append('visitId', visitId);
         if (studyId) formData.append('studyId', studyId);
         formData.append('title', title);
-        formData.append('id', `rep-${Date.now()}`);
+        formData.append('id', `rep-${crypto.randomUUID()}`);
 
-        const response = await fetch(`${API_BASE}/api/reports`, {
+        const response = await authedFetch(`${API_BASE}/api/reports`, {
             method: 'POST',
             headers: { ...authHeader(token ?? null) },
             body: formData,
@@ -137,7 +153,7 @@ export const api = {
     },
 
     async getReports(visitId: string, token?: string | null) {
-        const response = await fetch(`${API_BASE}/api/reports/${visitId}`, {
+        const response = await authedFetch(`${API_BASE}/api/reports/${visitId}`, {
             headers: { ...authHeader(token ?? null) },
         });
         if (!response.ok) throw new Error('Failed to fetch reports');
@@ -145,7 +161,7 @@ export const api = {
     },
 
     async getStudyReports(studyId: string, token?: string | null) {
-        const response = await fetch(`${API_BASE}/api/reports/study/${studyId}`, {
+        const response = await authedFetch(`${API_BASE}/api/reports/study/${studyId}`, {
             headers: { ...authHeader(token ?? null) },
         });
         if (!response.ok) throw new Error('Failed to fetch reports');
@@ -153,7 +169,7 @@ export const api = {
     },
 
     async getContexts(patientId: string, token?: string | null) {
-        const response = await fetch(`${API_BASE}/api/contexts/${patientId}`, {
+        const response = await authedFetch(`${API_BASE}/api/contexts/${patientId}`, {
             headers: { ...authHeader(token ?? null) },
         });
         if (!response.ok) throw new Error('Failed to fetch contexts');
@@ -161,7 +177,7 @@ export const api = {
     },
 
     async saveContext(context: Context & { state?: any }, token?: string | null) {
-        const response = await fetch(`${API_BASE}/api/contexts`, {
+        const response = await authedFetch(`${API_BASE}/api/contexts`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', ...authHeader(token ?? null) },
             body: JSON.stringify(context),
@@ -171,7 +187,7 @@ export const api = {
     },
 
     async archivePatient(patientId: string, archived: boolean, token?: string | null) {
-        const response = await fetch(`${API_BASE}/api/patients/${patientId}/archive`, {
+        const response = await authedFetch(`${API_BASE}/api/patients/${patientId}/archive`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', ...authHeader(token ?? null) },
             body: JSON.stringify({ archived }),

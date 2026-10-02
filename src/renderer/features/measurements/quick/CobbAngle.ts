@@ -1,4 +1,4 @@
-import { Point, getMidpoint, getLineLinesIntersection } from "@/lib/canvas/GeometryUtils";
+import { Point, getMidpoint, getLineLinesIntersection, endplateAngleDeg } from "@/lib/canvas/GeometryUtils";
 import { Measurement } from "@/lib/canvas/CanvasManager";
 import { drawMeasurementLabel } from "@/lib/canvas/CanvasUtils";
 
@@ -16,11 +16,7 @@ export function calculateCobbAngle(points: Point[]): CobbAngleData {
     const p3 = points[2];
     const p4 = points[3];
 
-    const angle1 = Math.atan2(p2.y - p1.y, p2.x - p1.x);
-    const angle2 = Math.atan2(p4.y - p3.y, p4.x - p3.x);
-
-    let diff = Math.abs(angle1 - angle2) * (180 / Math.PI);
-    if (diff > 90) diff = 180 - diff;
+    const diff = endplateAngleDeg(p1, p2, p3, p4);
 
     const m1 = getMidpoint(p1, p2);
     const m2 = getMidpoint(p3, p4);

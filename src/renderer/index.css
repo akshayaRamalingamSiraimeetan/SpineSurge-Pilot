@@ -502,3 +502,14 @@ option {
     background: rgba(255, 69, 58, 0.25);
     color: hsl(var(--foreground));
 }
+
+/* ── 3D planning overlays (features/planning3d/Overlay2D.tsx) ─────────────── */
+.ss-impl-solid { fill: rgba(255, 255, 255, 0.92); stroke: rgba(0, 0, 0, 0.7); stroke-width: 1.2; }
+.ss-impl-ghost { fill: rgba(255, 255, 255, 0.06); stroke: rgba(255, 255, 255, 0.55); stroke-width: 1; stroke-dasharray: 4 3; }
+.ss-impl-sel { fill: none; stroke: #22d3ee; stroke-width: 1.5; pointer-events: none; }
+.ss-impl-thread { stroke: rgba(0, 0, 0, 0.35); stroke-width: 1; fill: none; pointer-events: none; }
+.ss-impl-label { fill: #fff; font: 600 11px Inter, sans-serif; paint-order: stroke; stroke: rgba(0, 0, 0, 0.85); stroke-width: 3px; pointer-events: none; }
+.ss-rod { stroke: rgba(255, 255, 255, 0.92); fill: none; stroke-linecap: round; stroke-linejoin: round; }
+.ss-rod-ghost { stroke: rgba(255, 255, 255, 0.4); stroke-dasharray: 6 4; }
+.ss-rod-outline { stroke: rgba(0, 0, 0, 0.6); fill: none; stroke-linecap: round; stroke-linejoin: round; pointer-events: none; }
+.ss-handle { fill: #fff; stroke: #0891b2; stroke-width: 2; }

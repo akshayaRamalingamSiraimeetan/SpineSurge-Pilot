@@ -96,7 +96,11 @@ const LoginPage = () => {
                                 {errorMessage}
                                 {emailNotVerified && (
                                     <span className="ml-1">
-                                        <Link to="/verify-email" className="underline hover:text-[#FF453A]/80">
+                                        <Link
+                                            to="/verify-email"
+                                            state={{ email }}
+                                            onClick={() => sessionStorage.setItem('pendingEmail', email)}
+                                            className="underline hover:text-[#FF453A]/80">
                                             Verify email
                                         </Link>
                                     </span>

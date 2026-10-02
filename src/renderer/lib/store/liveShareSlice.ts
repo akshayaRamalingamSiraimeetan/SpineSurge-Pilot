@@ -2,6 +2,7 @@ import { StateCreator } from 'zustand';
 import * as Y from 'yjs';
 import { WebsocketProvider } from 'y-websocket';
 import { AppState } from './index';
+import { API_BASE } from '@/lib/api';
 
 export interface LiveShareSlice {
     yDoc: Y.Doc | null;
@@ -24,17 +25,31 @@ export const createLiveShareSlice: StateCreator<AppState, [], [], LiveShareSlice
             const { disconnectLiveRoom } = get();
             disconnectLiveRoom();
 
+            const token = get().token;
+            if (!token) return; // server requires a session token (BUGS SRV-09)
             const doc = new Y.Doc();
             const provider = new WebsocketProvider(
-                'ws://localhost:3001',
+                API_BASE.replace(/^http/, 'ws'),
                 `spinesurge-pro-${roomId}`,
-                doc
+                doc,
+                { params: { token } },
             );
 
 
             provider.on('status', (event: any) => {
                 set({ isLiveConnected: event.status === 'connected' });
             });
+
+            // Remote edits go to BOTH the live fields and the active context's
+            // state (the canvas reads contextStates). Not saved here — the
+            // peer that made the edit saves it (BUGS WS-15).
+            const applyRemote = (field: 'measurements' | 'implants' | 'threeDImplants' | 'pedicleSimulations', data: any[]) => {
+                set((state) => ({
+                    [field]: data,
+                    contextStates: state.contextStates.map((c) =>
+                        c.contextId === state.activeContextId ? { ...c, [field]: data } : c),
+                }) as Partial<AppState>);
+            };
 
             // Set up observers for shared types
             const sharedMeasurements = doc.getMap('measurements');
@@ -46,26 +61,22 @@ export const createLiveShareSlice: StateCreator<AppState, [], [], LiveShareSlice
 
             sharedMeasurements.observe((event) => {
                 if (event.transaction.local) return;
-                const data = Object.values(sharedMeasurements.toJSON());
-                set({ measurements: data as any[] });
+                applyRemote('measurements', Object.values(sharedMeasurements.toJSON()) as any[]);
             });
 
             sharedImplants.observe((event) => {
                 if (event.transaction.local) return;
-                const data = Object.values(sharedImplants.toJSON());
-                set({ implants: data as any[] });
+                applyRemote('implants', Object.values(sharedImplants.toJSON()) as any[]);
             });
 
             sharedThreeDImplants.observe((event) => {
                 if (event.transaction.local) return;
-                const data = Object.values(sharedThreeDImplants.toJSON());
-                set({ threeDImplants: data as any[] });
+                applyRemote('threeDImplants', Object.values(sharedThreeDImplants.toJSON()) as any[]);
             });
 
             sharedPedicleSimulations.observe((event) => {
                 if (event.transaction.local) return;
-                const data = Object.values(sharedPedicleSimulations.toJSON());
-                set({ pedicleSimulations: data as any[] });
+                applyRemote('pedicleSimulations', Object.values(sharedPedicleSimulations.toJSON()) as any[]);
             });
 
             sharedCanvas.observe((event) => {

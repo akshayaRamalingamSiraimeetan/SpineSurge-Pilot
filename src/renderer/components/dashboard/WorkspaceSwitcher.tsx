@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Check, Building2, User, Plus, Mail, LogOut, X } from 'lucide-react';
 import { useAppStore } from '@/lib/store/index';
+import { API_BASE, resolveAssetUrl } from '@/lib/api';
 
 interface SwitchConfirmModalProps {
   orgName:  string;
@@ -87,7 +88,7 @@ const WorkspaceSwitcher = ({ isOpen, onClose }: WorkspaceSwitcherProps) => {
     fetchOrgLists();
 
     if (token) {
-      fetch('http://localhost:3001/invitations/pending', {
+      fetch(`${API_BASE}/invitations/pending`, {
         headers: { Authorization: `Bearer ${token}` },
       })
         .then((r) => r.json())
@@ -191,7 +192,7 @@ const WorkspaceSwitcher = ({ isOpen, onClose }: WorkspaceSwitcherProps) => {
           <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-[#FF453A] text-white font-semibold text-sm overflow-hidden">
             {avatarUrl ? (
               <img
-                src={`http://localhost:3001${avatarUrl}`}
+                src={resolveAssetUrl(avatarUrl)}
                 alt={displayName}
                 className="h-full w-full object-cover"
               />

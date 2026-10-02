@@ -4,13 +4,17 @@ import jwt from 'jsonwebtoken';
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
-import { and, desc, eq, gt, gte, isNull } from 'drizzle-orm';
+import { and, desc, eq, gt, gte, isNull, sql } from 'drizzle-orm';
 import { db } from '../db';
 import { users, emailVerificationOtps, otpAttemptLog } from '../schema';
 import { authenticate } from '../middleware/authenticate';
 import { onboardingVerify } from '../middleware/onboardingVerify';
 import * as auditLogger from '../services/auditLogger';
 import { generateOtp, hashOtp, verifyOtp } from '../services/otpService';
+
+/** Emails are case-insensitive: stored lower-case, matched with lower() (BUGS SRV-16). */
+const normEmail = (e: unknown) => (typeof e === 'string' ? e.trim().toLowerCase() : e);
+const emailEq = (e: string) => sql`lower(${users.email}) = ${e}`;
 import { sendEmail } from '../services/email';
 
 // Startup guard — fail fast if JWT_SECRET is missing
@@ -66,7 +70,8 @@ function generateId(prefix: string): string {
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 authRouter.post('/register', async (req, res) => {
-  const { email, password, confirmPassword, terms_accepted } = req.body ?? {};
+  const { email: rawEmail, password, confirmPassword, terms_accepted } = req.body ?? {};
+  const email = normEmail(rawEmail) as string;
 
   // Validate required fields
   const missing: string[] = [];
@@ -161,7 +166,8 @@ authRouter.post('/register', async (req, res) => {
 // ── POST /auth/login ──────────────────────────────────────────────────────────
 
 authRouter.post('/login', async (req, res) => {
-  const { email, password } = req.body ?? {};
+  const { email: rawEmail, password } = req.body ?? {};
+  const email = normEmail(rawEmail) as string;
 
   if (!email || !password) {
     res.status(400).json({
@@ -172,7 +178,7 @@ authRouter.post('/login', async (req, res) => {
   }
 
   try {
-    const [user] = await db.select().from(users).where(eq(users.email, email)).limit(1);
+    const [user] = await db.select().from(users).where(emailEq(email)).limit(1);
 
     if (!user) {
       await auditLogger.log('LOGIN_FAILED', 'user', null, { reason: 'user_not_found', email });
@@ -219,6 +225,7 @@ authRouter.post('/login', async (req, res) => {
         isActive: user.isActive,
         isEmailVerified: user.isEmailVerified,
         profileCompleted: user.profileCompleted,
+        avatarUrl: user.avatarUrl ?? null,
       },
     });
   } catch (err) {
@@ -229,8 +236,22 @@ authRouter.post('/login', async (req, res) => {
 
 // ── GET /auth/me ──────────────────────────────────────────────────────────────
 
-authRouter.get('/me', authenticate, (req, res) => {
-  res.status(200).json({ user: req.user, org: req.org });
+authRouter.get('/me', authenticate, async (req, res) => {
+  try {
+    const [row] = await db.select().from(users).where(eq(users.id, req.user!.id)).limit(1);
+    res.status(200).json({
+      user: {
+        ...req.user,
+        avatarUrl:   row?.avatarUrl ?? null,
+        designation: (row as any)?.designation ?? null,
+        country:     (row as any)?.country ?? null,
+      },
+      org: req.org,
+    });
+  } catch (err) {
+    console.error('[auth/me]', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
 });
 
 // ── POST /auth/logout ─────────────────────────────────────────────────────────
@@ -242,7 +263,8 @@ authRouter.post('/logout', (_req, res) => {
 // ── POST /auth/verify-email ───────────────────────────────────────────────────
 
 authRouter.post('/verify-email', async (req, res) => {
-  const { email, otp } = req.body ?? {};
+  const { email: rawEmail, otp } = req.body ?? {};
+  const email = normEmail(rawEmail) as string;
   if (!email || !otp) {
     res.status(400).json({ error: 'Missing required fields' });
     return;
@@ -250,14 +272,16 @@ authRouter.post('/verify-email', async (req, res) => {
 
   try {
     // 1. Find user
-    const [user] = await db.select().from(users).where(eq(users.email, email)).limit(1);
+    const [user] = await db.select().from(users).where(emailEq(email)).limit(1);
     if (!user) {
       res.status(400).json({ code: 'INVALID_OTP', message: 'The verification code is incorrect.' });
       return;
     }
 
-    // 2. Check brute-force lockout: ≥5 failed attempts in last 15 min
+    // 2. Brute-force lockout. The attempt is recorded BEFORE counting so
+    //    concurrent guesses all count against the limit (BUGS SRV-17).
     const fifteenMinAgo = new Date(Date.now() - 15 * 60 * 1000);
+    const [attempt] = await db.insert(otpAttemptLog).values({ userId: user.id, succeeded: false }).returning({ id: otpAttemptLog.id });
     const recentFailures = await db.select()
       .from(otpAttemptLog)
       .where(and(
@@ -265,7 +289,7 @@ authRouter.post('/verify-email', async (req, res) => {
         eq(otpAttemptLog.succeeded, false),
         gte(otpAttemptLog.attemptedAt, fifteenMinAgo),
       ));
-    if (recentFailures.length >= 5) {
+    if (recentFailures.length > 5) {
       res.status(429).json({ code: 'OTP_LOCKED', message: 'Too many invalid verification attempts. Please try again later.' });
       return;
     }
@@ -290,8 +314,6 @@ authRouter.post('/verify-email', async (req, res) => {
         .orderBy(desc(emailVerificationOtps.createdAt))
         .limit(1);
 
-      await db.insert(otpAttemptLog).values({ userId: user.id, succeeded: false });
-
       if (anyRecord?.usedAt) {
         res.status(400).json({ code: 'OTP_ALREADY_USED', message: 'This verification code has already been used.' });
       } else {
@@ -303,7 +325,6 @@ authRouter.post('/verify-email', async (req, res) => {
     // 4. Verify hash using timingSafeEqual
     const isValid = verifyOtp(otp, otpRecord.otpHash);
     if (!isValid) {
-      await db.insert(otpAttemptLog).values({ userId: user.id, succeeded: false });
       res.status(400).json({ code: 'INVALID_OTP', message: 'The verification code is incorrect.' });
       return;
     }
@@ -321,7 +342,8 @@ authRouter.post('/verify-email', async (req, res) => {
         .where(eq(users.id, user.id));
     });
 
-    // 6. Clear failed attempts for this user
+    // 6. Clear failed attempts for this user (including this one)
+    void attempt;
     await db.delete(otpAttemptLog).where(eq(otpAttemptLog.userId, user.id));
 
     // 7. Issue JWT
@@ -357,7 +379,8 @@ authRouter.post('/verify-email', async (req, res) => {
 // ── POST /auth/resend-verification ────────────────────────────────────────────
 
 authRouter.post('/resend-verification', async (req, res) => {
-  const { email } = req.body ?? {};
+  const { email: rawEmail } = req.body ?? {};
+  const email = normEmail(rawEmail) as string;
   const GENERIC_SUCCESS = { message: 'If an account exists for this email, a verification code has been sent.' };
 
   if (!email) {
@@ -370,7 +393,7 @@ authRouter.post('/resend-verification', async (req, res) => {
     // We can only track resend attempts via the user's OTP rows. If the email
     // belongs to no user there are zero records, so the rate limit cannot fire
     // for non-existent emails — this is acceptable per the data model.
-    const [user] = await db.select().from(users).where(eq(users.email, email)).limit(1);
+    const [user] = await db.select().from(users).where(emailEq(email)).limit(1);
 
     if (user) {
       const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
@@ -422,6 +445,27 @@ authRouter.post('/resend-verification', async (req, res) => {
     res.status(200).json(GENERIC_SUCCESS);
   } catch (err) {
     console.error('[auth/resend-verification]', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ── PATCH /auth/profile ───────────────────────────────────────────────────────
+// Edit name (and optionally designation/country) after onboarding (BUGS WS-22).
+authRouter.patch('/profile', authenticate, async (req, res) => {
+  const { full_name, designation, country } = req.body ?? {};
+  const updates: Record<string, unknown> = {};
+  if (full_name !== undefined) {
+    if (typeof full_name !== 'string' || !full_name.trim()) { res.status(400).json({ error: 'full_name must be a non-empty string' }); return; }
+    updates.fullName = full_name.trim().slice(0, 200);
+  }
+  if (designation !== undefined) updates.designation = String(designation).slice(0, 100);
+  if (country !== undefined) updates.country = String(country).slice(0, 100);
+  if (Object.keys(updates).length === 0) { res.status(400).json({ error: 'Nothing to update' }); return; }
+  try {
+    const [updated] = await db.update(users).set(updates as any).where(eq(users.id, req.user!.id)).returning();
+    res.status(200).json({ user: { id: updated.id, email: updated.email, fullName: updated.fullName, avatarUrl: updated.avatarUrl ?? null } });
+  } catch (err) {
+    console.error('[auth/profile]', err);
     res.status(500).json({ error: 'Internal server error' });
   }
 });

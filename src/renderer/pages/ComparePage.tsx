@@ -318,30 +318,48 @@ const ComparePage = () => {
         return null;
     }, [currentImage, activeContextId, contextStates]);
 
-    // Auto-load left image and data from workspace (only when a workspace image exists)
-    const leftLoaded = useRef(false);
+    // Deep link (?patientId=&contextId=): load the case FIRST, with its
+    // context, before anything is copied into the comparison panes (RPT-03/04).
+    const [deepLinkLoading, setDeepLinkLoading] = useState(false);
     useEffect(() => {
-        if (leftLoaded.current) return;
-        if (workspaceImage && !comparison.left.image) {
-            setComparisonImage("left", workspaceImage);
-            setComparisonMeasurements("left", measurements);
-            setComparisonImplants("left", implants);
-            leftLoaded.current = true;
+        const params = new URLSearchParams(location.search);
+        const pId = params.get("patientId");
+        const cId = params.get("contextId");
+        if (!pId && !cId) return;
+        params.delete("patientId");
+        params.delete("contextId");
+        const rest = params.toString();
+        navigate({ pathname: location.pathname, search: rest ? `?${rest}` : "" }, { replace: true });
+        if (pId) {
+            setDeepLinkLoading(true);
+            void setActivePatient(pId, cId || undefined).finally(() => setDeepLinkLoading(false));
+        } else if (cId) {
+            setActiveContextId(cId);
         }
-    }, [workspaceImage, comparison.left.image, setComparisonImage, setComparisonMeasurements, setComparisonImplants, measurements, implants]);
+    }, [location.search, location.pathname, navigate, setActivePatient, setActiveContextId]);
 
-    // Deep Linking Support
+    // Seed the LEFT pane from the active case — once per context. Switching
+    // patient/context clears `comparison` (caseState) so stale panes can't
+    // survive into another case.
+    const seededForRef = useRef<string | null>(null);
     useEffect(() => {
-        const queryParams = new URLSearchParams(location.search);
-        const pId = queryParams.get("patientId");
-        const cId = queryParams.get("contextId");
-        if (pId) setActivePatient(pId);
-        if (cId) setActiveContextId(cId);
-    }, [location.search, setActivePatient, setActiveContextId]);
+        if (deepLinkLoading || !workspaceImage) return;
+        const key = `${activeContextId ?? "untitled"}|${workspaceImage}`;
+        if (seededForRef.current === key) return;
+        seededForRef.current = key;
+        setComparisonImage("left", workspaceImage);
+        setComparisonMeasurements("left", measurements);
+        setComparisonImplants("left", implants);
+    }, [deepLinkLoading, workspaceImage, activeContextId, measurements, implants, setComparisonImage, setComparisonMeasurements, setComparisonImplants]);
 
-    // Ensure comparison mode
+    // Comparison mode only lives on this page. Turning it off on unmount
+    // stops /workspace edits going into comparison panes (BUGS WS-14).
     useEffect(() => {
         setComparisonMode(true);
+        return () => {
+            // Exception: going to the report tab keeps it for comparison reports.
+            if (!window.location.hash.includes("tab=report")) setComparisonMode(false);
+        };
     }, [setComparisonMode]);
 
     const handleClose = () => {

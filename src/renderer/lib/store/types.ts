@@ -129,25 +129,45 @@ export interface UserProfile {
     avatarUrl?: string;
 }
 
-export interface ThreeDImplant {
+/** LPS world coordinates in millimetres. */
+export type Vec3 = [number, number, number];
+
+/** Pedicle screw: head at `entry`, point at `tip`. length = |tip − entry|. */
+export interface PlanScrew {
     id: string;
-    type: 'screw' | 'rod';
-    position: [number, number, number];
-    direction: [number, number, number];
-    properties: {
-        diameter: number;
-        length: number;
-        color: string;
-        headDiameter?: number;
-        modelPath?: string;
-        medialAngle?: number;  // degrees — inward tilt
-        caudalAngle?: number;  // degrees — caudal tilt
-        depth?: number;        // mm — insertion depth
-    };
-    level?: string;        // Vertebra label e.g. 'L3', 'T10'
-    side?: 'L' | 'R';     // Left or Right pedicle
-    simulationId?: string; // Links to a specific PedicleSimulation
+    type: 'screw';
+    entry: Vec3;
+    tip: Vec3;
+    diameter: number;
+    level?: string;        // Vertebra label e.g. 'L3'
+    side?: 'L' | 'R';
+    color?: string;
 }
+
+/** Rod through control points. */
+export interface PlanRod {
+    id: string;
+    type: 'rod';
+    points: Vec3[];
+    diameter: number;
+    color?: string;
+}
+
+/** Interbody cage: centre + orthonormal axes (X = width, Y = height), size [w, d, h] mm. */
+export interface PlanCage {
+    id: string;
+    type: 'cage';
+    center: Vec3;
+    axisX: Vec3;
+    axisY: Vec3;
+    size: [number, number, number];
+    level?: string;
+    color?: string;
+}
+
+export type PlanImplant = PlanScrew | PlanRod | PlanCage;
+/** @deprecated name kept for existing imports — same as PlanImplant. */
+export type ThreeDImplant = PlanImplant;
 
 export interface PedicleLandmark {
     id: string;

@@ -17,6 +17,7 @@
  * NOT mixed into the Current Measurements list.
  */
 import { useState, useMemo, useRef, useEffect, useCallback } from "react";
+import { PlanPanel } from "@/features/planning3d/PlanPanel";
 import { useAppStore } from "@/lib/store/index";
 import {
     ChevronDown,
@@ -34,7 +35,6 @@ import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Checkbox } from "@/components/ui/checkbox";
 import { MODULE_TOOL_MAPPING } from "./toolConstants";
-import { ReportDialog } from "./ReportDialog";
 import { useTheme } from "@/components/theme-provider";
 import { cn } from "@/lib/utils";
 import {
@@ -685,15 +685,19 @@ function CaseSummary({ isOpen, onOpenChange }: { isOpen: boolean; onOpenChange: 
         setEditValue(val);
     };
 
+    const creatingCaseRef = useRef(false);
     const ensurePatientAndStartEdit = async (field?: string, val?: string) => {
         let currentPatientId = activePatientId;
         let currentContextId = activeContextId;
         
         if (!currentPatientId) {
-            const patientId = `PAT-${Date.now().toString().slice(-6)}`;
-            const visitId = Date.now().toString();
-            const studyId = `std-${Date.now()}`;
-            const contextId = `ctx-${Date.now()}`;
+            // Promote the untitled session to a real study exactly once.
+            if (creatingCaseRef.current) return;
+            creatingCaseRef.current = true;
+            const patientId = `PAT-${crypto.randomUUID().slice(0, 8).toUpperCase()}`;
+            const visitId = crypto.randomUUID();
+            const studyId = `std-${crypto.randomUUID()}`;
+            const contextId = `ctx-${crypto.randomUUID()}`;
 
             const newPatient: any = {
                 id: patientId,
@@ -742,12 +746,22 @@ function CaseSummary({ isOpen, onOpenChange }: { isOpen: boolean; onOpenChange: 
                 lastModified: new Date().toISOString()
             };
 
-            await addPatient(newPatient);
-            await addVisit(patientId, newVisit);
-            await addStudy(newStudy);
-            await addContext(newContext);
-            await setActivePatient(patientId, contextId);
-            
+            try {
+                await addPatient(newPatient);
+                await addVisit(patientId, newVisit);
+                await addStudy(newStudy);
+                // addContext carries the untitled canvas (image + measurements)
+                // into the new study and makes it active — no reload needed,
+                // so the live canvas is kept as-is.
+                await addContext(newContext);
+            } catch (e) {
+                console.error('Could not create study for untitled session', e);
+                alert('Could not save this session as a study. Please check your connection and try again.');
+                return;
+            } finally {
+                creatingCaseRef.current = false;
+            }
+
             currentPatientId = patientId;
             currentContextId = contextId;
         }
@@ -782,15 +796,17 @@ function CaseSummary({ isOpen, onOpenChange }: { isOpen: boolean; onOpenChange: 
                 if (visit) {
                     await updateVisit(patient.id, visit.id, { ...visit, height: editValue });
                 } else if (patient) {
-                    const newVisit = { id: Date.now().toString(), visitNumber: '#0001', date: format(new Date(), 'MMMM dd, yyyy'), time: format(new Date(), 'hh:mm a'), diagnosis: 'New Diagnosis', comments: '', height: editValue, weight: '', consultants: '', scanCount: 0, scans: [], studies: [] };
-                    await updateVisit(patient.id, newVisit.id, newVisit);
+                    const newVisit = { id: crypto.randomUUID(), visitNumber: '#0001', date: format(new Date(), 'MMMM dd, yyyy'), time: format(new Date(), 'hh:mm a'), diagnosis: 'New Diagnosis', comments: '', height: editValue, weight: '', consultants: '', scanCount: 0, scans: [], studies: [] };
+                    // No visit yet: create one (updateVisit only edits existing ones — BUGS WS-18)
+                    await addVisit(patient.id, newVisit);
                 }
             } else if (field === 'weight') {
                 if (visit) {
                     await updateVisit(patient.id, visit.id, { ...visit, weight: editValue });
                 } else if (patient) {
-                    const newVisit = { id: Date.now().toString(), visitNumber: '#0001', date: format(new Date(), 'MMMM dd, yyyy'), time: format(new Date(), 'hh:mm a'), diagnosis: 'New Diagnosis', comments: '', height: '', weight: editValue, consultants: '', scanCount: 0, scans: [], studies: [] };
-                    await updateVisit(patient.id, newVisit.id, newVisit);
+                    const newVisit = { id: crypto.randomUUID(), visitNumber: '#0001', date: format(new Date(), 'MMMM dd, yyyy'), time: format(new Date(), 'hh:mm a'), diagnosis: 'New Diagnosis', comments: '', height: '', weight: editValue, consultants: '', scanCount: 0, scans: [], studies: [] };
+                    // No visit yet: create one (updateVisit only edits existing ones — BUGS WS-18)
+                    await addVisit(patient.id, newVisit);
                 }
             }
         } catch (err) {
@@ -934,192 +950,9 @@ const SectionLabel = ({ children }: { children: React.ReactNode }) => (
 );
 
 function DicomCurrentPlan() {
-    const {
-        threeDImplants,
-        dicom3D,
-        setSelectedDicomImplant,
-        removeThreeDImplant,
-        setDicom3DMode,
-    } = useAppStore();
-
-    const selectedScrew = threeDImplants.find(
-        i => i.id === dicom3D.selectedImplantId && i.type === 'screw'
-    );
-    const screwImplants = threeDImplants.filter(i => i.type === 'screw');
-
-    const clearPlan = () => {
-        const ids = useAppStore.getState().threeDImplants.map(i => i.id);
-        ids.forEach(id => removeThreeDImplant(id));
-        setSelectedDicomImplant(null);
-        setDicom3DMode('view');
-    };
-
-    const sortedLevels = useMemo(() => {
-        if (screwImplants.length === 0) return '—';
-        const levels = Array.from(new Set(screwImplants.map(i => i.level)));
-        if (levels.length === 1) return levels[0];
-        return `${levels[0]} – ${levels[levels.length - 1]}`;
-    }, [screwImplants]);
-
     return (
         <CollapseSection title="Current Plan" defaultOpen>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-                {/* ── Instrumentation summary ────────────────────────── */}
-                <div style={{ borderBottom: '1px solid var(--border-2)', paddingBottom: 10 }}>
-                    <SectionLabel>Instrumentation</SectionLabel>
-
-                    {screwImplants.length === 0 ? (
-                        <div style={{ fontSize: 12, fontStyle: 'italic', color: 'var(--text-3)', padding: '4px 0' }}>
-                            No implants placed.
-                        </div>
-                    ) : (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: 3, marginBottom: 6 }}>
-                            {screwImplants.map(imp => (
-                                <div
-                                    key={imp.id}
-                                    onClick={() => setSelectedDicomImplant(
-                                        dicom3D.selectedImplantId === imp.id ? null : imp.id
-                                    )}
-                                    style={{
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        padding: '4px 6px',
-                                        borderRadius: 6,
-                                        cursor: 'pointer',
-                                        fontSize: 12,
-                                        background: dicom3D.selectedImplantId === imp.id ? 'var(--surface-3)' : 'transparent',
-                                        transition: 'background .15s',
-                                    }}
-                                    onMouseEnter={(e) => {
-                                        if (dicom3D.selectedImplantId !== imp.id) {
-                                            e.currentTarget.style.background = 'var(--surface-2)';
-                                        }
-                                    }}
-                                    onMouseLeave={(e) => {
-                                        if (dicom3D.selectedImplantId !== imp.id) {
-                                            e.currentTarget.style.background = 'transparent';
-                                        }
-                                    }}
-                                >
-                                    <div
-                                        style={{
-                                            width: 7,
-                                            height: 7,
-                                            borderRadius: '50%',
-                                            backgroundColor: imp.properties.color ?? '#22d3ee',
-                                            marginRight: 8,
-                                            flexShrink: 0,
-                                        }}
-                                    />
-                                    <span style={{ color: 'var(--text)' }}>Screw</span>
-                                    <span style={{ marginLeft: 'auto', fontFamily: 'monospace', color: 'var(--text-3)', fontSize: 11 }}>
-                                        {imp.level} {imp.side}
-                                    </span>
-                                    <button
-                                        onClick={e => {
-                                            e.stopPropagation();
-                                            removeThreeDImplant(imp.id);
-                                            if (dicom3D.selectedImplantId === imp.id) setSelectedDicomImplant(null);
-                                        }}
-                                        style={{
-                                            marginLeft: 8,
-                                            background: 'none',
-                                            border: 'none',
-                                            cursor: 'pointer',
-                                            color: 'var(--text-3)',
-                                            fontSize: 14,
-                                            lineHeight: 1,
-                                        }}
-                                        onMouseEnter={(e) => (e.currentTarget.style.color = 'var(--val-bad)')}
-                                        onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--text-3)')}
-                                    >
-                                        ×
-                                    </button>
-                                </div>
-                            ))}
-                        </div>
-                    )}
-
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 5, marginTop: 6 }}>
-                        <div style={{ display: 'flex', alignItems: 'center', fontSize: 12 }}>
-                            <div style={{ width: 7, height: 7, borderRadius: '50%', backgroundColor: '#22d3ee', marginRight: 8 }} />
-                            <span style={{ color: 'var(--text-2)' }}>Screw</span>
-                            <span style={{ marginLeft: 'auto', color: 'var(--text-3)', fontSize: 11 }}>{sortedLevels}</span>
-                        </div>
-                        <div style={{ display: 'flex', alignItems: 'center', fontSize: 12 }}>
-                            <div style={{ width: 7, height: 7, borderRadius: '50%', backgroundColor: 'rgba(52, 211, 153, 0.3)', marginRight: 8 }} />
-                            <span style={{ color: 'var(--text-3)' }}>Rod</span>
-                            <span style={{ marginLeft: 'auto', color: 'var(--text-3)', opacity: 0.5, fontSize: 11 }}>Not planned</span>
-                        </div>
-                        <div style={{ display: 'flex', alignItems: 'center', fontSize: 12 }}>
-                            <div style={{ width: 7, height: 7, borderRadius: '50%', backgroundColor: 'rgba(156, 163, 175, 0.15)', marginRight: 8 }} />
-                            <span style={{ color: 'var(--text-3)', opacity: 0.6 }}>Cage</span>
-                            <span style={{ marginLeft: 'auto', color: 'var(--text-3)', opacity: 0.4, fontSize: 11 }}>N/A for 3D CT</span>
-                        </div>
-                    </div>
-                </div>
-
-                {/* ── Screw properties card ──────────────────────────── */}
-                <div style={{ borderBottom: '1px solid var(--border-2)', paddingBottom: 10 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
-                        <SectionLabel>Screw Properties</SectionLabel>
-                        <Pencil className="h-3.5 w-3.5" style={{ color: 'var(--text-3)', opacity: 0.6 }} />
-                    </div>
-
-                    {selectedScrew ? (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
-                            <PropRow label="Screw Type" value="Pedicle Screw" />
-                            <PropRow label="Diameter" value={`${selectedScrew.properties.diameter} mm`} />
-                            <PropRow label="Length" value={`${selectedScrew.properties.length} mm`} />
-                            <PropRow label="Material" value="Titanium" />
-                            <PropRow label="Levels" value={selectedScrew.level} />
-                            <PropRow label="Side" value={selectedScrew.side === 'L' ? 'Left' : 'Right'} />
-                            <PropRow label="Trajectory" value="Standard" />
-                        </div>
-                    ) : (
-                        <div style={{ fontSize: 12, fontStyle: 'italic', color: 'var(--text-3)', textAlign: 'center', padding: '8px 0' }}>
-                            {screwImplants.length > 0 ? 'Select a screw to view properties' : 'No screws placed yet'}
-                        </div>
-                    )}
-                </div>
-
-                {/* ── Rod properties card (disabled) ───────────────────── */}
-                <div style={{ borderBottom: '1px solid var(--border-2)', paddingBottom: 10 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
-                        <SectionLabel>Rod Properties</SectionLabel>
-                        <Pencil className="h-3.5 w-3.5" style={{ color: 'var(--text-3)', opacity: 0.2 }} />
-                    </div>
-                    <div style={{ fontSize: 11, fontStyle: 'italic', color: 'var(--text-3)', opacity: 0.5, textAlign: 'center', padding: '2px 0' }}>
-                        Rod planning — Phase 2
-                    </div>
-                </div>
-
-                {/* ── Clear Plan button ──────────────────────────────── */}
-                <div style={{ paddingTop: 4 }}>
-                    <Button
-                        variant="outline"
-                        onClick={clearPlan}
-                        disabled={threeDImplants.length === 0}
-                        style={{
-                            width: '100%',
-                            borderColor: threeDImplants.length > 0 ? 'rgba(239, 68, 68, 0.3)' : 'var(--border-2)',
-                            color: threeDImplants.length > 0 ? '#f87171' : 'var(--text-3)',
-                            background: 'transparent',
-                            height: 36,
-                            borderRadius: 8,
-                            fontSize: 12.5,
-                            fontWeight: 600,
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            gap: 8,
-                        }}
-                    >
-                        <Trash2 className="h-4 w-4" />
-                        Clear Plan
-                    </Button>
-                </div>
-            </div>
+            <PlanPanel />
         </CollapseSection>
     );
 }
@@ -1479,7 +1312,7 @@ const RightSidebar = () => {
                                                                         range={NORMAL_RANGES[m.toolKey] || ''}
                                                                         toolKey={m.toolKey}
                                                                         checked={m.selected || false}
-                                                                        onCheckedChange={() => toggleMeasurementSelection(m.id)}
+                                                                        onCheckedChange={() => toggleMeasurementSelection(m.id, !m.selected)}
                                                                         onDelete={() => m.isImplant ? deleteImplant(m.id) : deleteMeasurement(m.id)}
                                                                         setMeasurements={setMeasurements}
                                                                         m={m}
@@ -1545,11 +1378,6 @@ const RightSidebar = () => {
                 </>
             )}
 
-            <ReportDialog
-                open={isReportOpen}
-                onOpenChange={setIsReportOpen}
-                checkedCount={selectedCount}
-            />
 
 
         </div>

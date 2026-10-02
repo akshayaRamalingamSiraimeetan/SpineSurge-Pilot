@@ -30,6 +30,9 @@ export async function authenticate(
   res: Response,
   next: NextFunction
 ): Promise<void> {
+  // Already authenticated earlier in the chain (app.use('/api', authenticate)).
+  if (req.user) { next(); return; }
+
   // 1. Extract Authorization header
   const authHeader = req.headers['authorization'];
   if (!authHeader || !authHeader.startsWith('Bearer ')) {

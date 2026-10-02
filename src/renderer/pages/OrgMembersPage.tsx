@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Search, UserMinus, Ban, Users, Mail, X, Plus, RefreshCw, ExternalLink } from 'lucide-react';
 import { useAppStore } from '@/lib/store/index';
@@ -179,37 +179,53 @@ const OrgMembersPage = () => {
   const [actionLoading, setActionLoading] = useState<string | null>(null);
 
   // ── Fetch ─────────────────────────────────────────────────────────────────
+  // Reset on org change, ignore stale responses, surface errors (BUGS NAV-20).
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const fetchSeq = useRef(0);
   const fetchData = async () => {
     if (!orgId || !token) return;
+    const seq = ++fetchSeq.current;
     setLoading(true);
+    setLoadError(null);
     try {
       const membersRes = await fetch(`${API_BASE}/orgs/${orgId}/members`, {
         headers: { Authorization: `Bearer ${token}` },
       });
-
-      if (membersRes.ok) {
-        const data = await membersRes.json();
-        // Backend now returns { members, isAdmin }
-        if (Array.isArray(data)) {
-          // Backward compat fallback
-          setMembers(data);
-        } else {
-          setMembers(data.members ?? []);
-          setIsAdmin(data.isAdmin ?? false);
-        }
+      if (seq !== fetchSeq.current) return;
+      if (!membersRes.ok) {
+        setMembers([]);
+        setIsAdmin(false);
+        setLoadError(membersRes.status === 403 ? 'You no longer have access to this organization.' : 'Could not load members.');
+        return;
+      }
+      const data = await membersRes.json();
+      if (seq !== fetchSeq.current) return;
+      if (Array.isArray(data)) {
+        setMembers(data);
+      } else {
+        setMembers(data.members ?? []);
+        setIsAdmin(data.isAdmin ?? false);
       }
 
-      // Only fetch invitations if admin (endpoint will 403 for non-admins anyway)
       const invitesRes = await fetch(`${API_BASE}/invitations/org/${orgId}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
-      if (invitesRes.ok) setInvitations(await invitesRes.json());
+      if (seq !== fetchSeq.current) return;
+      setInvitations(invitesRes.ok ? await invitesRes.json() : []);
+    } catch {
+      if (seq === fetchSeq.current) setLoadError('Network error — please try again.');
     } finally {
-      setLoading(false);
+      if (seq === fetchSeq.current) setLoading(false);
     }
   };
 
-  useEffect(() => { fetchData(); }, [orgId, token]);
+  useEffect(() => {
+    setMembers([]);
+    setInvitations([]);
+    setIsAdmin(false);
+    void fetchData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [orgId, token]);
 
   // ── Member action (admin only) ────────────────────────────────────────────
   const handleMemberAction = async (membershipId: string, status: 'removed' | 'blacklisted') => {
@@ -223,7 +239,12 @@ const OrgMembersPage = () => {
       });
       if (res.ok) {
         setMembers(prev => prev.map(m => m.id === membershipId ? { ...m, status } : m));
+      } else {
+        const d = await res.json().catch(() => ({}));
+        alert(d.error ?? d.message ?? 'Could not update this member.');
       }
+    } catch {
+      alert('Network error — please try again.');
     } finally {
       setActionLoading(null);
       setConfirm(null);
@@ -310,6 +331,8 @@ const OrgMembersPage = () => {
 
           {loading ? (
             <div className="py-12 text-center text-sm text-[#4B5563]">Loading…</div>
+          ) : loadError ? (
+            <div className="py-12 text-center text-sm text-[#FF453A]">{loadError}</div>
           ) : filteredMembers.length === 0 ? (
             <div className="py-12 text-center text-sm text-[#4B5563]">{search ? 'No members match your search.' : 'No members yet.'}</div>
           ) : (

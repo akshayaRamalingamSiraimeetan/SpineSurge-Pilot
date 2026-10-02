@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { API_BASE } from '@/lib/api';
 
 const RegisterPage = () => {
     const setPendingEmail = useAppStore((state) => state.setPendingEmail);
@@ -72,13 +73,19 @@ const RegisterPage = () => {
 
         setLoading(true);
         try {
-            await axios.post(
-                "http://localhost:3001/auth/register",
+            const res = await axios.post(
+                `${API_BASE}/auth/register`,
                 { email, password, confirmPassword, terms_accepted: true },
-                { validateStatus: (s) => s < 600 }
+                { validateStatus: (s) => s < 500 }
             );
 
-            // On success (201 Created)
+            // Only 2xx is success — 400/409 must show an error (BUGS NAV-08)
+            if (res.status < 200 || res.status >= 300) {
+                const data = res.data as { error?: string; message?: string };
+                setApiError(data?.error ?? data?.message ?? "Registration failed. Please try again.");
+                return;
+            }
+
             setPendingEmail(email);
             sessionStorage.setItem("pendingEmail", email);
             navigate("/verify-email", { state: { email } });

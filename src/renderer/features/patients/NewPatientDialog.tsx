@@ -77,7 +77,7 @@ export function NewPatientDialog({ patient }: NewPatientDialogProps) {
         });
     };
 
-    const handleSubmit = (e: React.FormEvent) => {
+    const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
 
         if (patient) {
@@ -90,10 +90,10 @@ export function NewPatientDialog({ patient }: NewPatientDialogProps) {
                 sex: formData.sex,
                 contact: formData.contact
             };
-            updatePatient(updatedPatient);
+            await updatePatient(updatedPatient);
         } else {
             const newPatient: Patient = {
-                id: formData.id || `PAT-${Date.now().toString().slice(-6)}`,
+                id: formData.id.trim() || `PAT-${crypto.randomUUID().slice(0, 8).toUpperCase()}`,
                 name: formData.name,
                 age: parseInt(formData.age) || 0,
                 gender: formData.gender as 'M' | 'F' | 'O',
@@ -104,7 +104,18 @@ export function NewPatientDialog({ patient }: NewPatientDialogProps) {
                 sex: formData.sex,
                 contact: formData.contact
             };
-            addPatient(newPatient);
+            // POST /api/patients is an upsert — never let a typed ID overwrite
+            // an existing patient (BUGS WS-31).
+            if (useAppStore.getState().patients.some(p => p.id === newPatient.id)) {
+                alert(`A patient with ID "${newPatient.id}" already exists.`);
+                return;
+            }
+            try {
+                await addPatient(newPatient);
+            } catch (err) {
+                alert(`Could not save patient: ${err instanceof Error ? err.message : 'server error'}`);
+                return;
+            }
         }
 
         setOpen(false);
