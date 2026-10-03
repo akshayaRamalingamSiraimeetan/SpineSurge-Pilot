@@ -6,7 +6,7 @@ import vtkCubeSource from '@kitware/vtk.js/Filters/Sources/CubeSource';
 import vtkPolyData from '@kitware/vtk.js/Common/DataModel/PolyData';
 import vtkTubeFilter from '@kitware/vtk.js/Filters/General/TubeFilter';
 import type { PlanImplant } from '@/lib/store/types';
-import { cageAxisZ, screwDir, screwLength } from './implantModel';
+import { cageAxisZ, screwDir, screwLength, smoothRod } from './implantModel';
 import { add, lerp, scale, type Vec3 } from './vec3';
 
 /**
@@ -72,10 +72,11 @@ function screwActors(s: Extract<PlanImplant, { type: 'screw' }>, selected: boole
 function rodActors(rod: Extract<PlanImplant, { type: 'rod' }>, selected: boolean) {
     if (rod.points.length < 2) return [];
     const pd = vtkPolyData.newInstance();
-    pd.getPoints().setData(Float32Array.from(rod.points.flat()), 3);
-    const lines = new Uint32Array(rod.points.length + 1);
-    lines[0] = rod.points.length;
-    rod.points.forEach((_, i) => { lines[i + 1] = i; });
+    const pts = smoothRod(rod.points);
+    pd.getPoints().setData(Float32Array.from(pts.flat()), 3);
+    const lines = new Uint32Array(pts.length + 1);
+    lines[0] = pts.length;
+    pts.forEach((_, i) => { lines[i + 1] = i; });
     pd.getLines().setData(lines);
     const tube = vtkTubeFilter.newInstance({ radius: rod.diameter / 2, numberOfSides: 20, capping: true });
     tube.setInputData(pd);

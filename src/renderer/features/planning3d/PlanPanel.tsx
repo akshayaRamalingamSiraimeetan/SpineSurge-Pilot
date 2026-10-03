@@ -2,8 +2,7 @@ import { useShallow } from 'zustand/react/shallow';
 import { Trash2 } from 'lucide-react';
 import { useAppStore } from '@/lib/store';
 import type { PlanImplant } from '@/lib/store/types';
-import { screwLength, trajectoryAngles, withScrewLength } from './implantModel';
-import { dist } from './vec3';
+import { rodLength, screwLength, trajectoryAngles, withScrewLength } from './implantModel';
 
 /**
  * Right-sidebar panel for the 3D plan: implant list + editor for the selected
@@ -105,7 +104,7 @@ export function PlanPanel() {
                         </Field>
                         <Field name="Transverse angle"><span className="font-mono">{a.transverse.toFixed(1)}°</span></Field>
                         <Field name="Sagittal angle"><span className="font-mono">{a.sagittal.toFixed(1)}°</span></Field>
-                        <p className="text-[10px] text-[var(--text-3)] mt-1">Drag the entry or tip handle in any 2D view to change the trajectory; drag the body to move it.</p>
+                        <p className="text-[10px] text-[var(--text-3)] mt-1">In any 2D view: drag the entry or tip to change trajectory and length, the diamond to change the diameter, the body to move it.</p>
                     </div>
                 );
             })()}
@@ -118,7 +117,7 @@ export function PlanPanel() {
                             onChange={(e) => update({ ...selected, diameter: num(e.target.value, selected.diameter) })} />
                     </Field>
                     <Field name="Length (mm)">
-                        <span className="font-mono">{selected.points.slice(1).reduce((acc, p, i) => acc + dist(selected.points[i], p), 0).toFixed(1)}</span>
+                        <span className="font-mono">{rodLength(selected.points).toFixed(1)}</span>
                     </Field>
                     <Field name="Points"><span className="font-mono">{selected.points.length}</span></Field>
                 </div>

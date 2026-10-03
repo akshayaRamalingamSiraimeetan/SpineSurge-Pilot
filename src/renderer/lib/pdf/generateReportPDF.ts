@@ -38,14 +38,27 @@ export function renderReportPDF(model: ReportModel): jsPDF {
     // ── Header band ──────────────────────────────────────────────────────────
     doc.setFillColor(...accent);
     doc.rect(0, 0, pageWidth, 36, 'F');
+    // Hospital logo on a white tile at the left of the header (UI6-10)
+    let titleX = M;
+    if (d.logo?.dataUrl) {
+        const box = 24, pad = 2;
+        doc.setFillColor(255, 255, 255);
+        doc.roundedRect(M, 6, box, box, 2, 2, 'F');
+        const s = Math.min((box - 2 * pad) / d.logo.width, (box - 2 * pad) / d.logo.height);
+        const w = d.logo.width * s, h = d.logo.height * s;
+        try {
+            doc.addImage(d.logo.dataUrl, d.logo.dataUrl.startsWith('data:image/jpeg') ? 'JPEG' : 'PNG', M + (box - w) / 2, 6 + (box - h) / 2, w, h);
+            titleX = M + box + 5;
+        } catch { /* unreadable logo: header without it */ }
+    }
     doc.setTextColor(255, 255, 255);
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(fs(15));
-    doc.text(d.title || 'Surgical Planning Report', M, 15);
+    doc.text(d.title || 'Surgical Planning Report', titleX, 15);
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(fs(9));
     const org = [d.institution, d.department].filter(Boolean).join(' · ');
-    if (org) doc.text(org, M, 22);
+    if (org) doc.text(org, titleX, 22);
     doc.text(`REF ${model.refNo}`, pageWidth - M, 13, { align: 'right' });
     doc.text(`Plan date ${model.planDate}`, pageWidth - M, 19, { align: 'right' });
     doc.text(`Surgery date ${model.visit?.surgeryDate || 'TBD'}`, pageWidth - M, 25, { align: 'right' });
@@ -102,7 +115,20 @@ export function renderReportPDF(model: ReportModel): jsPDF {
                 heading(section.title);
                 const maxW = pageWidth - 2 * M;
                 const maxH = Math.min(150, pageHeight - 60);
-                if (model.images.length >= 2) {
+                if (model.images.some((im) => im.fullWidth)) {
+                    // 3D screenshots: stacked, full width
+                    for (const im of model.images) {
+                        let w = pageWidth - 2 * M;
+                        let h = (w * im.height) / im.width;
+                        const maxH = pageHeight - 60;
+                        if (h > maxH) { h = maxH; w = (h * im.width) / im.height; }
+                        ensure(h + 10);
+                        doc.addImage(im.dataUrl, 'JPEG', (pageWidth - w) / 2, y, w, h);
+                        doc.setFontSize(fs(8)); doc.setTextColor(100, 100, 100);
+                        doc.text(im.label, pageWidth / 2, y + h + 4, { align: 'center' });
+                        y += h + 10;
+                    }
+                } else if (model.images.length >= 2) {
                     const gap = 6;
                     const w = (maxW - gap) / 2;
                     const h = Math.min(maxH, Math.max(...model.images.slice(0, 2).map((im) => (w * im.height) / im.width)));
@@ -140,8 +166,47 @@ export function renderReportPDF(model: ReportModel): jsPDF {
             }
             case 'surgical_plan':
             case 'instrumentation': {
-                if (model.implantRows.length === 0) break;
+                if (model.implantRows.length === 0 && model.plans.length === 0) break;
                 heading(section.title);
+                // Every saved 2D plan: image, targets, preop vs plan, implants (UI9-05)
+                for (const plan of model.plans) {
+                    ensure(14);
+                    doc.setFont('helvetica', 'bold'); doc.setFontSize(fs(11)); doc.setTextColor(...HEAD);
+                    doc.text(`${plan.name}`, M, y);
+                    doc.setFont('helvetica', 'normal'); doc.setFontSize(fs(8.5)); doc.setTextColor(120, 120, 120);
+                    doc.text(`Saved ${new Date(plan.savedAt).toLocaleString()}${plan.osteotomies.length ? ' · ' + plan.osteotomies.join(', ') : ''}`, M, y + 5, { maxWidth: pageWidth - 2 * M });
+                    y += 10;
+                    if (plan.image) {
+                        const maxW = Math.min(pageWidth - 2 * M, 120);
+                        let w = maxW, h = (w * plan.image.height) / plan.image.width;
+                        const maxH = Math.min(130, pageHeight - 60);
+                        if (h > maxH) { h = maxH; w = (h * plan.image.width) / plan.image.height; }
+                        ensure(h + 6);
+                        doc.addImage(plan.image.dataUrl, 'JPEG', (pageWidth - w) / 2, y, w, h);
+                        y += h + 6;
+                    }
+                    if (plan.targetRows.length) {
+                        autoTable(doc, { ...tableStyles, startY: y,
+                            head: [['Target', 'Measured', 'Target', 'Difference', 'Plan']],
+                            body: plan.targetRows.map((r) => [r.parameter, r.measured, r.target, r.diff, r.plan]),
+                            columnStyles: { 0: { fontStyle: 'bold' } } });
+                        afterTable();
+                    }
+                    if (plan.compareRows.length) {
+                        autoTable(doc, { ...tableStyles, startY: y,
+                            head: [['Measurement', 'Preop', 'Plan', 'Difference']],
+                            body: plan.compareRows.map((r) => [r.name, r.preop, r.plan, r.diff]) });
+                        afterTable();
+                    }
+                    if (plan.implantRows.length) {
+                        autoTable(doc, { ...tableStyles, startY: y,
+                            head: [['#', 'Implant', 'Location', 'Size']],
+                            body: plan.implantRows.map((r, i) => [String(i + 1), r.type, r.location, r.size]),
+                            columnStyles: { 0: { cellWidth: 12, halign: 'center' } } });
+                        afterTable();
+                    }
+                }
+                if (model.implantRows.length === 0) break;
                 autoTable(doc, {
                     ...tableStyles, startY: y,
                     head: [['#', 'Implant', 'Location', 'Size / Trajectory']],

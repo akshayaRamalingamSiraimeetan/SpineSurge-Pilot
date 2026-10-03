@@ -142,7 +142,6 @@ const MainLayout: React.FC = () => {
     const location = useLocation();
     const currentImage      = useAppStore((state) => state.currentImage);
     const isComparisonMode  = useAppStore((state) => state.isComparisonMode);
-    const comparison        = useAppStore((state) => state.comparison);
     const inspectionMode    = useAppStore((state) => state.inspectionMode);
     const isDicomMode       = useAppStore((state) => state.isDicomMode);
     const leftOpen          = useAppStore((state) => state.isLeftSidebarOpen);
@@ -151,9 +150,8 @@ const MainLayout: React.FC = () => {
     const toggleRightSidebar = useAppStore((state) => state.toggleRightSidebar);
 
     const isReportTab = location.pathname === '/workspace' && new URLSearchParams(location.search).get('tab') === 'report';
-    const hasImageForToolbar = !isReportTab && !isDicomMode && (isComparisonMode
-        ? !!(comparison?.left?.image || comparison?.right?.image || currentImage)
-        : !!currentImage);
+    // Compare renders its own fixed toolbar between Image A and B (UI5-02).
+    const hasImageForToolbar = !isReportTab && !isDicomMode && !isComparisonMode && !!currentImage;
 
     // Header is 54px; inspection banner adds 40px.
     const topOffset = inspectionMode?.active ? 94 : 54;

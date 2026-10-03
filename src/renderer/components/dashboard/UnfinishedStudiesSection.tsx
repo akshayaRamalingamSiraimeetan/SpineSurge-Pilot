@@ -2,6 +2,7 @@ import { CheckCircle2, ClipboardList } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAppStore, getStudyDisplayName } from '@/lib/store/index';
 import EmptyStateCard from './EmptyStateCard';
+import { visibleStudies } from '@/lib/studies';
 
 interface UnfinishedRow {
   id:          string;
@@ -26,23 +27,18 @@ const UnfinishedStudiesSection = () => {
   const patients   = useAppStore((state) => state.patients);
   const openStudy  = useAppStore((state) => state.openStudy);
 
-  const rows: UnfinishedRow[] = patients
-    .filter((p) => !p.isArchived)
-    .flatMap((p) => {
-      const all = [...(p.studies ?? []), ...(p.visits ?? []).flatMap((v) => v.studies ?? [])];
-      const unique = Array.from(new Map(all.map((s) => [s.id, s])).values());
-      return unique
-        .filter((s) => !DONE.has(String(s.status ?? 'Draft')))
-        .map((s) => ({
-          id:         s.id,
-          studyName:  `${getStudyDisplayName(s)} · ${p.name || p.id}`,
-          diagnosis:  p.visits?.find((v) => v.id === s.visitId)?.diagnosis || '—',
-          lastEdited: s.acquisitionDate || '—',
-          status:     String(s.status ?? 'Draft'),
-          patientId:  p.id,
-          studyId:    s.id,
-        }));
-    })
+  // Same study list as the Patients page / Recent Studies (UI9-01)
+  const rows: UnfinishedRow[] = visibleStudies(patients)
+    .filter(({ study: s }) => !DONE.has(String(s.status ?? 'Draft')))
+    .map(({ patient: p, study: s }) => ({
+      id:         s.id,
+      studyName:  `${getStudyDisplayName(s)} · ${p.name || p.id}`,
+      diagnosis:  p.visits?.find((v) => v.id === s.visitId)?.diagnosis || '—',
+      lastEdited: s.acquisitionDate || '—',
+      status:     String(s.status ?? 'Draft'),
+      patientId:  p.id,
+      studyId:    s.id,
+    }))
     .sort((a, b) => (Date.parse(b.lastEdited) || 0) - (Date.parse(a.lastEdited) || 0))
     .slice(0, 10);
 

@@ -4,6 +4,7 @@ import { useAppStore } from '@/lib/store/index';
 import { cn } from '@/lib/utils';
 import { useTheme } from '@/components/theme-provider';
 import { buildReportModel, reportHasContent, type ReportModel } from '@/lib/report/reportModel';
+import { useSettings } from '@/lib/settings';
 import { useReportConfig } from '@/lib/report/useReportConfig';
 
 /**
@@ -28,6 +29,8 @@ export default function ReportBuilderWorkspace() {
     const patients           = useAppStore(s => s.patients);
     const updateContextState = useAppStore(s => s.updateContextState);
     const [config] = useReportConfig();
+    const defaultLogo = useSettings(s => s.defaultLogo);
+    const defaultInstitution = useSettings(s => s.defaultInstitution);
     const configKey = JSON.stringify(config);
 
     const activeState = contextStates.find((s) => s.contextId === activeContextId);
@@ -54,8 +57,8 @@ export default function ReportBuilderWorkspace() {
             }
         }, 250);
         return () => clearTimeout(timer);
-    }, [activeContextId, activeState?.measurements, activeState?.implants, configKey,
-        measurements, implants, threeDImplants, currentImage, comparison, canvas, patients]);
+    }, [activeContextId, activeState?.measurements, activeState?.implants, activeState?.toolState?.plans, configKey,
+        measurements, implants, threeDImplants, currentImage, comparison, canvas, patients, defaultLogo, defaultInstitution]);
 
     // Notes: controlled + per context so late-loaded notes show (RPT-21).
     const savedNotes: string = activeState?.toolState?.clinicalNotes ?? '';
@@ -95,8 +98,13 @@ export default function ReportBuilderWorkspace() {
                 className={cn("shadow-xl rounded-sm shrink-0 overflow-hidden", card)}
                 style={{ width: `${wMm}mm`, minHeight: `${hMm}mm`, maxWidth: '100%', fontSize: `${0.875 * d.fontScale}rem` }}
             >
-                <header className="flex justify-between items-start px-[14mm] py-[8mm] text-white" style={{ background: d.accentColor }}>
-                    <div>
+                <header className="flex justify-between items-start gap-4 px-[14mm] py-[8mm] text-white" style={{ background: d.accentColor }}>
+                    {d.logo && (
+                        <div className="shrink-0 rounded-md bg-white p-1.5 grid place-items-center" style={{ height: '18mm', width: '18mm' }}>
+                            <img src={d.logo.dataUrl} alt="Hospital logo" className="max-h-full max-w-full object-contain" />
+                        </div>
+                    )}
+                    <div className="flex-1 min-w-0">
                         <h1 className="font-bold tracking-tight" style={{ fontSize: `${1.5 * d.fontScale}rem` }}>{d.title || 'Surgical Planning Report'}</h1>
                         <p className="opacity-90 mt-1">{[d.institution, d.department].filter(Boolean).join(' · ')}</p>
                     </div>
@@ -143,7 +151,7 @@ export default function ReportBuilderWorkspace() {
                                         <Title text={section.title} />
                                         <div className={cn("grid gap-4", model.images.length > 1 ? "grid-cols-2" : "grid-cols-1")}>
                                             {model.images.map((im) => (
-                                                <figure key={im.label} className="flex flex-col items-center gap-2">
+                                                <figure key={im.label} className={cn("flex flex-col items-center gap-2", im.fullWidth && "col-span-2")}>
                                                     <img src={im.dataUrl} alt={im.label} className="max-w-full max-h-[420px] object-contain rounded" />
                                                     <figcaption className="text-xs uppercase opacity-70">{im.label}</figcaption>
                                                 </figure>
@@ -162,12 +170,40 @@ export default function ReportBuilderWorkspace() {
                                 );
                             case 'surgical_plan':
                             case 'instrumentation':
-                                if (model.implantRows.length === 0) return null;
+                                if (model.implantRows.length === 0 && model.plans.length === 0) return null;
                                 return (
-                                    <section key={section.id}>
+                                    <section key={section.id} className="space-y-6">
                                         <Title text={section.title} />
-                                        <Table head={['#', 'Implant', 'Location', 'Size / Trajectory']}
-                                            rows={model.implantRows.map((r, i) => [String(i + 1), r.type, r.location, r.size])} />
+                                        {/* Every saved 2D plan (UI9-05) */}
+                                        {model.plans.map((plan) => (
+                                            <div key={plan.name} className="space-y-3">
+                                                <div>
+                                                    <div className="font-semibold">{plan.name}</div>
+                                                    <div className="text-xs opacity-60">
+                                                        Saved {new Date(plan.savedAt).toLocaleString()}{plan.osteotomies.length ? ` · ${plan.osteotomies.join(', ')}` : ''}
+                                                    </div>
+                                                </div>
+                                                {plan.image && (
+                                                    <img src={plan.image.dataUrl} alt={plan.name} className="mx-auto max-w-full max-h-[420px] object-contain rounded" />
+                                                )}
+                                                {plan.targetRows.length > 0 && (
+                                                    <Table head={['Target', 'Measured', 'Target', 'Difference', 'Plan']}
+                                                        rows={plan.targetRows.map((r) => [r.parameter, r.measured, r.target, r.diff, r.plan])} />
+                                                )}
+                                                {plan.compareRows.length > 0 && (
+                                                    <Table head={['Measurement', 'Preop', 'Plan', 'Difference']}
+                                                        rows={plan.compareRows.map((r) => [r.name, r.preop, r.plan, r.diff])} />
+                                                )}
+                                                {plan.implantRows.length > 0 && (
+                                                    <Table head={['#', 'Implant', 'Location', 'Size']}
+                                                        rows={plan.implantRows.map((r, i) => [String(i + 1), r.type, r.location, r.size])} />
+                                                )}
+                                            </div>
+                                        ))}
+                                        {model.implantRows.length > 0 && (
+                                            <Table head={['#', 'Implant', 'Location', 'Size / Trajectory']}
+                                                rows={model.implantRows.map((r, i) => [String(i + 1), r.type, r.location, r.size])} />
+                                        )}
                                     </section>
                                 );
                             case 'compare_table':

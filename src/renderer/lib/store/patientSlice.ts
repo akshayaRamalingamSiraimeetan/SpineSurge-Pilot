@@ -89,7 +89,7 @@ function drainSaves(contextId: string) {
     saveInFlight.set(contextId, run);
 }
 
-const mapContexts = (fetched: any[]) => {
+export const mapContexts = (fetched: any[]) => {
     const contexts: Context[] = fetched.map((c: any) => ({
         id:           c.id,
         patientId:    c.patientId,

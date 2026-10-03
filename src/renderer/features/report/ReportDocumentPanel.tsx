@@ -1,5 +1,6 @@
-import { useState } from 'react';
-import { Download, Eye, FileText, RotateCcw } from 'lucide-react';
+import { useRef, useState } from 'react';
+import { Download, Eye, FileText, RotateCcw, ImagePlus, Trash2 } from 'lucide-react';
+import { readLogoFile, useSettings } from '@/lib/settings';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { useAppStore } from '@/lib/store';
@@ -46,6 +47,15 @@ export default function ReportDocumentPanel() {
     const [previewUrl, setPreviewUrl] = useState<string | null>(null);
     const [saveToRecord, setSaveToRecord] = useState(true);
     const [message, setMessage] = useState<string | null>(null);
+    const defaultLogo = useSettings((s) => s.defaultLogo);
+    const logoInput = useRef<HTMLInputElement>(null);
+    // undefined = use the default logo from Settings; null = no logo on this report
+    const logo = doc.logo === undefined ? defaultLogo : doc.logo;
+    const onLogoFile = async (file: File | undefined) => {
+        if (!file) return;
+        try { set({ logo: await readLogoFile(file) }); setMessage(null); }
+        catch (e) { setMessage(e instanceof Error ? e.message : 'Could not read the logo'); }
+    };
 
     const preview = async () => {
         setBusy('preview'); setMessage(null);
@@ -78,6 +88,29 @@ export default function ReportDocumentPanel() {
                 </div>
 
                 <div className="flex-1 overflow-y-auto">
+                    <Section title="Hospital logo">
+                        <div className="flex items-center gap-3">
+                            <div className="w-14 h-14 rounded-lg border border-[var(--border-2)] bg-white grid place-items-center overflow-hidden shrink-0">
+                                {logo ? <img src={logo.dataUrl} alt="Logo" className="max-w-full max-h-full object-contain" /> : <ImagePlus size={18} className="text-gray-400" />}
+                            </div>
+                            <div className="flex flex-col gap-1 min-w-0">
+                                <button onClick={() => logoInput.current?.click()} className="text-xs font-medium text-[var(--accent)] hover:opacity-80 text-left">
+                                    {logo ? 'Replace logo' : 'Upload logo'}
+                                </button>
+                                {logo && (
+                                    <button onClick={() => set({ logo: null })} className="flex items-center gap-1 text-[11px] text-[var(--text-3)] hover:text-[var(--text-2)]">
+                                        <Trash2 size={11} /> Remove from this report
+                                    </button>
+                                )}
+                                <span className="text-[10px] text-[var(--text-3)]">
+                                    {doc.logo === undefined && defaultLogo ? 'Default from Settings' : 'Shown left of the report title'}
+                                </span>
+                            </div>
+                        </div>
+                        <input ref={logoInput} type="file" accept="image/*" className="hidden"
+                            onChange={(e) => { void onLogoFile(e.target.files?.[0]); e.target.value = ''; }} />
+                    </Section>
+
                     <Section title="Header">
                         <input className={inputCls} value={doc.title} placeholder="Report title" onChange={(e) => set({ title: e.target.value })} />
                         <input className={inputCls} value={doc.institution} placeholder="Hospital / institution" onChange={(e) => set({ institution: e.target.value })} />

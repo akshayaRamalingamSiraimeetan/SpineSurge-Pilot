@@ -28,6 +28,9 @@ import { ImplantActorSync } from './actors3D';
 import { Overlay2D, type PlaceMode } from './Overlay2D';
 import { attach3DInteraction } from './interaction3D';
 import { applyBoneDisplay, applyCrop, BoneSegmentation } from './volumeDisplay';
+import { CropBox3D } from './CropBox3D';
+import { SliceSlider } from './SliceSlider';
+import { drawCell, registerViewerCapture } from './capture';
 import { makeCage, makeRod, makeScrew, PA_DIRECTION } from './implantModel';
 import { add, dot, len, norm, scale, sub, type Vec3 } from './vec3';
 
@@ -110,16 +113,18 @@ export function PlanningViewer({ fileList }: { fileList: (File | string)[] }) {
 
                 const g2 = ToolGroupManager.createToolGroup(tg2d)!;
                 [WindowLevelTool, PanTool, ZoomTool, StackScrollTool].forEach((T) => g2.addTool(T.toolName));
+                // Left = window/level, RIGHT = pan (UI10 — same as the 2D canvas), middle = zoom, wheel = slices
                 g2.setToolActive(WindowLevelTool.toolName, { bindings: [{ mouseButton: ToolsEnums.MouseBindings.Primary }] });
-                g2.setToolActive(PanTool.toolName, { bindings: [{ mouseButton: ToolsEnums.MouseBindings.Auxiliary }] });
-                g2.setToolActive(ZoomTool.toolName, { bindings: [{ mouseButton: ToolsEnums.MouseBindings.Secondary }] });
+                g2.setToolActive(PanTool.toolName, { bindings: [{ mouseButton: ToolsEnums.MouseBindings.Secondary }] });
+                g2.setToolActive(ZoomTool.toolName, { bindings: [{ mouseButton: ToolsEnums.MouseBindings.Auxiliary }] });
                 g2.setToolActive(StackScrollTool.toolName, { bindings: [{ mouseButton: ToolsEnums.MouseBindings.Wheel }] });
                 MPR.forEach((k) => g2.addViewport(ids[k], engineId));
 
                 const g3 = ToolGroupManager.createToolGroup(tg3d)!;
                 [TrackballRotateTool, PanTool, ZoomTool].forEach((T) => g3.addTool(T.toolName));
+                // 3D: left = rotate, RIGHT (or middle) = pan, wheel = zoom
                 g3.setToolActive(TrackballRotateTool.toolName, { bindings: [{ mouseButton: ToolsEnums.MouseBindings.Primary }] });
-                g3.setToolActive(PanTool.toolName, { bindings: [{ mouseButton: ToolsEnums.MouseBindings.Auxiliary }] });
+                g3.setToolActive(PanTool.toolName, { bindings: [{ mouseButton: ToolsEnums.MouseBindings.Secondary }, { mouseButton: ToolsEnums.MouseBindings.Auxiliary }] });
                 g3.setToolActive(ZoomTool.toolName, { bindings: [{ mouseButton: ToolsEnums.MouseBindings.Wheel }] });
                 g3.addViewport(ids.threeD, engineId);
 
@@ -189,6 +194,34 @@ export function PlanningViewer({ fileList }: { fileList: (File | string)[] }) {
         vp?.resetCamera();
         vp?.render();
     }, [getVp, dicom3D.focusCropTrigger]);
+
+    // Report screenshots: 4-up (with implant overlays) + the 3D view (UI10-07)
+    useEffect(() => {
+        if (!session) return;
+        registerViewerCapture(async () => {
+            try { session.engine.render(); } catch { return null; }
+            await new Promise((r) => requestAnimationFrame(() => r(null)));
+            const cells = (['axial', 'sagittal', 'coronal', 'threeD'] as ViewKey[]).map((k) => cellRefs.current[k]?.parentElement ?? null);
+            const W = 1600, H = 1200, cw = W / 2, ch = H / 2;
+            const out = document.createElement('canvas');
+            out.width = W; out.height = H;
+            const ctx = out.getContext('2d')!;
+            for (let i = 0; i < 4; i++) {
+                const cell = cells[i];
+                const k = (['axial', 'sagittal', 'coronal', 'threeD'] as ViewKey[])[i];
+                if (cell) await drawCell(ctx, cell, (i % 2) * cw, Math.floor(i / 2) * ch, cw - 2, ch - 2, VIEW_LABEL[k]);
+            }
+            let threeD: string | null = null;
+            if (cells[3]) {
+                const one = document.createElement('canvas');
+                one.width = 1200; one.height = 900;
+                await drawCell(one.getContext('2d')!, cells[3], 0, 0, 1200, 900, '3D');
+                threeD = one.toDataURL('image/jpeg', 0.92);
+            }
+            return { fourUp: out.toDataURL('image/jpeg', 0.92), threeD, width: W, height: H };
+        });
+        return () => registerViewerCapture(null);
+    }, [session]);
 
     // Bone labelmap on the MPRs in "segmentation" mode (debounced, after load).
     const segRef = useRef<BoneSegmentation | null>(null);
@@ -336,6 +369,14 @@ export function PlanningViewer({ fileList }: { fileList: (File | string)[] }) {
                             <div className="absolute top-2 left-2 z-10 text-[10px] font-bold uppercase tracking-widest text-white/60 pointer-events-none">
                                 {VIEW_LABEL[k]}
                             </div>
+                            {vp && volumeLoaded && <SliceSlider viewport={vp} />}
+                            {k === 'threeD' && dicom3D.isCroppingActive && getVp('threeD') && (
+                                <CropBox3D
+                                    viewport={getVp('threeD')!}
+                                    roi={dicom3D.roiCrop}
+                                    onChange={(patch) => store().updateRoiCrop(patch)}
+                                />
+                            )}
                             <button
                                 className="absolute top-1.5 right-1.5 z-10 p-1 rounded text-white/50 hover:text-white hover:bg-white/10"
                                 title={maximized === k ? 'Restore' : 'Maximise'}

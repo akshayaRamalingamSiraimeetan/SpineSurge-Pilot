@@ -1,6 +1,6 @@
 import { Measurement } from "@/lib/canvas/CanvasManager";
 import { getDistance, getMidpoint, getPolylineLength, getPolygonArea, getPolygonPerimeter } from "@/lib/canvas/GeometryUtils";
-import { drawMeasurementLabel } from "@/lib/canvas/CanvasUtils";
+import { drawLabel, drawPoint, drawPoints, strokeCircle, strokeLine, strokePolyline, toolColor, STYLE, withAlpha } from "@/lib/canvas/annotationStyle";
 
 export const drawPencil = (
     ctx: CanvasRenderingContext2D,
@@ -9,39 +9,12 @@ export const drawPencil = (
     ratio: number | null
 ) => {
     if (m.points.length < 2) return;
-
-    ctx.save();
-    ctx.strokeStyle = '#facc15'; // Yellowish for pencil
-    ctx.lineWidth = 2 / k;
-    ctx.lineCap = 'round';
-    ctx.lineJoin = 'round';
-
-    ctx.beginPath();
-    ctx.moveTo(m.points[0].x, m.points[0].y);
-    for (let i = 1; i < m.points.length; i++) {
-        ctx.lineTo(m.points[i].x, m.points[i].y);
-    }
-    ctx.stroke();
-
-    // Calculate length
-    let length = getPolylineLength(m.points);
-    let label = `${length.toFixed(1)} px`;
-
-    if (ratio) {
-        label = `${(length * ratio).toFixed(1)} mm`; // or cm depending on ratio
-    }
-
-    // Only update result if it changed significantly relative to precision, but here we just render
-    // Ideally, result should be updated in logic, but if we do it only on render, it won't persist well in list.
-    // NOTE: CanvasManager update logic usually handles "result" update. 
-    // Here we assume "result" is passed in correct or we calculate generic one for display. 
-    // If m.result is not set, we can display calculated one.
-
-    // Draw label at end
-    const lastPoint = m.points[m.points.length - 1];
-    drawMeasurementLabel(ctx, label, { x: lastPoint.x + 10 / k, y: lastPoint.y }, k);
-
-    ctx.restore();
+    const color = toolColor(m.toolKey);
+    strokePolyline(ctx, m.points, k, color);
+    const length = getPolylineLength(m.points);
+    const label = ratio ? `${(length * ratio).toFixed(1)} mm` : `${length.toFixed(1)} px`;
+    const last = m.points[m.points.length - 1];
+    drawLabel(ctx, label, m.measurement?.labelPos || { x: last.x + 10 / k, y: last.y }, k, color);
 };
 
 export const drawText = (
@@ -50,62 +23,12 @@ export const drawText = (
     k: number
 ) => {
     if (!m.points.length) return;
+    const color = toolColor(m.toolKey);
     const anchor = m.points[0];
     const labelPos = (m.measurement as any)?.labelPos || { x: anchor.x + 40 / k, y: anchor.y - 40 / k };
-    const text = m.result || "Text";
-
-    ctx.save();
-
-    // 1. Draw Anchor Circle
-    ctx.fillStyle = '#ffffff';
-    ctx.strokeStyle = '#3b82f6';
-    ctx.lineWidth = 1 / k;
-    ctx.beginPath();
-    ctx.arc(anchor.x, anchor.y, 4 / k, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.stroke();
-
-    // 2. Draw Dotted Leader Line
-    ctx.setLineDash([5 / k, 5 / k]);
-    ctx.strokeStyle = '#ffffff';
-    ctx.beginPath();
-    ctx.moveTo(anchor.x, anchor.y);
-    ctx.lineTo(labelPos.x, labelPos.y);
-    ctx.stroke();
-    ctx.setLineDash([]);
-
-    // 3. Draw Text Box
-    ctx.font = `bold ${14 / k}px Inter, sans-serif`;
-    const padding = 6 / k;
-    const width = ctx.measureText(text).width;
-    const height = 18 / k;
-
-    // Draw background
-    ctx.fillStyle = 'rgba(15, 23, 42, 0.9)'; // Dark slate background
-    ctx.strokeStyle = '#3b82f6';
-    ctx.lineWidth = 1.5 / k;
-
-    // Draw box centered or at position? Let's use labelPos as top-left or center.
-    // Usually easier if labelPos is the center of the text box for dragging.
-    const bx = labelPos.x - (width / 2 + padding);
-    const by = labelPos.y - (height / 2 + padding);
-
-    ctx.beginPath();
-    if ((ctx as any).roundRect) {
-        (ctx as any).roundRect(bx, by, width + padding * 2, height + padding * 2, 4 / k);
-    } else {
-        ctx.rect(bx, by, width + padding * 2, height + padding * 2);
-    }
-    ctx.fill();
-    ctx.stroke();
-
-    // Draw text
-    ctx.fillStyle = '#ffffff';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(text, labelPos.x, labelPos.y);
-
-    ctx.restore();
+    strokeLine(ctx, anchor, labelPos, k, color, true);
+    drawPoint(ctx, anchor, k, color);
+    drawLabel(ctx, m.result || "Text", labelPos, k, color);
 };
 
 export const drawCircle = (
@@ -115,40 +38,17 @@ export const drawCircle = (
     ratio: number | null
 ) => {
     if (m.points.length < 2) return;
-    const p1 = m.points[0];
-    const p2 = m.points[1];
+    const color = toolColor(m.toolKey);
+    const center = getMidpoint(m.points[0], m.points[1]);
+    const radius = getDistance(m.points[0], m.points[1]) / 2;
+    strokeCircle(ctx, center, radius, k, color);
+    drawPoints(ctx, m.points.slice(0, 2), k, color);
 
-    const center = getMidpoint(p1, p2);
-    const radius = getDistance(p1, p2) / 2;
-
-    ctx.save();
-    ctx.strokeStyle = '#a855f7';
-    ctx.lineWidth = 2 / k;
-    ctx.beginPath();
-    ctx.arc(center.x, center.y, radius, 0, Math.PI * 2);
-    ctx.stroke();
-
-    // Stats
-    const diameterPx = radius * 2;
-    const areaPx = Math.PI * radius * radius;
-    const perimeterPx = 2 * Math.PI * radius;
-
-    let dLabel = `${diameterPx.toFixed(1)} px`;
-    let aLabel = `${areaPx.toFixed(0)} px²`;
-    let pLabel = `${perimeterPx.toFixed(1)} px`;
-
-    if (ratio) {
-        dLabel = `${(diameterPx * ratio).toFixed(1)} mm`;
-        aLabel = `${(areaPx * ratio * ratio).toFixed(1)} mm²`;
-        pLabel = `${(perimeterPx * ratio).toFixed(1)} mm`;
-    }
-
-    // Display
-    drawMeasurementLabel(ctx, `D: ${dLabel}`, { x: center.x, y: center.y - 20 / k }, k);
-    drawMeasurementLabel(ctx, `A: ${aLabel}`, { x: center.x, y: center.y }, k);
-    drawMeasurementLabel(ctx, `P: ${pLabel}`, { x: center.x, y: center.y + 20 / k }, k);
-
-    ctx.restore();
+    const d = radius * 2, a = Math.PI * radius * radius, per = 2 * Math.PI * radius;
+    const text = ratio
+        ? `D: ${(d * ratio).toFixed(1)} mm\nA: ${(a * ratio * ratio).toFixed(1)} mm²\nP: ${(per * ratio).toFixed(1)} mm`
+        : `D: ${d.toFixed(1)} px\nA: ${a.toFixed(0)} px²\nP: ${per.toFixed(1)} px`;
+    drawLabel(ctx, text, m.measurement?.labelPos || { x: center.x + radius + 12 / k, y: center.y }, k, color);
 };
 
 export const drawEllipse = (
@@ -158,39 +58,28 @@ export const drawEllipse = (
     ratio: number | null
 ) => {
     if (m.points.length < 2) return;
-    // Assuming 2 points define bounding box diagonal
-    const p1 = m.points[0];
-    const p2 = m.points[1];
-
+    const color = toolColor(m.toolKey);
+    const [p1, p2] = m.points;
     const center = getMidpoint(p1, p2);
     const rx = Math.abs(p1.x - p2.x) / 2;
     const ry = Math.abs(p1.y - p2.y) / 2;
 
     ctx.save();
-    ctx.strokeStyle = '#ec4899';
-    ctx.lineWidth = 2 / k;
+    ctx.strokeStyle = color;
+    ctx.lineWidth = STYLE.line / k;
     ctx.beginPath();
     ctx.ellipse(center.x, center.y, rx, ry, 0, 0, Math.PI * 2);
     ctx.stroke();
-
-    // Approx Area/Perimeter
-    const areaPx = Math.PI * rx * ry;
-    // Ramanujan approximation for perimeter
-    const h = Math.pow(rx - ry, 2) / Math.pow(rx + ry, 2);
-    const perimeterPx = Math.PI * (rx + ry) * (1 + (3 * h) / (10 + Math.sqrt(4 - 3 * h)));
-
-    let aLabel = `${areaPx.toFixed(0)} px²`;
-    let pLabel = `${perimeterPx.toFixed(1)} px`;
-
-    if (ratio) {
-        aLabel = `${(areaPx * ratio * ratio).toFixed(1)} mm²`;
-        pLabel = `${(perimeterPx * ratio).toFixed(1)} mm`;
-    }
-
-    drawMeasurementLabel(ctx, `Area: ${aLabel}`, { x: center.x, y: center.y - 10 / k }, k);
-    drawMeasurementLabel(ctx, `Perim: ${pLabel}`, { x: center.x, y: center.y + 10 / k }, k);
-
     ctx.restore();
+    drawPoints(ctx, [p1, p2], k, color);
+
+    const areaPx = Math.PI * rx * ry;
+    const h = Math.pow(rx - ry, 2) / Math.pow(rx + ry || 1, 2);
+    const perimeterPx = Math.PI * (rx + ry) * (1 + (3 * h) / (10 + Math.sqrt(4 - 3 * h)));
+    const text = ratio
+        ? `Area: ${(areaPx * ratio * ratio).toFixed(1)} mm²\nPerim: ${(perimeterPx * ratio).toFixed(1)} mm`
+        : `Area: ${areaPx.toFixed(0)} px²\nPerim: ${perimeterPx.toFixed(1)} px`;
+    drawLabel(ctx, text, m.measurement?.labelPos || { x: center.x + rx + 12 / k, y: center.y }, k, color);
 };
 
 export const drawPolygon = (
@@ -199,34 +88,12 @@ export const drawPolygon = (
     k: number,
     ratio: number | null
 ) => {
-    if (m.points.length < 3) {
-        // Just draw lines if not enough points
-        if (m.points.length > 0) {
-            ctx.save();
-            ctx.strokeStyle = '#10b981';
-            ctx.lineWidth = 2 / k;
-            ctx.beginPath();
-            ctx.moveTo(m.points[0].x, m.points[0].y);
-            m.points.forEach(p => ctx.lineTo(p.x, p.y));
-            ctx.stroke();
-            ctx.restore();
-        }
-        return;
-    }
-
-    ctx.save();
-    ctx.strokeStyle = '#10b981';
-    ctx.fillStyle = 'rgba(16, 185, 129, 0.1)';
-    ctx.lineWidth = 2 / k;
-
-    ctx.beginPath();
-    ctx.moveTo(m.points[0].x, m.points[0].y);
-    for (let i = 1; i < m.points.length; i++) {
-        ctx.lineTo(m.points[i].x, m.points[i].y);
-    }
-    ctx.closePath();
-    ctx.fill();
-    ctx.stroke();
+    if (m.points.length < 2) return;
+    const color = toolColor(m.toolKey);
+    const closed = m.points.length >= 3;
+    strokePolyline(ctx, m.points, k, color, { closed, fill: closed });
+    drawPoints(ctx, m.points, k, color);
+    if (!closed) return;
 
     const areaPx = getPolygonArea(m.points);
     const perimeterPx = getPolygonPerimeter(m.points);
@@ -234,17 +101,52 @@ export const drawPolygon = (
         x: m.points.reduce((sum, p) => sum + p.x, 0) / m.points.length,
         y: m.points.reduce((sum, p) => sum + p.y, 0) / m.points.length
     };
+    const text = ratio
+        ? `A: ${(areaPx * ratio * ratio).toFixed(1)} mm²\nP: ${(perimeterPx * ratio).toFixed(1)} mm`
+        : `A: ${areaPx.toFixed(0)} px²\nP: ${perimeterPx.toFixed(1)} px`;
+    drawLabel(ctx, text, m.measurement?.labelPos || center, k, color);
+};
 
-    let aLabel = `${areaPx.toFixed(0)} px²`;
-    let pLabel = `${perimeterPx.toFixed(1)} px`;
-
-    if (ratio) {
-        aLabel = `${(areaPx * ratio * ratio).toFixed(1)} mm²`;
-        pLabel = `${(perimeterPx * ratio).toFixed(1)} mm`;
+/** 2-point angle (vs horizontal) and 3-point angle (vertex = 2nd point). */
+export const drawGenericAngle = (
+    ctx: CanvasRenderingContext2D,
+    m: Measurement,
+    k: number
+) => {
+    const pts = m.points;
+    if (pts.length < 2) return;
+    const color = toolColor(m.toolKey);
+    if (m.toolKey === 'angle-3pt' && pts.length >= 3) {
+        const [a, v, b] = pts;
+        strokeLine(ctx, v, a, k, color);
+        strokeLine(ctx, v, b, k, color);
+        const r = Math.min(getDistance(v, a), getDistance(v, b), 60 / k) * 0.6;
+        drawArcBetween(ctx, v, r, Math.atan2(a.y - v.y, a.x - v.x), Math.atan2(b.y - v.y, b.x - v.x), k, color);
+    } else {
+        const [a, b] = pts;
+        const left = a.x < b.x ? a : b, right = a.x < b.x ? b : a;
+        strokeLine(ctx, left, { x: right.x, y: left.y }, k, color, true);
+        strokeLine(ctx, a, b, k, color);
     }
+    drawPoints(ctx, pts, k, color);
+    if (m.result) {
+        const anchor = pts[Math.floor(pts.length / 2)];
+        drawLabel(ctx, String(m.result), m.measurement?.labelPos || { x: anchor.x + 16 / k, y: anchor.y - 16 / k }, k, color);
+    }
+};
 
-    drawMeasurementLabel(ctx, `A: ${aLabel}`, { x: center.x, y: center.y - 10 / k }, k);
-    drawMeasurementLabel(ctx, `P: ${pLabel}`, { x: center.x, y: center.y + 10 / k }, k);
-
+const drawArcBetween = (ctx: CanvasRenderingContext2D, c: { x: number; y: number }, r: number, a0: number, a1: number, k: number, color: string) => {
+    let diff = a1 - a0;
+    while (diff <= -Math.PI) diff += 2 * Math.PI;
+    while (diff > Math.PI) diff -= 2 * Math.PI;
+    ctx.save();
+    ctx.strokeStyle = color;
+    ctx.lineWidth = STYLE.arc / k;
+    ctx.beginPath();
+    ctx.arc(c.x, c.y, r, a0, a0 + diff, diff < 0);
+    ctx.stroke();
+    ctx.fillStyle = withAlpha(color, STYLE.fillAlpha);
+    ctx.lineTo(c.x, c.y);
+    ctx.fill();
     ctx.restore();
 };

@@ -1,298 +1,178 @@
-import { Search, Upload, Image as ImageIcon, ChevronRight, FolderOpen, RefreshCw } from "lucide-react";
+import { Search, Upload, Image as ImageIcon, ChevronRight, FolderOpen, ImagePlus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useAppStore } from "@/lib/store/index";
 import { useNavigate, useLocation } from "react-router-dom";
 import CanvasWorkspace from "@/features/canvas/CanvasWorkspace";
+import BottomToolbar from "@/features/canvas/BottomToolbar";
 import { useEffect, useMemo, useState } from "react";
-import { EmptyImport } from "@/pages/MainPage";
 import { ImportDialog } from "@/features/import-export/ImportDialog";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { cn } from "@/lib/utils";
-import { useTheme } from "@/components/theme-provider";
-import { getStudyDisplayName } from "@/lib/store/types";
+import { getStudyDisplayName, type Study } from "@/lib/store/types";
 
 type PickerStep = "ROOT" | "PATIENTS" | "STUDIES";
 
 /* ─────────────────────────────────────────────────────────────────────────────
-   PanePicker — reusable overlay for either the left or right pane.
-
-   RULES OF HOOKS: every hook is called unconditionally at the top of the
-   function.  The guard that short-circuits to `null` comes AFTER all hooks.
+   Image picker dialog — choose an existing study or import a local image.
+   Opened from the small import icon in the top-right corner of each pane.
 ───────────────────────────────────────────────────────────────────────────── */
-interface PanePickerProps {
-    side: "left" | "right";
-    label: string;
-}
-
-const PanePicker = ({ side, label }: PanePickerProps) => {
-    /* ── All hooks — unconditional, at the top level ── */
-    const { resolvedTheme } = useTheme();
-    const isDark = resolvedTheme === "dark";
-
+const PickerDialog = ({ side, label, open, onOpenChange }: {
+    side: "left" | "right"; label: string; open: boolean; onOpenChange: (o: boolean) => void;
+}) => {
     const patients = useAppStore((s) => s.patients);
     const setComparisonImage = useAppStore((s) => s.setComparisonImage);
-    const comparison = useAppStore((s) => s.comparison);
 
     const [step, setStep] = useState<PickerStep>("ROOT");
     const [query, setQuery] = useState("");
     const [selectedPatientId, setSelectedPatientId] = useState<string | null>(null);
 
+    // The import wizard opens on top of this dialog; close once the image arrives.
+    const paneImage = useAppStore((s) => (side === "right" ? s.comparison.right.image : s.currentImage));
+    useEffect(() => { if (open && paneImage) onOpenChange(false); }, [open, paneImage, onOpenChange]);
+
     const selectedPatient = useMemo(
         () => patients.find((p) => p.id === selectedPatientId) ?? null,
         [patients, selectedPatientId],
     );
-
-    const filteredPatients = useMemo(
-        () =>
-            patients.filter(
-                (p) =>
-                    (p.name || "").toLowerCase().includes(query.toLowerCase()) ||
-                    (p.id || "").toLowerCase().includes(query.toLowerCase()),
-            ),
-        [patients, query],
-    );
-
-    const allStudiesWithScans = useMemo(() => {
+    const filteredPatients = useMemo(() => {
+        const q = query.toLowerCase();
+        return patients.filter((p) => (p.name || "").toLowerCase().includes(q) || (p.id || "").toLowerCase().includes(q));
+    }, [patients, query]);
+    const studiesWithScans = useMemo(() => {
         if (!selectedPatient) return [];
         return (selectedPatient.studies ?? [])
-            .map((s) => ({
-                study: s,
-                scans: (s.scans ?? []).filter((sc) => !!sc.imageUrl),
-            }))
+            .map((s) => ({ study: s, scans: (s.scans ?? []).filter((sc) => !!sc.imageUrl) }))
             .filter((e) => e.scans.length > 0);
     }, [selectedPatient]);
 
-    /* ── Early-return guard comes AFTER all hooks ── */
-    if (comparison[side].image) return null;
-
-    /* ── Helpers (non-hook) ── */
-    const handleSelectScan = (imageUrl: string) => {
-        setComparisonImage(side, imageUrl);
+    const pick = async (study: Study, imageUrl: string) => {
+        onOpenChange(false);
+        if (side === "right") setComparisonImage("right", imageUrl);
+        else await useAppStore.getState().openStudy(study.patientId, study.id); // Image A = the case
     };
 
-    const card = cn(
-        "rounded-2xl border p-5 transition-all",
-        isDark
-            ? "bg-[var(--surface)] border-[var(--border)] text-[var(--text)]"
-            : "bg-[var(--surface)] border-[var(--border)] text-[var(--text)]",
-    );
-
-    const btn = cn(
-        "w-full flex items-center gap-3 rounded-xl p-3 text-left transition-all cursor-pointer",
-        isDark
-            ? "hover:bg-[var(--surface-2)] text-[var(--text-2)] hover:text-[var(--text)]"
-            : "hover:bg-[var(--surface-2)] text-[var(--text-2)] hover:text-[var(--text)]",
-    );
+    const card = "w-full text-left rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4 transition-colors hover:border-[var(--accent)]/50 hover:bg-[var(--surface-2)] group";
+    const row = "w-full flex items-center gap-3 rounded-lg p-2.5 text-left transition-colors hover:bg-[var(--surface-2)] text-[var(--text-2)] hover:text-[var(--text)]";
+    const iconBox = "h-9 w-9 rounded-lg flex items-center justify-center flex-shrink-0 bg-[var(--surface-2)] text-[var(--accent)]";
 
     return (
-        <div className="absolute inset-0 z-30 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-            <div className={cn(
-                "w-[420px] max-h-[560px] flex flex-col shadow-2xl rounded-2xl border overflow-hidden",
-                isDark ? "bg-[var(--bg)] border-[var(--border)]" : "bg-[var(--surface-2)] border-[var(--border)]",
-            )}>
+        <Dialog open={open} onOpenChange={onOpenChange}>
+            <DialogContent className="sm:max-w-md p-0 gap-0 overflow-hidden">
+                <DialogHeader className="px-5 pt-5 pb-3 border-b border-[var(--border)]">
+                    {step !== "ROOT" && (
+                        <button
+                            className="self-start text-xs font-semibold text-[var(--accent)] hover:opacity-80 mb-1"
+                            onClick={() => setStep(step === "STUDIES" ? "PATIENTS" : "ROOT")}
+                        >
+                            ← Back
+                        </button>
+                    )}
+                    <DialogTitle>
+                        {step === "ROOT" && `Load ${label}`}
+                        {step === "PATIENTS" && "Select patient"}
+                        {step === "STUDIES" && (selectedPatient?.name || "Select study")}
+                    </DialogTitle>
+                    <DialogDescription>
+                        {step === "ROOT" && (side === "left"
+                            ? "Image A is the case image shared with Assessment and Planning."
+                            : "Choose an image to compare with the case.")}
+                        {step === "PATIENTS" && "Pick a patient to browse their studies."}
+                        {step === "STUDIES" && `Pick a scan for ${label}.`}
+                    </DialogDescription>
+                </DialogHeader>
 
-                {/* Header */}
-                <div className={cn(
-                    "flex items-center justify-between px-5 py-4 border-b",
-                    isDark ? "border-[var(--border)]" : "border-[var(--border)]",
-                )}>
-                    <div>
-                        {step !== "ROOT" && (
-                            <button
-                                className={cn(
-                                    "text-xs font-semibold mb-0.5 flex items-center gap-1 transition-colors",
-                                    isDark ? "text-[#FF453A] hover:text-red-400" : "text-red-600 hover:text-red-500",
-                                )}
-                                onClick={() => {
-                                    if (step === "STUDIES") setStep("PATIENTS");
-                                    else setStep("ROOT");
-                                }}
-                            >
-                                ← Back
-                            </button>
-                        )}
-                        <h3 className="text-base font-bold">
-                            {step === "ROOT" && "Load Comparison Scan"}
-                            {step === "PATIENTS" && "Select Patient"}
-                            {step === "STUDIES" && (selectedPatient?.name || "Select Study")}
-                        </h3>
-                        <p className={cn("text-xs mt-0.5", isDark ? "text-[var(--text-3)]" : "text-[var(--text-3)]")}>
-                            {step === "ROOT" && `Choose a source for ${label}`}
-                            {step === "PATIENTS" && "Pick a patient to browse their studies"}
-                            {step === "STUDIES" && `Pick a scan to load into ${label}`}
-                        </p>
-                    </div>
-                    <div className={cn(
-                        "text-[10px] font-bold uppercase tracking-widest px-2 py-1 rounded-full",
-                        isDark ? "bg-[var(--surface-3)] text-[var(--text-3)]" : "bg-[var(--surface-2)] text-[var(--text-3)]",
-                    )}>
-                        {label}
-                    </div>
-                </div>
-
-                {/* Body */}
-                <ScrollArea className="flex-1 min-h-0 p-4">
-
-                    {/* ── ROOT ── */}
-                    {step === "ROOT" && (
-                        <div className="flex flex-col gap-3">
-                            {/* Option 1: Existing study */}
-                            <button
-                                className={cn(card, "w-full text-left hover:border-[#FF453A]/40 hover:shadow-lg transition-all group")}
-                                onClick={() => setStep("PATIENTS")}
-                            >
-                                <div className="flex items-center gap-3">
-                                    <div className={cn(
-                                        "h-10 w-10 rounded-xl flex items-center justify-center flex-shrink-0",
-                                        isDark ? "bg-[var(--surface-3)] group-hover:bg-[rgba(255,69,58,0.12)]" : "bg-[var(--surface)] group-hover:bg-red-50",
-                                    )}>
-                                        <FolderOpen className={cn("h-5 w-5", isDark ? "text-[#FF453A]" : "text-red-600")} />
-                                    </div>
-                                    <div className="flex-1 min-w-0">
-                                        <div className="font-bold text-sm">Choose Existing Study</div>
-                                        <div className={cn("text-xs mt-0.5", isDark ? "text-[var(--text-3)]" : "text-[var(--text-3)]")}>
-                                            Browse from patients already in the system
-                                        </div>
-                                    </div>
-                                    <ChevronRight className={cn("h-4 w-4 flex-shrink-0", isDark ? "text-[var(--text-3)]" : "text-[var(--text-3)]")} />
-                                </div>
-                            </button>
-
-                            {/* Option 2: Import local image — reuses existing ImportDialog */}
-                            <ImportDialog targetSide={side}>
-                                <button className={cn(card, "w-full text-left hover:border-[#FF453A]/40 hover:shadow-lg transition-all group cursor-pointer")}>
+                <ScrollArea className="max-h-[420px]">
+                    <div className="p-4 flex flex-col gap-2">
+                        {step === "ROOT" && (
+                            <>
+                                <button className={card} onClick={() => setStep("PATIENTS")}>
                                     <div className="flex items-center gap-3">
-                                        <div className={cn(
-                                            "h-10 w-10 rounded-xl flex items-center justify-center flex-shrink-0",
-                                            isDark ? "bg-[var(--surface-3)] group-hover:bg-[rgba(255,69,58,0.12)]" : "bg-[var(--surface)] group-hover:bg-red-50",
-                                        )}>
-                                            <Upload className={cn("h-5 w-5", isDark ? "text-[#FF453A]" : "text-red-600")} />
-                                        </div>
+                                        <div className={iconBox}><FolderOpen className="h-4 w-4" /></div>
                                         <div className="flex-1 min-w-0">
-                                            <div className="font-bold text-sm">Import Local Image</div>
-                                            <div className={cn("text-xs mt-0.5", isDark ? "text-[var(--text-3)]" : "text-[var(--text-3)]")}>
-                                                Upload a file from your computer
-                                                <span className={cn("ml-2 text-[10px] font-bold", isDark ? "text-[var(--text-3)]" : "text-[var(--text-3)]")}>
-                                                    DICOM · JPG · PNG · TIFF
-                                                </span>
-                                            </div>
+                                            <div className="font-semibold text-sm text-[var(--text)]">Choose existing study</div>
+                                            <div className="text-xs text-[var(--text-3)] mt-0.5">Browse patients already in the system</div>
                                         </div>
-                                        <ChevronRight className={cn("h-4 w-4 flex-shrink-0", isDark ? "text-[var(--text-3)]" : "text-[var(--text-3)]")} />
+                                        <ChevronRight className="h-4 w-4 text-[var(--text-3)]" />
                                     </div>
                                 </button>
-                            </ImportDialog>
-                        </div>
-                    )}
-
-                    {/* ── PATIENTS ── */}
-                    {step === "PATIENTS" && (
-                        <div className="flex flex-col gap-2">
-                            <div className="relative mb-1">
-                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-                                <Input
-                                    value={query}
-                                    onChange={(e) => setQuery(e.target.value)}
-                                    placeholder="Search patients…"
-                                    className={cn(
-                                        "pl-9 h-8 text-sm",
-                                        isDark ? "bg-[var(--surface)] border-[var(--border)]" : "bg-[var(--surface)] border-[var(--border)]",
-                                    )}
-                                    autoFocus
-                                />
-                            </div>
-
-                            {filteredPatients.length === 0 && (
-                                <div className={cn("text-center py-8 text-sm", isDark ? "text-[var(--text-3)]" : "text-[var(--text-3)]")}>
-                                    No patients found
-                                </div>
-                            )}
-
-                            {filteredPatients.map((p) => {
-                                const scanCount = (p.studies ?? []).reduce(
-                                    (acc, s) => acc + (s.scans?.length ?? 0),
-                                    0,
-                                );
-                                return (
-                                    <button
-                                        key={p.id}
-                                        className={btn}
-                                        onClick={() => {
-                                            setSelectedPatientId(p.id);
-                                            setStep("STUDIES");
-                                        }}
-                                    >
-                                        <div className={cn(
-                                            "h-8 w-8 rounded-full flex items-center justify-center font-bold text-sm flex-shrink-0",
-                                            isDark ? "bg-[var(--surface-3)] text-[#FF453A]" : "bg-red-50 text-red-600",
-                                        )}>
-                                            {(p.name || "?")[0].toUpperCase()}
-                                        </div>
-                                        <div className="flex-1 min-w-0">
-                                            <div className="font-semibold text-sm truncate">{p.name}</div>
-                                            <div className={cn("text-xs", isDark ? "text-[var(--text-3)]" : "text-[var(--text-3)]")}>
-                                                {p.id} · {scanCount} scan{scanCount !== 1 ? "s" : ""}
+                                <ImportDialog targetSide={side === "right" ? "right" : undefined}>
+                                    <button className={card}>
+                                        <div className="flex items-center gap-3">
+                                            <div className={iconBox}><Upload className="h-4 w-4" /></div>
+                                            <div className="flex-1 min-w-0">
+                                                <div className="font-semibold text-sm text-[var(--text)]">Import local image</div>
+                                                <div className="text-xs text-[var(--text-3)] mt-0.5">DICOM · JPG · PNG · TIFF from your computer</div>
                                             </div>
+                                            <ChevronRight className="h-4 w-4 text-[var(--text-3)]" />
                                         </div>
-                                        <ChevronRight className="h-4 w-4 flex-shrink-0 opacity-50" />
                                     </button>
-                                );
-                            })}
-                        </div>
-                    )}
+                                </ImportDialog>
+                            </>
+                        )}
 
-                    {/* ── STUDIES ── */}
-                    {step === "STUDIES" && (
-                        <div className="flex flex-col gap-3">
-                            {allStudiesWithScans.length === 0 && (
-                                <div className={cn("text-center py-8 text-sm", isDark ? "text-[var(--text-3)]" : "text-[var(--text-3)]")}>
-                                    No scans available for this patient
+                        {step === "PATIENTS" && (
+                            <>
+                                <div className="relative mb-1">
+                                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-[var(--text-3)]" />
+                                    <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search patients…" className="pl-9 h-8 text-sm" autoFocus />
                                 </div>
-                            )}
-
-                            {allStudiesWithScans.map(({ study, scans }) => (
-                                <div key={study.id}>
-                                    <div className={cn(
-                                        "text-[10px] font-bold uppercase tracking-widest mb-1.5 px-1",
-                                        isDark ? "text-[var(--text-3)]" : "text-[var(--text-3)]",
-                                    )}>
-                                        {getStudyDisplayName(study)} · {study.acquisitionDate}
-                                    </div>
-                                    {scans.map((sc) => (
-                                        <button
-                                            key={sc.id}
-                                            className={btn}
-                                            onClick={() => handleSelectScan(sc.imageUrl)}
-                                        >
-                                            <div className={cn(
-                                                "h-8 w-8 rounded-lg flex items-center justify-center flex-shrink-0",
-                                                isDark ? "bg-[var(--surface-3)]" : "bg-[var(--surface)]",
-                                            )}>
-                                                <ImageIcon className={cn("h-4 w-4", isDark ? "text-[#FF453A]" : "text-red-600")} />
+                                {filteredPatients.length === 0 && (
+                                    <div className="text-center py-8 text-sm text-[var(--text-3)]">No patients found</div>
+                                )}
+                                {filteredPatients.map((p) => {
+                                    const scanCount = (p.studies ?? []).reduce((acc, s) => acc + (s.scans?.length ?? 0), 0);
+                                    return (
+                                        <button key={p.id} className={row} onClick={() => { setSelectedPatientId(p.id); setStep("STUDIES"); }}>
+                                            <div className="h-8 w-8 rounded-full flex items-center justify-center font-bold text-sm flex-shrink-0 bg-[var(--surface-2)] text-[var(--accent)]">
+                                                {(p.name || "?")[0].toUpperCase()}
                                             </div>
                                             <div className="flex-1 min-w-0">
-                                                <div className="font-semibold text-sm truncate">{sc.type} · {sc.date}</div>
-                                                <div className={cn("text-[10px] font-mono truncate", isDark ? "text-[var(--text-3)]" : "text-[var(--text-3)]")}>
-                                                    {sc.id}
-                                                </div>
+                                                <div className="font-semibold text-sm truncate text-[var(--text)]">{p.name || "Unnamed patient"}</div>
+                                                <div className="text-xs text-[var(--text-3)]">{p.id} · {scanCount} scan{scanCount !== 1 ? "s" : ""}</div>
                                             </div>
-                                            <ChevronRight className="h-4 w-4 flex-shrink-0 opacity-50" />
+                                            <ChevronRight className="h-4 w-4 opacity-50" />
                                         </button>
-                                    ))}
-                                </div>
-                            ))}
-                        </div>
-                    )}
+                                    );
+                                })}
+                            </>
+                        )}
+
+                        {step === "STUDIES" && (
+                            <>
+                                {studiesWithScans.length === 0 && (
+                                    <div className="text-center py-8 text-sm text-[var(--text-3)]">No scans available for this patient</div>
+                                )}
+                                {studiesWithScans.map(({ study, scans }) => (
+                                    <div key={study.id}>
+                                        <div className="text-[10px] font-bold uppercase tracking-widest mb-1 px-1 text-[var(--text-3)]">
+                                            {getStudyDisplayName(study)} · {study.acquisitionDate}
+                                        </div>
+                                        {scans.map((sc) => (
+                                            <button key={sc.id} className={row} onClick={() => void pick(study, sc.imageUrl)}>
+                                                <div className={iconBox}><ImageIcon className="h-4 w-4" /></div>
+                                                <div className="flex-1 min-w-0">
+                                                    <div className="font-semibold text-sm truncate text-[var(--text)]">{sc.type} · {sc.date}</div>
+                                                    <div className="text-[10px] font-mono truncate text-[var(--text-3)]">{sc.id}</div>
+                                                </div>
+                                                <ChevronRight className="h-4 w-4 opacity-50" />
+                                            </button>
+                                        ))}
+                                    </div>
+                                ))}
+                            </>
+                        )}
+                    </div>
                 </ScrollArea>
-            </div>
-        </div>
+            </DialogContent>
+        </Dialog>
     );
 };
 
 /* ─────────────────────────────────────────────────────────────────────────────
    ComparePage — Image A is the case (same image + measurements as Assessment
    and Planning); Image B is the only separate pane and is saved with the case.
+   The image toolbar sits in a fixed gutter between the panes (UI5-02).
 ───────────────────────────────────────────────────────────────────────────── */
 const ComparePage = () => {
     const navigate = useNavigate();
@@ -304,6 +184,7 @@ const ComparePage = () => {
     const isDicomMode        = useAppStore((s) => s.isDicomMode);
     const imageB             = useAppStore((s) => s.comparison.right.image);
     const [confirmReplace, setConfirmReplace] = useState(false);
+    const [pickerSide, setPickerSide] = useState<"left" | "right" | null>(null);
 
     // Deep link (?patientId=&contextId=): load the case, then strip the params.
     useEffect(() => {
@@ -340,31 +221,53 @@ const ComparePage = () => {
         </div>
     );
 
+    const importButton = (side: "left" | "right", title: string) => (
+        <button
+            title={title}
+            onClick={(e) => {
+                e.stopPropagation();
+                if (side === "right" && imageB) setConfirmReplace(true);
+                else setPickerSide(side);
+            }}
+            className="absolute top-2 right-2 z-20 h-8 w-8 grid place-items-center rounded-lg bg-black/60 hover:bg-black/80 text-white/80 hover:text-white backdrop-blur-sm transition-colors"
+        >
+            <ImagePlus className="h-4 w-4" />
+        </button>
+    );
+
+    const emptyHint = (text: string) => (
+        <div className="absolute inset-0 grid place-items-center pointer-events-none">
+            <p className="text-xs text-[var(--text-3)] text-center max-w-[240px]">{text}</p>
+        </div>
+    );
+
     return (
-        <div className="flex h-full bg-background relative p-2 gap-2">
-            <div className="flex-1 flex flex-col relative rounded-xl overflow-hidden border border-[var(--border)]">
+        <div className="flex h-full bg-background relative p-2">
+            <div className="flex-1 min-w-0 flex flex-col relative rounded-xl overflow-hidden border border-[var(--border)]">
                 {paneLabel("Image A", "case image")}
+                {!currentImage && importButton("left", "Load the case image")}
                 {currentImage ? (
                     <CanvasWorkspace side="left" />
                 ) : (
-                    <div className="flex-1 flex items-center justify-center">
-                        <EmptyImport title="No case image yet" hint="Image A is the case image shared with Assessment and Planning. Import it here or in Assessment." />
-                    </div>
+                    emptyHint("No case image yet — use the import button in the top-right corner.")
                 )}
             </div>
-            <div className="flex-1 flex flex-col relative rounded-xl overflow-hidden border border-[var(--border)]">
+
+            {/* Fixed toolbar gutter: never moves when the panes change (UI5-02) */}
+            <div className="w-[60px] flex-shrink-0 flex items-center justify-center overflow-y-auto py-2">
+                <BottomToolbar variant="embedded" />
+            </div>
+
+            <div className="flex-1 min-w-0 flex flex-col relative rounded-xl overflow-hidden border border-[var(--border)]">
                 {paneLabel("Image B", imageB ? "comparison" : "choose an image")}
-                {imageB && (
-                    <button
-                        onClick={() => setConfirmReplace(true)}
-                        className="absolute top-2 right-2 z-20 flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-black/60 hover:bg-black/80 text-[11px] font-semibold text-white/80 hover:text-white backdrop-blur-sm"
-                    >
-                        <RefreshCw className="h-3 w-3" /> Replace image
-                    </button>
-                )}
+                {importButton("right", imageB ? "Replace Image B" : "Load Image B")}
                 <CanvasWorkspace side="right" />
-                <PanePicker side="right" label="Image B" />
+                {!imageB && emptyHint("Load an image to compare — use the import button in the top-right corner.")}
             </div>
+
+            {/* Keyed by open state: every opening starts at the first step */}
+            <PickerDialog key={`a-${pickerSide === "left"}`} side="left" label="Image A" open={pickerSide === "left"} onOpenChange={(o) => setPickerSide(o ? "left" : null)} />
+            <PickerDialog key={`b-${pickerSide === "right"}`} side="right" label="Image B" open={pickerSide === "right"} onOpenChange={(o) => setPickerSide(o ? "right" : null)} />
 
             <Dialog open={confirmReplace} onOpenChange={setConfirmReplace}>
                 <DialogContent className="sm:max-w-sm">
@@ -380,6 +283,7 @@ const ComparePage = () => {
                             st.setComparisonImplants('right', []);
                             st.setComparisonImage('right', null);
                             setConfirmReplace(false);
+                            setPickerSide("right");
                         }}>Replace</Button>
                     </DialogFooter>
                 </DialogContent>

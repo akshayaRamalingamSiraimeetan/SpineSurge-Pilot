@@ -1,6 +1,6 @@
 import { Point, getPolygonCenter } from "@/lib/canvas/GeometryUtils";
 import { Measurement } from "@/lib/canvas/CanvasManager";
-import { drawMeasurementLabel } from "@/lib/canvas/CanvasUtils";
+import { drawLabel, drawPoints, strokePolyline, toolColor } from "@/lib/canvas/annotationStyle";
 
 export function calculateStenosisArea(points: Point[], pixelToMm: number | null) {
     if (points.length < 3) return null;
@@ -31,46 +31,14 @@ export function calculateStenosisArea(points: Point[], pixelToMm: number | null)
     return { area, resultString };
 }
 
-export function drawStenosis(ctx: CanvasRenderingContext2D, m: Measurement, k: number, pixelToMm: number | null, color: string = '#ef4444') {
+export function drawStenosis(ctx: CanvasRenderingContext2D, m: Measurement, k: number, pixelToMm: number | null) {
     const points = m.points;
     if (points.length < 3) return;
+    const color = toolColor(m.toolKey);
+    strokePolyline(ctx, points, k, color, { closed: true, fill: true });
+    drawPoints(ctx, points, k, color);
 
-    ctx.save();
-    ctx.strokeStyle = color;
-    ctx.lineWidth = 2 / k;
-    ctx.fillStyle = color + '33'; // 20% opacity (hex 33)
-
-    ctx.beginPath();
-    ctx.moveTo(points[0].x, points[0].y);
-    for (let i = 1; i < points.length; i++) {
-        ctx.lineTo(points[i].x, points[i].y);
-    }
-    ctx.closePath();
-    ctx.stroke();
-    ctx.fill();
-
-    // Draw area value at center or centroid
-    const centroid = getPolygonCenter(points);
-
-    // Calculate if not already
     const calc = calculateStenosisArea(points, pixelToMm);
-    if (calc) {
-        m.result = `Area: ${calc.resultString}`;
-    }
-
-    const labelPos = m.measurement?.labelPos || centroid;
-
-    // Special Stenosis Styling? Maybe Red background?
-    // Using standard label for consistency
-    drawMeasurementLabel(ctx, m.result || "Stenosis", labelPos, k, color);
-
-    // Draw vertices
-    ctx.fillStyle = '#fff';
-    points.forEach(p => {
-        ctx.beginPath();
-        ctx.arc(p.x, p.y, 3 / k, 0, Math.PI * 2);
-        ctx.fill();
-    });
-
-    ctx.restore();
+    if (calc) m.result = `Area: ${calc.resultString}`;
+    drawLabel(ctx, m.result || "Stenosis", m.measurement?.labelPos || getPolygonCenter(points), k, color);
 }

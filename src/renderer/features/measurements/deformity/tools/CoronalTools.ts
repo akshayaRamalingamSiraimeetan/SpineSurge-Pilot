@@ -1,6 +1,6 @@
 import { Point, getMidpoint } from "@/lib/canvas/GeometryUtils";
 import { Measurement } from "@/lib/canvas/CanvasManager";
-import { drawMeasurementLabel } from "@/lib/canvas/CanvasUtils";
+import { drawLabel, drawPoints, strokeLine, toolColor } from "@/lib/canvas/annotationStyle";
 
 export function calculatePO(points: Point[]) {
     if (points.length < 2) return null;
@@ -11,111 +11,48 @@ export function calculatePO(points: Point[]) {
     return { angle };
 }
 
-export function drawPO(ctx: CanvasRenderingContext2D, m: Measurement, k: number, color: string = '#10b981') {
-    const points = m.points;
-    if (points.length < 2) return;
-    const [p1, p2] = points;
-
-    ctx.save();
-    ctx.strokeStyle = color;
-    ctx.lineWidth = 2 / k;
-
-    ctx.beginPath();
-    ctx.moveTo(p1.x, p1.y);
-    ctx.lineTo(p2.x, p2.y);
-    ctx.stroke();
-
-    const leftPoint = p1.x < p2.x ? p1 : p2;
-    const rightPoint = p1.x < p2.x ? p2 : p1;
-
-    ctx.setLineDash([5 / k, 5 / k]);
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
-    ctx.beginPath();
-    ctx.moveTo(leftPoint.x, leftPoint.y);
-    ctx.lineTo(rightPoint.x, leftPoint.y);
-    ctx.stroke();
-
-    ctx.fillStyle = color;
-    points.forEach(p => {
-        ctx.beginPath();
-        ctx.arc(p.x, p.y, 4 / k, 0, Math.PI * 2);
-        ctx.fill();
-    });
-
-    const data = calculatePO(points);
-    if (data) {
-        m.result = `PO: ${data.angle.toFixed(1)}°`;
-        const labelPos = m.measurement?.labelPos || getMidpoint(p1, p2);
-        drawMeasurementLabel(ctx, m.result, labelPos, k, color);
-    }
-    ctx.restore();
+export function drawPO(ctx: CanvasRenderingContext2D, m: Measurement, k: number) {
+    if (m.points.length < 2) return;
+    drawTiltLine(ctx, m, k, 'PO');
 }
 
-export function drawC7PL(ctx: CanvasRenderingContext2D, m: Measurement, k: number, color: string = '#3b82f6', bounds?: { minY: number, maxY: number }) {
-    const points = m.points;
-    if (points.length < 1) return;
-    const p1 = points[0];
+/** Two-point line with a dashed horizontal reference (PO, slope, instrumented tilt). */
+export function drawTiltLine(ctx: CanvasRenderingContext2D, m: Measurement, k: number, prefix: string) {
+    const [p1, p2] = m.points;
+    const color = toolColor(m.toolKey);
+    const left = p1.x < p2.x ? p1 : p2;
+    const right = p1.x < p2.x ? p2 : p1;
+    strokeLine(ctx, left, { x: right.x, y: left.y }, k, color, true);
+    strokeLine(ctx, p1, p2, k, color);
+    drawPoints(ctx, [p1, p2], k, color);
 
-    const minY = bounds?.minY ?? -10000;
-    const maxY = bounds?.maxY ?? 10000;
+    const data = calculatePO(m.points);
+    if (!data) return;
+    const levelPrefix = m.measurement?.level ? `${m.measurement.level}\n---\n` : '';
+    m.result = `${prefix}: ${data.angle.toFixed(1)}°`;
+    drawLabel(ctx, levelPrefix + m.result, m.measurement?.labelPos || getMidpoint(p1, p2), k, color);
+}
 
-    ctx.save();
-    ctx.strokeStyle = color;
-    ctx.lineWidth = 2 / k;
-
-    ctx.beginPath();
-    ctx.moveTo(p1.x, minY);
-    ctx.lineTo(p1.x, maxY);
-    ctx.stroke();
-
-    ctx.fillStyle = color;
-    ctx.beginPath();
-    ctx.arc(p1.x, p1.y, 5 / k, 0, Math.PI * 2);
-    ctx.fill();
-
+export function drawC7PL(ctx: CanvasRenderingContext2D, m: Measurement, k: number, bounds?: { minY: number, maxY: number }) {
+    if (m.points.length < 1) return;
+    const p1 = m.points[0];
+    const color = toolColor(m.toolKey);
+    strokeLine(ctx, { x: p1.x, y: bounds?.minY ?? p1.y - 2000 }, { x: p1.x, y: bounds?.maxY ?? p1.y + 2000 }, k, color);
+    drawPoints(ctx, [p1], k, color);
     m.result = "C7PL is displayed";
-    const labelPos = m.measurement?.labelPos || { x: p1.x + 20 / k, y: p1.y };
-    drawMeasurementLabel(ctx, "C7PL", labelPos, k, color);
-    ctx.restore();
+    drawLabel(ctx, "C7PL", m.measurement?.labelPos || { x: p1.x + 20 / k, y: p1.y }, k, color);
 }
 
-export function drawCSVL(ctx: CanvasRenderingContext2D, m: Measurement, k: number, color: string = '#f59e0b', bounds?: { minY: number, maxY: number }) {
-    const points = m.points;
-    if (points.length < 2) return;
-    const [p1, p2] = points;
+export function drawCSVL(ctx: CanvasRenderingContext2D, m: Measurement, k: number, bounds?: { minY: number, maxY: number }) {
+    if (m.points.length < 2) return;
+    const [p1, p2] = m.points;
     const mid = getMidpoint(p1, p2);
-
-    const minY = bounds?.minY ?? -10000;
-    const maxY = bounds?.maxY ?? 10000;
-
-    ctx.save();
-    ctx.strokeStyle = color;
-    ctx.setLineDash([5 / k, 5 / k]);
-    ctx.lineWidth = 2 / k;
-
-    ctx.beginPath();
-    ctx.moveTo(mid.x, minY);
-    ctx.lineTo(mid.x, maxY);
-    ctx.stroke();
-
-    ctx.setLineDash([]);
-    ctx.lineWidth = 1.5 / k;
-    ctx.beginPath();
-    ctx.moveTo(p1.x, p1.y);
-    ctx.lineTo(p2.x, p2.y);
-    ctx.stroke();
-
-    ctx.fillStyle = '#eab308';
-    [p1, p2].forEach(p => {
-        ctx.beginPath();
-        ctx.arc(p.x, p.y, 4 / k, 0, Math.PI * 2);
-        ctx.fill();
-    });
-
+    const color = toolColor(m.toolKey);
+    strokeLine(ctx, { x: mid.x, y: bounds?.minY ?? mid.y - 2000 }, { x: mid.x, y: bounds?.maxY ?? mid.y + 2000 }, k, color, true);
+    strokeLine(ctx, p1, p2, k, color);
+    drawPoints(ctx, [p1, p2], k, color);
     m.result = "CSVL is displayed";
-    const labelPos = m.measurement?.labelPos || { x: mid.x + 20 / k, y: mid.y };
-    drawMeasurementLabel(ctx, "CSVL", labelPos, k, color);
-    ctx.restore();
+    drawLabel(ctx, "CSVL", m.measurement?.labelPos || { x: mid.x + 20 / k, y: mid.y }, k, color);
 }
 
 export function calculateTS(points: Point[], pixelToMm: number | null) {
@@ -133,62 +70,32 @@ export function calculateTS(points: Point[], pixelToMm: number | null) {
     return { dx, resultString };
 }
 
-export function drawTS(ctx: CanvasRenderingContext2D, m: Measurement, k: number, pixelToMm: number | null, color: string = '#ef4444', bounds?: { minY: number, maxY: number }, labelTitle: string = 'TS') {
+export function drawTS(ctx: CanvasRenderingContext2D, m: Measurement, k: number, pixelToMm: number | null, bounds?: { minY: number, maxY: number }, labelTitle: string = 'TS') {
     const points = m.points;
     if (points.length < 3) return;
     const [c7, s1_1, s1_2] = points;
     const s1Mid = getMidpoint(s1_1, s1_2);
+    const color = toolColor(m.toolKey);
+    const minY = bounds?.minY ?? Math.min(c7.y, s1Mid.y) - 100 / k;
+    const maxY = bounds?.maxY ?? Math.max(c7.y, s1Mid.y) + 100 / k;
 
-    const minY = bounds?.minY ?? -10000;
-    const maxY = bounds?.maxY ?? 10000;
-
-    ctx.save();
-    ctx.strokeStyle = '#f59e0b';
-    ctx.setLineDash([5 / k, 5 / k]);
-    ctx.lineWidth = 1.5 / k;
-    ctx.beginPath();
-    ctx.moveTo(s1Mid.x, minY);
-    ctx.lineTo(s1Mid.x, maxY);
-    ctx.stroke();
-
-    ctx.strokeStyle = '#3b82f6';
-    ctx.setLineDash([]);
-    ctx.beginPath();
-    ctx.moveTo(c7.x, minY);
-    ctx.lineTo(c7.x, maxY);
-    ctx.stroke();
-
-    ctx.fillStyle = '#f59e0b';
-    [s1_1, s1_2].forEach(p => {
-        ctx.beginPath(); ctx.arc(p.x, p.y, 4 / k, 0, Math.PI * 2); ctx.fill();
-    });
-
-    ctx.fillStyle = '#3b82f6';
-    ctx.beginPath(); ctx.arc(c7.x, c7.y, 4 / k, 0, Math.PI * 2); ctx.fill();
-
-    ctx.strokeStyle = color;
-    ctx.lineWidth = 2 / k;
-    ctx.beginPath();
-    ctx.moveTo(c7.x, c7.y);
-    ctx.lineTo(s1Mid.x, c7.y);
-    ctx.stroke();
+    // CSVL (dashed), S1 endplate, and the horizontal offset from C7 / apex.
+    strokeLine(ctx, { x: s1Mid.x, y: minY }, { x: s1Mid.x, y: maxY }, k, color, true);
+    strokeLine(ctx, s1_1, s1_2, k, color);
+    strokeLine(ctx, c7, { x: s1Mid.x, y: c7.y }, k, color);
+    drawPoints(ctx, points, k, color);
 
     const data = calculateTS(points, pixelToMm);
     if (data) {
-        m.result = data.resultString;
-        if (labelTitle !== 'TS') {
-            m.result = m.result.replace('TS:', `${labelTitle}:`);
-        }
-        const labelPos = m.measurement?.labelPos || { x: (c7.x + s1Mid.x) / 2, y: c7.y - 15 / k };
-        drawMeasurementLabel(ctx, m.result, labelPos, k, color);
+        m.result = labelTitle !== 'TS' ? data.resultString.replace('TS:', `${labelTitle}:`) : data.resultString;
+        drawLabel(ctx, m.result, m.measurement?.labelPos || { x: (c7.x + s1Mid.x) / 2, y: c7.y - 15 / k }, k, color);
     }
-    ctx.restore();
 }
 
 export function calculateAVT(points: Point[], pixelToMm: number | null) {
     return calculateTS(points, pixelToMm);
 }
 
-export function drawAVT(ctx: CanvasRenderingContext2D, m: Measurement, k: number, pixelToMm: number | null, color: string = '#3b82f6', bounds?: { minY: number, maxY: number }) {
-    drawTS(ctx, m, k, pixelToMm, color, bounds, 'AVT');
+export function drawAVT(ctx: CanvasRenderingContext2D, m: Measurement, k: number, pixelToMm: number | null, bounds?: { minY: number, maxY: number }) {
+    drawTS(ctx, m, k, pixelToMm, bounds, 'AVT');
 }

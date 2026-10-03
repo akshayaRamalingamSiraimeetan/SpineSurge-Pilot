@@ -189,10 +189,6 @@ export class CanvasManager {
     }
 
     async applyOperation(operationType: string, params: any): Promise<StateNode> {
-        console.log('[CanvasManager] ========== APPLYING OPERATION ==========');
-        console.log('[CanvasManager] Operation type:', operationType);
-        console.log('[CanvasManager] Parameters:', params);
-        console.log('[CanvasManager] Current state fragments:', this.current?.data.fragments.length);
 
         if (!this.current) throw new Error("No active state");
 
@@ -285,20 +281,8 @@ export class CanvasManager {
         else if (operationType === 'CUT') {
             const { startPoint, endPoint, fragmentId } = params;
 
-            console.log('[CanvasManager CUT] Operation called with:');
-            console.log('  startPoint:', startPoint);
-            console.log('  endPoint:', endPoint);
-            console.log('  fragmentId:', fragmentId || 'ALL FRAGMENTS');
-            console.log('  Current fragment count:', newFragments.length);
-
             // If fragmentId is specified, only cut that fragment
             // Otherwise, cut all fragments (legacy behavior)
-            const fragmentsToCut = fragmentId
-                ? newFragments.filter(f => f.id === fragmentId)
-                : newFragments;
-
-            console.log('[CanvasManager CUT] Fragments to cut:', fragmentsToCut.length);
-
             for (let i = newFragments.length - 1; i >= 0; i--) {
                 const frag = newFragments[i];
 
@@ -307,19 +291,15 @@ export class CanvasManager {
                     continue;
                 }
 
-                console.log('[CanvasManager CUT] Cutting fragment:', frag.id);
 
                 const oldFragmentId = frag.id;
 
                 // Log original fragment polygon area for debugging
                 const originalArea = this.getPolygonArea(frag.polygon);
-                console.log('[CanvasManager CUT] Original fragment area:', originalArea);
-                console.log('[CanvasManager CUT] Original fragment polygon points:', frag.polygon.length);
 
                 const resultPolys = splitPolygonByLine(frag.polygon, startPoint, endPoint);
 
                 if (resultPolys.length === 2) {
-                    console.log('[CanvasManager CUT] Split successful - creating 2 new fragments');
 
                     // Log areas of resulting fragments
                     const area1 = this.getPolygonArea(resultPolys[0]);
@@ -327,10 +307,6 @@ export class CanvasManager {
                     const totalNewArea = area1 + area2;
                     const areaLoss = originalArea - totalNewArea;
 
-                    console.log('[CanvasManager CUT] Fragment 1 area:', area1, 'points:', resultPolys[0].length);
-                    console.log('[CanvasManager CUT] Fragment 2 area:', area2, 'points:', resultPolys[1].length);
-                    console.log('[CanvasManager CUT] Total new area:', totalNewArea);
-                    console.log('[CanvasManager CUT] Area loss:', areaLoss, '(', ((areaLoss / originalArea) * 100).toFixed(2), '%)');
 
                     if (Math.abs(areaLoss) > 1) {
                         console.warn('[CanvasManager CUT] WARNING: Significant area loss detected!');
@@ -342,7 +318,6 @@ export class CanvasManager {
                     const f2 = { ...frag, id: uuidv4(), polygon: resultPolys[1] };
                     newFragments.push(f1, f2);
 
-                    console.log('[CanvasManager CUT] New fragment IDs:', f1.id, f2.id);
 
                     // Reassign measurements & implants
                     newMeasurements.forEach(m => {
@@ -483,6 +458,24 @@ export class CanvasManager {
                 if (newResult !== undefined) newMeasurements[idx].result = newResult;
                 description = `Updated Measurement`;
             }
+        }
+        else if (operationType === 'REPLACE_PLAN') {
+            // Swap the working 2D plan (planning measurements + implants) in one step.
+            const { measurements: ms, implants: imps } = params;
+            newMeasurements.splice(0, newMeasurements.length, ...(ms as Measurement[]).map(m => ({ ...m, points: m.points.map((p: Point) => ({ ...p })) })));
+            newImplants.splice(0, newImplants.length, ...(imps as Implant[]).map(i => ({ ...i, position: i.position ? { ...i.position } : null, properties: { ...i.properties } })));
+            description = 'Loaded Plan';
+        }
+        else if (operationType === 'UPDATE_MEASUREMENTS') {
+            // Batch edit (linked landmarks move together — UI5-08).
+            const updates: { id: string; points?: Point[]; result?: unknown }[] = params.updates || [];
+            updates.forEach((u) => {
+                const target = newMeasurements.find(m => m.id === u.id);
+                if (!target) return;
+                if (u.points) target.points = u.points.map((p: Point) => ({ ...p }));
+                if (u.result !== undefined) target.result = u.result;
+            });
+            description = 'Updated Measurements';
         }
         else if (operationType === 'DELETE_MEASUREMENT') {
             const { id } = params;
@@ -728,15 +721,17 @@ export class CanvasManager {
             }
         }
 
+        // Inside a drag transaction the intermediate states are throw-away:
+        // link them to the baseline so they can be garbage-collected (UI5-04).
+        const parent = this.activeHistoryTransaction?.baselineState ?? this.current;
         const newState = new StateNode({
             fragments: newFragments,
             cutLines: newCutLines,
             measurements: newMeasurements,
             implants: newImplants,
             description
-        }, this.current);
+        }, parent);
 
-        this.current.children.push(newState);
         this.current = newState;
         if (!this.activeHistoryTransaction) {
             if (skipHistory && this.history.length > 0) {
@@ -750,6 +745,20 @@ export class CanvasManager {
         }
 
         return newState;
+    }
+
+    /**
+     * Store → canvas sync (context load, report toggles, calibration): swap the
+     * measurements of the current state without adding an undo step. A new
+     * node replaces the current one so earlier history nodes are never touched.
+     */
+    replaceCurrentMeasurements(measurements: Measurement[]) {
+        if (!this.current) return;
+        const node = new StateNode({ ...this.current.data, measurements }, this.current.parent);
+        const idx = this.history.lastIndexOf(this.current);
+        if (idx !== -1) this.history[idx] = node;
+        if (this.activeHistoryTransaction?.baselineState === this.current) this.activeHistoryTransaction.baselineState = node;
+        this.current = node;
     }
 
     undo() {

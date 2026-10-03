@@ -1,6 +1,7 @@
 import { Point, getMidpoint, getDistance } from "@/lib/canvas/GeometryUtils";
 import { Measurement } from "@/lib/canvas/CanvasManager";
-import { drawMeasurementLabel } from "@/lib/canvas/CanvasUtils";
+import { drawArc, drawLabel, drawPoints, strokeLine, toolColor } from "@/lib/canvas/annotationStyle";
+import { drawFemoralHeads } from "../deformity/tools/BaseTools";
 
 export function calculatePelvicParameters(points: Point[]) {
     if (points.length < 6) return null;
@@ -89,191 +90,57 @@ export function calculatePelvicParameters(points: Point[]) {
     };
 }
 
-export function drawPelvicParameters(ctx: CanvasRenderingContext2D, m: Measurement, k: number, color: string = '#10b981') {
+export function drawPelvicParameters(ctx: CanvasRenderingContext2D, m: Measurement, k: number) {
     const points = m.points;
     if (points.length < 2) return;
+    const color = toolColor(m.toolKey);
 
-    const circleColor = '#06b6d4';
+    drawFemoralHeads(ctx, points, k, color);
+    if (points.length >= 6) drawSacralGeometry(ctx, points, k, color, { pt: true, ss: true });
+    drawPoints(ctx, points, k, color);
 
-    const drawCircle = (p1: Point, p2: Point) => {
-        const center = getMidpoint(p1, p2);
-        const radius = getDistance(p1, p2) / 2;
-        ctx.save();
-        ctx.strokeStyle = circleColor;
-        ctx.lineWidth = 1.5 / k;
-        ctx.beginPath();
-        ctx.arc(center.x, center.y, radius, 0, Math.PI * 2);
-        ctx.stroke();
-        ctx.fillStyle = circleColor;
-        ctx.beginPath();
-        ctx.arc(center.x, center.y, 3 / k, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.restore();
-        return { center, radius };
-    };
-
-    const drawAcuteArc = (center: Point, radius: number, angleStart: number, angleEnd: number, color: string) => {
-        ctx.save();
-        ctx.beginPath();
-        ctx.strokeStyle = color;
-        ctx.lineWidth = 1.5 / k;
-        let diff = angleEnd - angleStart;
-        while (diff <= -Math.PI) diff += 2 * Math.PI;
-        while (diff > Math.PI) diff -= 2 * Math.PI;
-        const counterClockwise = diff < 0;
-        ctx.arc(center.x, center.y, radius, angleStart, angleEnd, counterClockwise);
-        ctx.stroke();
-        ctx.restore();
-    };
-
-    const c1 = drawCircle(points[0], points[1]);
-    if (points.length < 4) return;
-    const c2 = drawCircle(points[2], points[3]);
-
-    ctx.save();
-    ctx.strokeStyle = circleColor;
-    ctx.setLineDash([4 / k, 4 / k]);
-    ctx.lineWidth = 1.5 / k;
-    ctx.beginPath();
-    ctx.moveTo(c1.center.x, c1.center.y);
-    ctx.lineTo(c2.center.x, c2.center.y);
-    ctx.stroke();
-    ctx.restore();
-
-    if (points.length < 6) return;
-
-    // Use Calculated Data for Consistent Drawing with Auto-Facing logic
     const data = calculatePelvicParameters(points);
     if (!data) return;
+    m.result = `PI: ${data.pi.toFixed(1)}°
+PT: ${data.pt.toFixed(1)}°
+SS: ${data.ss.toFixed(1)}°`;
+    const labelPos = m.measurement?.labelPos || { x: data.s1_center.x + 60 / k, y: data.s1_center.y };
+    drawLabel(ctx, m.result, labelPos, k, color);
+}
 
-    const { ss, pt, pi, hipAxisCenter, s1_center, s1_anterior, s1_posterior, angle_plate } = data;
+/**
+ * S1 endplate, hip-axis → S1 line, endplate normal + PI arc, and optionally
+ * the PT (vertical) and SS (horizontal) references. Shared with PI-LL.
+ */
+export function drawSacralGeometry(
+    ctx: CanvasRenderingContext2D,
+    points: Point[],
+    k: number,
+    color: string,
+    opts: { pt?: boolean; ss?: boolean } = {},
+) {
+    const data = calculatePelvicParameters(points);
+    if (!data) return;
+    const { hipAxisCenter, s1_center, s1_anterior, s1_posterior, angle_plate } = data;
+    const ref = Math.max(getDistance(s1_anterior, s1_posterior) * 1.2, 50 / k);
 
-    // Draw S1 Line
-    ctx.strokeStyle = color;
-    ctx.fillStyle = color;
-    ctx.lineWidth = 2.5 / k;
-    ctx.beginPath();
-    ctx.moveTo(s1_posterior.x, s1_posterior.y);
-    ctx.lineTo(s1_anterior.x, s1_anterior.y);
-    ctx.stroke();
+    strokeLine(ctx, s1_posterior, s1_anterior, k, color);
+    strokeLine(ctx, hipAxisCenter, s1_center, k, color);
 
-    [s1_posterior, s1_anterior].forEach(p => {
-        ctx.beginPath();
-        ctx.arc(p.x, p.y, 4 / k, 0, Math.PI * 2);
-        ctx.fill();
-    });
-
-    // REF LINES & ARCS =======================
-
-    // 1. HS Line (Hip Axis -> S1 Center)
-    ctx.strokeStyle = '#f59e0b';
-    ctx.lineWidth = 2 / k;
-    ctx.beginPath();
-    ctx.moveTo(hipAxisCenter.x, hipAxisCenter.y);
-    ctx.lineTo(s1_center.x, s1_center.y);
-    ctx.stroke();
-
-    // 2. Vertical from Hip Center (PT)
-    ctx.save();
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
-    ctx.setLineDash([4 / k, 4 / k]);
-    ctx.lineWidth = 1 / k;
-    ctx.beginPath();
-    ctx.moveTo(hipAxisCenter.x, hipAxisCenter.y);
-    ctx.lineTo(hipAxisCenter.x, hipAxisCenter.y - 120 / k);
-    ctx.stroke();
-    ctx.restore();
-
-    // PT Arc (Vertical to HS)
-    const angleHS = Math.atan2(s1_center.y - hipAxisCenter.y, s1_center.x - hipAxisCenter.x);
-    drawAcuteArc(hipAxisCenter, 40 / k, -Math.PI / 2, angleHS, '#f59e0b');
-
-    // 3. Horizontal from S1 Center (SS)
-    // Draw towards Anterior for clarity (Direction of plate vector x component)
-    const signX = Math.sign(Math.cos(angle_plate));
-    ctx.save();
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
-    ctx.setLineDash([4 / k, 4 / k]);
-    ctx.lineWidth = 1 / k;
-    ctx.beginPath();
-    ctx.moveTo(s1_center.x, s1_center.y);
-    ctx.lineTo(s1_center.x + 100 / k * signX, s1_center.y);
-    ctx.stroke();
-    ctx.restore();
-
-    // SS Arc (Horizontal to Plate)
-    // Angle plate is Post->Ant. 
-    // Horizontal is 0 (or PI if pointing Left, use signX logic)
-    const angleHoriz = signX >= 0 ? 0 : Math.PI;
-    drawAcuteArc(s1_center, 30 / k, angleHoriz, angle_plate, color);
-
-    // 4. Perpendicular to S1 Plate (PI)
-    // Perpendicular vector should be Anterior-Inferior.
-    // Plate vector (dx, dy). Post->Ant.
-    const dx = Math.cos(angle_plate);
-    const dy = Math.sin(angle_plate);
-
-    // We want perp that points towards the Hip Axis side of the plate roughly.
-    // Or strictly: Rotate 90 deg such that it points generally Anterior.
-    // If facing Right (Post->Ant is +X, +Y). Anterior is +X side.
-    // If facing Left (Post->Ant is -X, +Y). Anterior is -X side.
-    // So Norm should have same X-sign as Vector?
-    // Let's use Geometry:
-    // Rotate +90: (-dy, dx).
-    // Rotate -90: (dy, -dx).
-    // If Facing Right (dx > 0, dy > 0). +90 is (-y, +x) -> X negative? No.
-    // (1, 1) rot 90 is (-1, 1). Points Left (Posterior).
-    // -90 is (1, -1). Points Right-Up? 
-    // Wait. Canvas Y is Down.
-    // Vector (1, 1) is Right-Down.
-    // Rotate 90 CW in screen coords (x->-y, y->x). (+y to +x => +x to -y??)
-    // Simply: Standard Vector (x,y). Rot 90 CW is (-y, x). Rot 90 CCW is (y, -x).
-
-    // Let's use strict dot product check against S->H vector.
-    // We want the perpendicular that creates an acute angle with the S->H vector.
-    // (Since PI is typically ~50 deg acute).
-
-    // Vector S->H
+    // Endplate normal pointing toward the hips → PI arc
     const vSH = { x: hipAxisCenter.x - s1_center.x, y: hipAxisCenter.y - s1_center.y };
+    let nx = -Math.sin(angle_plate), ny = Math.cos(angle_plate);
+    if (nx * vSH.x + ny * vSH.y < 0) { nx = -nx; ny = -ny; }
+    strokeLine(ctx, s1_center, { x: s1_center.x + nx * ref, y: s1_center.y + ny * ref }, k, color, true);
+    drawArc(ctx, s1_center, ref * 0.45, Math.atan2(ny, nx), Math.atan2(vSH.y, vSH.x), k, color);
 
-    // Candidate 1: (-dy, dx)
-    // Candidate 2: (dy, -dx)
-
-    // Dot Product 1
-    const p1x = -dy; const p1y = dx;
-    const dot1 = p1x * vSH.x + p1y * vSH.y;
-
-    // Use Candidate 1 if Dot > 0 (Acute angle), else Candidate 2.
-    let perpx = p1x, perpy = p1y;
-    if (dot1 < 0) {
-        perpx = -perpx;
-        perpy = -perpy;
+    if (opts.pt) {
+        strokeLine(ctx, hipAxisCenter, { x: hipAxisCenter.x, y: hipAxisCenter.y - ref }, k, color, true);
+        drawArc(ctx, hipAxisCenter, ref * 0.4, -Math.PI / 2, Math.atan2(s1_center.y - hipAxisCenter.y, s1_center.x - hipAxisCenter.x), k, color);
     }
-
-    ctx.save();
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
-    ctx.setLineDash([4 / k, 4 / k]);
-    ctx.lineWidth = 1 / k;
-    const perpLen = 100 / k;
-    ctx.beginPath();
-    ctx.moveTo(s1_center.x, s1_center.y);
-    ctx.lineTo(s1_center.x + perpx * perpLen, s1_center.y + perpy * perpLen);
-    ctx.stroke();
-    ctx.restore();
-
-    // PI Arc (Perp to S->H)
-    const anglePerp = Math.atan2(perpy, perpx);
-    const angleSH = Math.atan2(vSH.y, vSH.x);
-    drawAcuteArc(s1_center, 45 / k, anglePerp, angleSH, '#ef4444');
-
-
-    // LABELS =======================
-    m.result = `PI: ${pi.toFixed(1)}°\nPT: ${pt.toFixed(1)}°\nSS: ${ss.toFixed(1)}°`;
-
-    const labelPos = m.measurement?.labelPos || {
-        x: s1_center.x + 60 / k,
-        y: s1_center.y
-    };
-
-    drawMeasurementLabel(ctx, m.result, labelPos, k, color);
+    if (opts.ss) {
+        const signX = Math.sign(Math.cos(angle_plate)) || 1;
+        strokeLine(ctx, s1_center, { x: s1_center.x + ref * signX, y: s1_center.y }, k, color, true);
+        drawArc(ctx, s1_center, ref * 0.3, signX >= 0 ? 0 : Math.PI, angle_plate, k, color);
+    }
 }

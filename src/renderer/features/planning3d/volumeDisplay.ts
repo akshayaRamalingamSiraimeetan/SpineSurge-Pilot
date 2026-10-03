@@ -53,6 +53,14 @@ export function applyBoneDisplay(vp: Types.IVolumeViewport, mode: 'volume' | 'bo
 
 export interface RoiCrop { x0: number; x1: number; y0: number; y1: number; z0: number; z1: number }
 
+/** World bounds [xmin,xmax,ymin,ymax,zmin,zmax] of the 3D volume (null until it is set). */
+export function volumeBounds(vp: Types.IVolumeViewport): number[] | null {
+    const actor = volumeActorOf(vp);
+    if (!actor) return null;
+    const b = actor.getMapper()?.getInputData()?.getBounds?.() ?? actor.getBounds?.();
+    return Array.isArray(b) && b.length === 6 && b.every(Number.isFinite) ? b : null;
+}
+
 /** Axis-aligned crop of the 3D volume via 6 clipping planes (normalised 0..1 bounds). */
 export function applyCrop(vp: Types.IVolumeViewport, roi: RoiCrop | null) {
     const actor = volumeActorOf(vp);

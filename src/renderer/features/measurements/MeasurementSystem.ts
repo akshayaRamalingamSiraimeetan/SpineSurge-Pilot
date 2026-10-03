@@ -1,6 +1,5 @@
 import { Measurement } from "@/lib/canvas/CanvasManager";
-import { Point } from "@/lib/canvas/GeometryUtils";
-import { drawMeasurementLabel } from "@/lib/canvas/CanvasUtils";
+import { drawLabel, drawPoints, strokeLine, strokePolyline, toolColor } from "@/lib/canvas/annotationStyle";
 import { drawCobbAngle } from "./quick/CobbAngle";
 import { drawSVA } from "./quick/SVA";
 import { drawVBM } from "./quick/VBM";
@@ -12,7 +11,7 @@ import { drawSpondylolisthesis } from "./pathology/Spondylolisthesis";
 import { drawPO, drawC7PL, drawCSVL, drawTS, drawAVT, drawSlope, drawCMC, drawTPA, drawSPA, drawSSA, drawSPi, drawCBVA, drawRVAD, drawITilt } from "./deformity/DeformityTools";
 import { drawWedgeOsteotomy, drawResection } from "./planning/PlanningTools";
 
-import { drawPencil, drawText, drawCircle, drawEllipse, drawPolygon } from "./utilities/UtilitiesTools";
+import { drawPencil, drawText, drawCircle, drawEllipse, drawPolygon, drawGenericAngle } from "./utilities/UtilitiesTools";
 
 const shouldConvertMeasurement = (m: Measurement, ratio: number | null, calibrationEnabledAt: number | null): boolean => {
     if (!ratio) return false;
@@ -114,16 +113,16 @@ export const MeasurementSystem = {
                 drawPO(ctx, displayMeasurement, k);
                 break;
             case 'c7pl':
-                drawC7PL(ctx, displayMeasurement, k, '#3b82f6', bounds);
+                drawC7PL(ctx, displayMeasurement, k, bounds);
                 break;
             case 'csvl':
-                drawCSVL(ctx, displayMeasurement, k, '#f59e0b', bounds);
+                drawCSVL(ctx, displayMeasurement, k, bounds);
                 break;
             case 'ts':
-                drawTS(ctx, displayMeasurement, k, ratio, '#ef4444', bounds);
+                drawTS(ctx, displayMeasurement, k, ratio, bounds);
                 break;
             case 'avt':
-                drawAVT(ctx, displayMeasurement, k, ratio, '#a855f7', bounds);
+                drawAVT(ctx, displayMeasurement, k, ratio, bounds);
                 break;
             case 'slope':
                 drawSlope(ctx, displayMeasurement, k);
@@ -143,10 +142,10 @@ export const MeasurementSystem = {
             case 't1spi':
             case 't9spi':
             case 'odha':
-                drawSPi(ctx, displayMeasurement, k, '#0ea5e9', bounds);
+                drawSPi(ctx, displayMeasurement, k, bounds);
                 break;
             case 'cbva':
-                drawCBVA(ctx, displayMeasurement, k, '#f97316', bounds);
+                drawCBVA(ctx, displayMeasurement, k, bounds);
                 break;
             case 'rvad':
                 drawRVAD(ctx, displayMeasurement, k);
@@ -154,36 +153,23 @@ export const MeasurementSystem = {
             case 'itilt':
                 drawITilt(ctx, displayMeasurement, k);
                 break;
-            case 'line':
-                ctx.save();
-                ctx.strokeStyle = '#3b82f6';
-                ctx.fillStyle = '#ffffff';
-                ctx.lineWidth = 2 / k;
-
-                if (displayMeasurement.points.length >= 2) {
-                    const p1 = displayMeasurement.points[0];
-                    const p2 = displayMeasurement.points[1];
-
-                    ctx.beginPath();
-                    ctx.moveTo(p1.x, p1.y);
-                    ctx.lineTo(p2.x, p2.y);
-                    ctx.stroke();
-
-                    [p1, p2].forEach((p) => {
-                        ctx.beginPath();
-                        ctx.arc(p.x, p.y, 4 / k, 0, Math.PI * 2);
-                        ctx.fill();
-                    });
-
-                    const distancePx = Math.hypot(p2.x - p1.x, p2.y - p1.y);
-                    const labelText = (ratio && shouldConvert)
-                        ? `distance: ${(distancePx * ratio).toFixed(1)} mm`
-                        : `distance: ${distancePx.toFixed(1)} px`;
-                    const labelPos = displayMeasurement.measurement?.labelPos || { x: (p1.x + p2.x) / 2, y: (p1.y + p2.y) / 2 };
-                    drawMeasurementLabel(ctx, labelText, labelPos, k);
-                }
-
-                ctx.restore();
+            case 'line': {
+                if (displayMeasurement.points.length < 2) break;
+                const [p1, p2] = displayMeasurement.points;
+                const color = toolColor('line');
+                strokeLine(ctx, p1, p2, k, color);
+                drawPoints(ctx, [p1, p2], k, color);
+                const distancePx = Math.hypot(p2.x - p1.x, p2.y - p1.y);
+                const labelText = (ratio && shouldConvert)
+                    ? `${(distancePx * ratio).toFixed(1)} mm`
+                    : `${distancePx.toFixed(1)} px`;
+                const labelPos = displayMeasurement.measurement?.labelPos || { x: (p1.x + p2.x) / 2 + 12 / k, y: (p1.y + p2.y) / 2 };
+                drawLabel(ctx, labelText, labelPos, k, color);
+                break;
+            }
+            case 'angle-2pt':
+            case 'angle-3pt':
+                drawGenericAngle(ctx, displayMeasurement, k);
                 break;
             case 'ost-pso':
             case 'ost-spo':
@@ -193,38 +179,20 @@ export const MeasurementSystem = {
             case 'ost-resect':
                 drawResection(ctx, displayMeasurement, k);
                 break;
-            default:
-                // Fallback for simple point/line
-                ctx.save();
-                const color = displayMeasurement.toolKey === 'line' ? '#3b82f6' : '#00e5ff';
-                ctx.strokeStyle = color;
-                ctx.fillStyle = '#ffffff';
-                ctx.lineWidth = 2 / k;
-
-                if (displayMeasurement.points.length > 1) {
-                    ctx.beginPath();
-                    ctx.moveTo(displayMeasurement.points[0].x, displayMeasurement.points[0].y);
-                    for (let i = 1; i < displayMeasurement.points.length; i++) {
-                        ctx.lineTo(displayMeasurement.points[i].x, displayMeasurement.points[i].y);
-                    }
-                    ctx.stroke();
+            default: {
+                // Simple point / polyline (e.g. 'point' markers)
+                const pts = displayMeasurement.points;
+                const color = toolColor(displayMeasurement.toolKey);
+                strokePolyline(ctx, pts, k, color);
+                drawPoints(ctx, pts, k, color);
+                if (displayMeasurement.result && pts.length >= 1) {
+                    const labelPos = displayMeasurement.measurement?.labelPos || (pts.length >= 2
+                        ? { x: (pts[0].x + pts[1].x) / 2, y: (pts[0].y + pts[1].y) / 2 }
+                        : { x: pts[0].x + 20 / k, y: pts[0].y - 20 / k });
+                    drawLabel(ctx, displayMeasurement.result as string, labelPos, k, color);
                 }
-
-                displayMeasurement.points.forEach((p: Point) => {
-                    ctx.beginPath();
-                    ctx.arc(p.x, p.y, 4 / k, 0, Math.PI * 2);
-                    ctx.fill();
-                });
-
-                if (displayMeasurement.result && displayMeasurement.points.length >= 1) {
-                    const labelPos = displayMeasurement.measurement?.labelPos || (displayMeasurement.points.length >= 2
-                        ? { x: (displayMeasurement.points[0].x + displayMeasurement.points[1].x) / 2, y: (displayMeasurement.points[0].y + displayMeasurement.points[1].y) / 2 }
-                        : { x: displayMeasurement.points[0].x + 20 / k, y: displayMeasurement.points[0].y - 20 / k });
-
-                    drawMeasurementLabel(ctx, displayMeasurement.result as string, labelPos, k);
-                }
-                ctx.restore();
                 break;
+            }
         }
         // Curvature tools compute their drag handle while drawing; keep it on the
         // real measurement so it can be grabbed (BUGS CV-14).

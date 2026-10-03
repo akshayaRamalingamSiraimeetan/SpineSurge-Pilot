@@ -1,6 +1,11 @@
 import { Measurement, Point } from "@/lib/canvas/CanvasManager";
-import { drawMeasurementLabel } from "@/lib/canvas/CanvasUtils";
-import { drawAngleArc } from "../deformity/DeformityTools";
+import { drawArc, drawLabel, drawPoint, drawPoints, drawPointTag, strokeLine, toolColor, withAlpha, STYLE } from "@/lib/canvas/annotationStyle";
+
+/** Segment a→b extended by `before`/`after` fractions of its length (finite cut lines, UI5-11). */
+const extend = (a: Point, b: Point, before: number, after: number): [Point, Point] => {
+    const dx = b.x - a.x, dy = b.y - a.y;
+    return [{ x: a.x - dx * before, y: a.y - dy * before }, { x: b.x + dx * after, y: b.y + dy * after }];
+};
 
 /**
  * SHARED DATA STRUCTURE
@@ -20,8 +25,8 @@ export function drawWedgeOsteotomy(
     ctx: CanvasRenderingContext2D,
     m: Measurement,
     k: number,
-    color: string = "#f472b6"
 ) {
+    const color = toolColor(m.toolKey);
     const typeMap: Record<string, string> = {
         'ost-spo': 'SPO',
         'ost-pso': 'PSO',
@@ -78,128 +83,52 @@ export function drawWedgeOsteotomy(
     }
 
     /* -------------------------------------------------
-     * DRAWING
+     * DRAWING — planning yellow, finite lines (UI5-11)
      * ------------------------------------------------- */
-    ctx.save();
-    ctx.strokeStyle = color;
-    ctx.lineWidth = 2.5 / k;
-
-    const L_line = 10000;
-
     if (type === 'OPEN') {
         const [A, B, C, D, E, F] = m.points;
+        if (A && B) strokeLine(ctx, A, B, k, color, true);          // upper reference
+        if (C && D) { const [c0, c1] = extend(C, D, 0.2, 0.2); strokeLine(ctx, c0, c1, k, color); } // cut
+        if (E && F) strokeLine(ctx, E, F, k, color, true);          // lower reference
+        drawPoints(ctx, m.points, k, color);
+        m.points.forEach((pt, i) => drawPointTag(ctx, String.fromCharCode(65 + i), pt, k));
 
-        // Render only completed line segments (no auxiliary geometry)
-        ctx.lineWidth = 3 / k;
-
-        // 1. Upper Reference Line (A-B) - Blue (finite segment, not extrapolated)
-        // Requirements: 2.1, 3.4
-        if (A && B) {
-            ctx.strokeStyle = '#3b82f6';
-            ctx.beginPath();
-            ctx.moveTo(A.x, A.y);
-            ctx.lineTo(B.x, B.y);
-            ctx.stroke();
-        }
-
-        // 2. Cut Line (C-D) - Red (extrapolated to image bounds)
-        // Requirements: 2.2, 3.1, 3.2, 3.3
-        if (C && D) {
-            ctx.strokeStyle = '#ef4444';
-            const angCD = Math.atan2(D.y - C.y, D.x - C.x);
-            ctx.beginPath();
-            ctx.moveTo(C.x - Math.cos(angCD) * L_line, C.y - Math.sin(angCD) * L_line);
-            ctx.lineTo(C.x + Math.cos(angCD) * L_line, C.y + Math.sin(angCD) * L_line);
-            ctx.stroke();
-        }
-
-        // 3. Lower Reference Line (E-F) - Green (finite segment, not extrapolated)
-        // Requirements: 2.3, 3.5
-        if (E && F) {
-            ctx.strokeStyle = '#10b981';
-            ctx.beginPath();
-            ctx.moveTo(E.x, E.y);
-            ctx.lineTo(F.x, F.y);
-            ctx.stroke();
-        }
-
-        // Render Point Markers
-        // Requirements: 2.4 (visual feedback for each completed pair)
-        m.points.forEach((p, i) => {
-            if (i < 2) ctx.fillStyle = '#3b82f6'; // A,B
-            else if (i < 4) ctx.fillStyle = '#ef4444'; // C,D
-            else ctx.fillStyle = '#10b981'; // E,F
-
-            ctx.beginPath();
-            ctx.arc(p.x, p.y, 6 / k, 0, Math.PI * 2);
-            ctx.fill();
-
-            ctx.fillStyle = '#ffffff';
-            ctx.font = `${12 / k}px Inter`;
-            ctx.fillText(String.fromCharCode(65 + i), p.x + 8 / k, p.y + 8 / k);
-        });
-
-        // Dashboard/Labels for Completed Osteotomy
         if (m.points.length >= 6) {
             const { phi, hinge, normal } = calculateOpenOsteotomyPrimitives(m.points);
-
             m.measurement.rotationAngleRad = phi;
             m.measurement.hingePoint = hinge;
             m.measurement.cutRays = [{ origin: hinge, angle: Math.atan2(m.points[3].y - m.points[2].y, m.points[3].x - m.points[2].x) }];
             m.measurement.normal = normal;
-
-            const labelPos = { x: hinge.x + 20 / k, y: hinge.y - 40 / k };
-            drawMeasurementLabel(ctx, `Opening: ${Math.abs(phi * 180 / Math.PI).toFixed(1)}°`, labelPos, k, '#ef4444');
+            const labelPos = m.measurement.labelPos || { x: hinge.x + 20 / k, y: hinge.y - 40 / k };
+            drawLabel(ctx, `Opening: ${Math.abs(phi * 180 / Math.PI).toFixed(1)}°`, labelPos, k, color);
         }
-
-        ctx.restore();
         return;
     }
 
-    m.measurement.cutRays.forEach((ray: any) => {
-        ctx.beginPath();
-        ctx.moveTo(ray.origin.x - Math.cos(ray.angle) * L_line, ray.origin.y - Math.sin(ray.angle) * L_line);
-        ctx.lineTo(ray.origin.x + Math.cos(ray.angle) * L_line, ray.origin.y + Math.sin(ray.angle) * L_line);
-        ctx.stroke();
-    });
-
-    // Shade Wedge for Closing Wedge (PSO/SPO)
-    if (isClosingWedge && m.measurement.cutRays.length === 2) {
-        ctx.save();
-        ctx.fillStyle = `${color}33`; // Semi-transparent pink
-        ctx.beginPath();
-        ctx.moveTo(hinge.x, hinge.y);
-
-        const r1 = m.measurement.cutRays[0];
-        const r2 = m.measurement.cutRays[1];
-        const rad = 1000 / k; // Limit wedge shading to a reasonable distance
-
-        ctx.lineTo(hinge.x + Math.cos(r1.angle) * rad, hinge.y + Math.sin(r1.angle) * rad);
-        ctx.lineTo(hinge.x + Math.cos(r2.angle) * rad, hinge.y + Math.sin(r2.angle) * rad);
-        ctx.closePath();
-        ctx.fill();
-        ctx.restore();
-    }
-
-    // Hinge point
-    ctx.fillStyle = color;
+    // Closing wedge (PSO / SPO): two cuts meeting at the anterior hinge,
+    // drawn from just behind the hinge to a little past each posterior point.
+    const [m0, m1] = extend(hinge, P, 0.12, 0.15);
+    const [f0, f1] = extend(hinge, A, 0.12, 0.15);
+    ctx.save();
+    ctx.fillStyle = withAlpha(color, STYLE.fillAlpha * 1.5);
     ctx.beginPath();
-    ctx.arc(hinge.x, hinge.y, 6 / k, 0, Math.PI * 2);
+    ctx.moveTo(hinge.x, hinge.y);
+    ctx.lineTo(P.x, P.y);
+    ctx.lineTo(A.x, A.y);
+    ctx.closePath();
     ctx.fill();
-    ctx.strokeStyle = "#ffffff";
-    ctx.lineWidth = 1 / k;
-    ctx.stroke();
-
-    // Rotation arc
-    drawAngleArc(ctx, hinge, 150 / k, angMoving, angMoving + theta, k, color);
-
-    // Label
-    const labelPrefix = type === 'OPEN' ? 'Opening' : 'Correction';
-    // Position label near the moving segment's posterior side
-    const labelPos = m.measurement.labelPos || { x: P.x + 20 / k, y: P.y - 40 / k };
-    drawMeasurementLabel(ctx, `${labelPrefix}: ${Math.abs(theta * 180 / Math.PI).toFixed(1)}°`, labelPos, k, color);
-
     ctx.restore();
+    strokeLine(ctx, m0, m1, k, color);
+    strokeLine(ctx, f0, f1, k, color);
+    strokeLine(ctx, P, A, k, color, true);
+
+    const r = Math.min(Math.hypot(P.x - hinge.x, P.y - hinge.y), Math.hypot(A.x - hinge.x, A.y - hinge.y)) * 0.35;
+    drawArc(ctx, hinge, r, angMoving, angMoving + theta, k, color);
+    drawPoints(ctx, [P, A], k, color);
+    drawPoint(ctx, hinge, k, color, 1.3);
+
+    const labelPos = m.measurement.labelPos || { x: P.x + 20 / k, y: P.y - 40 / k };
+    drawLabel(ctx, `Correction: ${Math.abs(theta * 180 / Math.PI).toFixed(1)}°`, labelPos, k, color);
 }
 
 /**
@@ -364,9 +293,10 @@ export function calculateOpenOsteotomyPrimitives(points: Point[]) {
     const getAngle = (s: Point, e: Point) => Math.atan2(e.y - s.y, e.x - s.x);
     let phi = getAngle(A, B) - getAngle(E, F);
     
-    // Normalize angle to [-π, π]
-    while (phi > Math.PI) phi -= 2 * Math.PI;
-    while (phi < -Math.PI) phi += 2 * Math.PI;
+    // Lines are undirected: keep the smallest angle between them (−90°…90°),
+    // otherwise drawing AB and EF in opposite directions reads as ~180°.
+    while (phi > Math.PI / 2) phi -= Math.PI;
+    while (phi <= -Math.PI / 2) phi += Math.PI;
 
     // 2. Calculate normal vector n perpendicular to cut line CD
     // The normal points toward the mobile side (E)
@@ -429,7 +359,10 @@ export function calculateResectionPrimitives(points: Point[]) {
         rMoving = { origin: mid1, angle: r1Angle };
     }
 
-    const dTheta = rTarget.angle - rMoving.angle;
+    // Lines are undirected: use the smallest rotation that lays one on the other.
+    let dTheta = rTarget.angle - rMoving.angle;
+    while (dTheta > Math.PI / 2) dTheta -= Math.PI;
+    while (dTheta <= -Math.PI / 2) dTheta += Math.PI;
     const trans = { x: rTarget.origin.x - rMoving.origin.x, y: rTarget.origin.y - rMoving.origin.y };
 
     return {
@@ -472,38 +405,20 @@ export function drawResection(
     m.measurement.translation = trans;
     m.measurement.hingePoint = hingePoint; // Move Ray 1 to Ray 0
 
-    // 3. VISUALIZATION
-    ctx.save();
-    ctx.lineWidth = 2.5 / k;
-    const L = 10000;
+    // Visualisation (annotation only): both endplate lines dashed, the fusion
+    // seam solid and finite, correction arc at the moving line.
+    const color = toolColor(m.toolKey);
+    const target = mid1.y < (p3.y + p4.y) / 2 ? [p3, p4] : [p1, p2];
+    strokeLine(ctx, p1, p2, k, color, true);
+    strokeLine(ctx, p3, p4, k, color, true);
+    const [s0, s1] = extend(target[0], target[1], 0.2, 0.2);
+    strokeLine(ctx, s0, s1, k, color);
+    const segLen = Math.hypot(p2.x - p1.x, p2.y - p1.y);
+    drawArc(ctx, rMoving.origin, Math.max(segLen * 0.4, 20 / k), rMoving.angle, rMoving.angle + dTheta, k, color);
+    drawPoints(ctx, [p1, p2, p3, p4], k, color);
 
-    // 2. Draw Seam Line (at Lower Line position, where they join)
-    // Indicates the surgical cut / fusion line.
-    ctx.strokeStyle = '#f472b6'; // Pink
-    ctx.lineWidth = 4 / k; // Thicker line for the seam
-    ctx.setLineDash([10, 5]); // Dashed
-    ctx.moveTo(rTarget.origin.x - Math.cos(rTarget.angle) * L, rTarget.origin.y - Math.sin(rTarget.angle) * L);
-    ctx.lineTo(rTarget.origin.x + Math.cos(rTarget.angle) * L, rTarget.origin.y + Math.sin(rTarget.angle) * L);
-    ctx.stroke();
-    ctx.setLineDash([]); // Reset
-
-    drawAngleArc(ctx, rMoving.origin, 150 / k, rMoving.angle, rMoving.angle + dTheta, k, '#f472b6');
-
-    // Cut Rays loop removed to clear solid lines. 
-    // Only the Seam Line (dashed) is drawn now.
-
-    // Points
-    ctx.fillStyle = '#ffffff';
-    [p1, p2, p3, p4].forEach(p => {
-        ctx.beginPath();
-        ctx.arc(p.x, p.y, 4 / k, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.stroke();
-    });
-
-    // Label
-    drawMeasurementLabel(ctx, `Resection: ${Math.abs(dTheta * 180 / Math.PI).toFixed(1)}°`, { x: mid1.x, y: mid1.y - 40 / k }, k, '#f472b6');
-    ctx.restore();
+    const labelPos = m.measurement.labelPos || { x: mid1.x, y: mid1.y - 40 / k };
+    drawLabel(ctx, m.result, labelPos, k, color);
 }
 
 // REMOVED drawDeformedResection as per "Forbidden operation: image pixels do not move"

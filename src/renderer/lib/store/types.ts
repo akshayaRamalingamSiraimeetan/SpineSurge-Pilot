@@ -17,7 +17,8 @@ export interface Scan {
 
 export type StudyStatus = 'Draft' | 'In Progress' | 'Completed' | 'Archived';
 
-export const STUDY_STATUSES: StudyStatus[] = ['Draft', 'In Progress', 'Completed', 'Archived'];
+/** Selectable study states ('Archived' kept in the type only for old records — UI9-04). */
+export const STUDY_STATUSES: StudyStatus[] = ['Draft', 'In Progress', 'Completed'];
 
 export interface Study {
     id: string;
@@ -87,6 +88,8 @@ export interface ReportDocumentSettings {
     fontScale: number;
     showPageNumbers: boolean;
     footerText: string;
+    /** Hospital logo at the left of the report header; undefined = the default from Settings. */
+    logo?: { dataUrl: string; width: number; height: number } | null;
 }
 
 export interface ReportConfig {

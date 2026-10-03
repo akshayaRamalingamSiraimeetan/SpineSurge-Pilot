@@ -9,6 +9,10 @@
 
 /* ---- Rebuild design tokens (layered over existing Tailwind vars) ---- */
 :root {
+  /* Clinical range colours (UI8-05) */
+  --range-good: #30D158;
+  --range-borderline: #FFD60A;
+  --range-bad: #FF453A;
   --r-xs: 6px; --r-sm: 8px; --r-md: 10px; --r-lg: 14px;
   --r-xl: 18px; --r-2xl: 22px; --r-pill: 999px;
 
@@ -48,6 +52,9 @@
 }
 
 .light {
+  --range-good: #15803D;
+  --range-borderline: #CA8A04;
+  --range-bad: #DC2626;
   --bg:            #F4F4F6;
   --bg-2:          #EFEFF2;
   --surface:       #FFFFFF;

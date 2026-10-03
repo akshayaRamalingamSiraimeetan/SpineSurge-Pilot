@@ -27,7 +27,8 @@ import { useNavigate } from "react-router-dom"
 import { defaultStudyName } from "@/lib/store/types";
 import { useAppStore, Patient, Visit } from "@/lib/store/index";
 import { useTheme } from "@/components/theme-provider";
-import { cn } from "@/lib/utils";
+import { cn } from "@/lib/utils"
+import { persistSeriesInBackground } from "@/features/dicom/dicomPersistence";
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
@@ -52,13 +53,15 @@ interface ImportDialogProps {
     navigateOnImport?: boolean;
     /** Start the wizard for this patient (Patients page "Add New Study"). */
     presetPatientId?: string;
+    /** Open immediately on mount (Add New Study → import, UI10-03). */
+    autoOpen?: boolean;
 }
 
-export function ImportDialog({ children, targetSide, resetOnOpen, navigateOnImport, presetPatientId }: ImportDialogProps) {
+export function ImportDialog({ children, targetSide, resetOnOpen, navigateOnImport, presetPatientId, autoOpen }: ImportDialogProps) {
     const navigate = useNavigate();
     const { resolvedTheme } = useTheme();
     const isDark = resolvedTheme === "dark";
-    const [open, setOpen] = useState(false)
+    const [open, setOpen] = useState(!!autoOpen)
     const [step, setStep] = useState<ImportStep>('MODE')
     const [comingSoonTarget, setComingSoonTarget] = useState<string | null>(null)
     const fileInputRef = useRef<HTMLInputElement>(null)
@@ -222,11 +225,22 @@ export function ImportDialog({ children, targetSide, resetOnOpen, navigateOnImpo
     const handleDicomFolderSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
         const files = event.target.files;
         if (files && files.length > 0) {
-            const fileArray = Array.from(files);
-            startFresh();
-            // A local series is not tied to the open study (BUGS WS-13).
-            useAppStore.getState().closeCase();
-            useAppStore.getState().loadDicomSeries(fileArray);
+            const fileArray = Array.from(files).filter((f) => !f.name.startsWith('.'));
+            const st = useAppStore.getState();
+            const ctx = st.contexts.find((c) => c.id === st.activeContextId);
+            const studyId = ctx?.studyIds?.[0];
+            const ctxImage = st.contextStates.find((c) => c.contextId === st.activeContextId)?.currentImage;
+            if (!resetOnOpen && st.activePatientId && ctx && studyId && !ctxImage) {
+                // Open study without images (e.g. Add New Study): the series becomes
+                // its scans — uploaded in the background, modality from the headers (UI10-08).
+                st.loadDicomSeries(fileArray);
+                persistSeriesInBackground(st.activePatientId, studyId, fileArray);
+            } else {
+                startFresh();
+                // Otherwise a fresh untitled series; it is uploaded once saved as a study.
+                st.closeCase();
+                useAppStore.getState().loadDicomSeries(fileArray);
+            }
             handleClose();
             goToWorkspace();
         }

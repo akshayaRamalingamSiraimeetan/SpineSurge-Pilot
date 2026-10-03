@@ -1,5 +1,4 @@
 import React from 'react';
-import Logo from '@/assets/Logo.png';
 
 
 interface AuthLayoutProps {
@@ -14,7 +13,8 @@ const AuthLayout: React.FC<AuthLayoutProps> = ({ children }) => {
 
             <div className="relative mx-auto flex min-h-screen w-full max-w-md flex-col items-center justify-center gap-6 px-5 py-10 sm:px-6">
                 <div className="flex flex-col items-center space-y-3 text-center">
-                    <img src={Logo} alt="SpineSurge" className="h-20 w-auto sm:h-24 dark:brightness-100 brightness-0" />
+                    <img src="/spinesurge.png" alt="" className="h-16 w-auto sm:h-20 select-none" draggable={false} />
+                    <div className="text-2xl font-bold tracking-tight text-[var(--text)] sm:text-3xl">SpineSurge</div>
                     <p className="text-xs text-[var(--text-2)] sm:text-sm">
                         Enter your credentials to access the workspace
                     </p>

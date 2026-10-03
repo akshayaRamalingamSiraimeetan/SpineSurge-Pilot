@@ -1,6 +1,6 @@
 import { Point, getMidpoint, getLineLinesIntersection, getDistance, endplateAngleDeg } from "@/lib/canvas/GeometryUtils";
 import { Measurement } from "@/lib/canvas/CanvasManager";
-import { drawMeasurementLabel } from "@/lib/canvas/CanvasUtils";
+import { drawLabel, drawPoint, drawPoints, strokeLine, toolColor, STYLE } from "@/lib/canvas/annotationStyle";
 
 export function calculateSpinalCurvature(points: Point[]) {
     if (points.length < 4) return { angle: 0, intersection: null };
@@ -21,116 +21,46 @@ export function calculateSpinalCurvature(points: Point[]) {
     };
 }
 
-export function drawSpinalCurvature(ctx: CanvasRenderingContext2D, m: Measurement, k: number, labelPrefix: string, color: string = '#60a5fa') {
+export function drawSpinalCurvature(ctx: CanvasRenderingContext2D, m: Measurement, k: number, labelPrefix: string) {
     const points = m.points;
     if (points.length < 2) return;
+    const color = toolColor(m.toolKey);
 
-    ctx.strokeStyle = color;
-    ctx.lineWidth = 2.5 / k;
-    ctx.fillStyle = color;
+    strokeLine(ctx, points[0], points[1], k, color);
+    if (points.length < 4) { drawPoints(ctx, points, k, color); return; }
+    strokeLine(ctx, points[2], points[3], k, color);
 
-    // Line 1 (Superior Endplate)
-    ctx.beginPath();
-    ctx.moveTo(points[0].x, points[0].y);
-    ctx.lineTo(points[1].x, points[1].y);
-    ctx.stroke();
-
-    points.slice(0, 2).forEach(p => {
-        ctx.beginPath();
-        ctx.arc(p.x, p.y, 4 / k, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.strokeStyle = '#ffffff';
-        ctx.lineWidth = 1 / k;
-        ctx.stroke();
-    });
-
-    if (points.length < 4) return;
-
-    // Line 2 (Inferior Endplate)
-    ctx.strokeStyle = color;
-    ctx.lineWidth = 2.5 / k;
-    ctx.beginPath();
-    ctx.moveTo(points[2].x, points[2].y);
-    ctx.lineTo(points[3].x, points[3].y);
-    ctx.stroke();
-
-    points.slice(2, 4).forEach(p => {
-        ctx.beginPath();
-        ctx.arc(p.x, p.y, 4 / k, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.strokeStyle = '#ffffff';
-        ctx.lineWidth = 1 / k;
-        ctx.stroke();
-    });
-
-    const { angle, intersection } = calculateSpinalCurvature(points);
+    const { angle } = calculateSpinalCurvature(points);
     m.result = `${labelPrefix}: ${angle.toFixed(1)}°`;
 
+    // Dashed curve between the endplate midpoints; its control point is the
+    // draggable "curvature handle".
     const mid1 = getMidpoint(points[0], points[1]);
     const mid2 = getMidpoint(points[2], points[3]);
-
-    // Draw Curvature Arc
-    // We want an arc that represents the spinal curvature between the two midpoints.
-    // If we have an intersection, we can use it to draw an indicative arc.
-    // But since the lines are endplates, the intersection might be far away.
-    // Let's draw a nice Bezier curve between the midpoints.
-
-    ctx.save();
-    ctx.setLineDash([4 / k, 4 / k]);
-    ctx.globalAlpha = 0.6;
-    ctx.beginPath();
-    ctx.moveTo(mid1.x, mid1.y);
-
-    // Calculate a control point for the curve
-    // We can use the intersection or a midpoint-based offset
-    let cp = { x: (mid1.x + mid2.x) / 2, y: (mid1.y + mid2.y) / 2 };
-
-    if (intersection) {
-        // Use a point between the midpoints and the intersection to "bend" the curve
-        // This gives a visual representation of lordosis/kyphosis
-        // We'll use a draggable offset eventually, but for now let's calculate one.
-        const midPoint = { x: (mid1.x + mid2.x) / 2, y: (mid1.y + mid2.y) / 2 };
-        const dx = mid2.x - mid1.x;
-        const dy = mid2.y - mid1.y;
-        const dist = Math.sqrt(dx * dx + dy * dy);
-
-        // Offset direction should be perpendicular to the chord
-        // For spine, usually offsets towards the convexity
-        const curveOffset = (m.measurement as any)?.curveOffset || 20 / k;
-
-        // Direction perpendicular to mid1-mid2
-        const perpX = -dy / dist;
-        const perpY = dx / dist;
-
-        cp = {
-            x: midPoint.x + perpX * curveOffset,
-            y: midPoint.y + perpY * curveOffset
-        };
-    }
-
-    ctx.quadraticCurveTo(cp.x, cp.y, mid2.x, mid2.y);
-    ctx.stroke();
-
-    // Draw the "Curvature Handle" - if this tool is CL/TK/LL, maybe allow dragging this?
-    ctx.setLineDash([]);
-    ctx.beginPath();
-    ctx.arc(cp.x, cp.y, 5 / k, 0, Math.PI * 2);
-    ctx.fillStyle = '#ffffff';
-    ctx.fill();
-    ctx.strokeStyle = color;
-    ctx.stroke();
-    ctx.restore();
-
-    // Label
-    const labelPos = m.measurement?.labelPos || {
-        x: cp.x + 30 / k,
-        y: cp.y
+    const chordMid = getMidpoint(mid1, mid2);
+    const dist = getDistance(mid1, mid2) || 1;
+    const curveOffset = (m.measurement as any)?.curveOffset ?? 20 / k;
+    const cp = {
+        x: chordMid.x + (-(mid2.y - mid1.y) / dist) * curveOffset,
+        y: chordMid.y + ((mid2.x - mid1.x) / dist) * curveOffset,
     };
 
-    const levelText = m.measurement?.level ? `\n${m.measurement.level}` : '';
-    const finalText = m.result + levelText;
+    ctx.save();
+    ctx.strokeStyle = color;
+    ctx.lineWidth = STYLE.dashedLine / k;
+    ctx.setLineDash(STYLE.dash.map((d) => d / k));
+    ctx.beginPath();
+    ctx.moveTo(mid1.x, mid1.y);
+    ctx.quadraticCurveTo(cp.x, cp.y, mid2.x, mid2.y);
+    ctx.stroke();
+    ctx.restore();
+    drawPoint(ctx, cp, k, '#ffffff', 1.15);
 
-    drawMeasurementLabel(ctx, finalText, labelPos, k, '#ffffff');
+    const labelPos = m.measurement?.labelPos || { x: cp.x + 30 / k, y: cp.y };
+    const levelText = m.measurement?.level ? `
+${m.measurement.level}` : '';
+    drawLabel(ctx, m.result + levelText, labelPos, k, color);
+    drawPoints(ctx, points.slice(0, 4), k, color);
 
     // Store handle position for interaction detection
     if (!m.measurement) m.measurement = {};

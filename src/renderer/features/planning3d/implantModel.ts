@@ -125,3 +125,29 @@ export function migrateImplant(raw: any): PlanImplant | null {
 
 export const migrateImplants = (list: unknown): PlanImplant[] =>
     Array.isArray(list) ? list.map(migrateImplant).filter((x): x is PlanImplant => !!x) : [];
+
+/**
+ * Smooth rod centre-line through the control points (Catmull-Rom), so a bent
+ * rod looks like a contoured rod rather than a polyline (UI10 — rod bending).
+ */
+export function smoothRod(points: Vec3[], samplesPerSegment = 10): Vec3[] {
+    if (points.length < 3) return points;
+    const out: Vec3[] = [];
+    for (let i = 0; i < points.length - 1; i++) {
+        const p0 = points[Math.max(0, i - 1)], p1 = points[i], p2 = points[i + 1], p3 = points[Math.min(points.length - 1, i + 2)];
+        for (let s = 0; s < samplesPerSegment; s++) {
+            const t = s / samplesPerSegment, t2 = t * t, t3 = t2 * t;
+            out.push([0, 1, 2].map((k) => 0.5 * (
+                2 * p1[k] + (-p0[k] + p2[k]) * t + (2 * p0[k] - 5 * p1[k] + 4 * p2[k] - p3[k]) * t2 + (-p0[k] + 3 * p1[k] - 3 * p2[k] + p3[k]) * t3
+            )) as Vec3);
+        }
+    }
+    out.push(points[points.length - 1]);
+    return out;
+}
+
+/** Length of the (smoothed) rod in mm. */
+export const rodLength = (points: Vec3[]) => {
+    const pts = smoothRod(points);
+    return pts.slice(1).reduce((acc, p, i) => acc + dist(pts[i], p), 0);
+};

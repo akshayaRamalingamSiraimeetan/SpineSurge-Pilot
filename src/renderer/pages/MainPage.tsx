@@ -1,7 +1,5 @@
-import { Button } from "@/components/ui/button";
 import { Context, Patient } from "@/lib/store/types";
-import { Upload } from "lucide-react";
-import { ImportDialog } from "@/features/import-export/ImportDialog";
+import { EmptyImport } from "@/features/import-export/EmptyImport";
 import { useAppStore } from "@/lib/store/index";
 import CanvasWorkspace from "@/features/canvas/CanvasWorkspace";
 import { DICOMViewer } from "@/features/dicom/DICOMViewer";
@@ -12,6 +10,7 @@ import { useEffect, useRef } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { API_BASE } from "@/lib/api";
 import { useAutosave } from "@/hooks/useAutosave";
+import { isVolumeModality } from "@/features/dicom/dicomPersistence";
 
 const MainPage = () => {
     useAutosave();
@@ -102,7 +101,7 @@ const MainPage = () => {
         detectedForCtxRef.current = activeContextId;
 
         const firstScan = study.scans[0];
-        const isDICOM = !!firstScan && (study.modality === 'CT' || study.modality === 'MRI' || firstScan.imageUrl.toLowerCase().endsWith('.dcm'));
+        const isDICOM = !!firstScan && (isVolumeModality(study.modality) || firstScan.imageUrl.toLowerCase().endsWith('.dcm'));
         const dicomActive = useAppStore.getState().isDicomMode;
         if (isDICOM) {
             if (!dicomActive) {
@@ -112,7 +111,8 @@ const MainPage = () => {
                     return `${API_BASE}${url.startsWith('/') ? '' : '/'}${url}`;
                 }));
             }
-        } else if (dicomActive) {
+        } else if (dicomActive && firstScan) {
+            // (no scans yet = a series that is still being uploaded to this study — keep it)
             exitDicomMode();
         }
     }, [activeContextId, contexts, patients, loadDicomURLs, exitDicomMode]);
@@ -145,23 +145,6 @@ const MainPage = () => {
     );
 };
 
-/** No image yet: the same import entry point on Assessment and Planning. */
-export const EmptyImport = ({ title = "No image loaded", hint = "Import an X-ray or a CT/MR series to start. It is shared by Assessment, Planning and Compare (Image A)." }: { title?: string; hint?: string }) => (
-    <div className="text-center space-y-4 p-10 rounded-xl border border-[var(--border)] bg-[var(--surface)]/40">
-        <div className="h-20 w-20 bg-muted/20 rounded-full flex items-center justify-center mx-auto">
-            <Upload className="h-9 w-9 text-muted-foreground" />
-        </div>
-        <div>
-            <h2 className="text-xl font-semibold mb-2 text-foreground">{title}</h2>
-            <p className="text-muted-foreground max-w-sm mx-auto text-sm">{hint}</p>
-        </div>
-        <ImportDialog>
-            <Button size="lg" className="gap-2">
-                <Upload className="h-4 w-4" />
-                Import scan
-            </Button>
-        </ImportDialog>
-    </div>
-);
+export { EmptyImport };
 
 export default MainPage;

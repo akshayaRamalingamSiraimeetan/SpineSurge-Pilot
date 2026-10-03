@@ -41,3 +41,5 @@ easy to place, select, move, rotate and resize. Status tracked in docs/BUGS.md (
 - [x] Default sizes in mm (6.5 mm screw, 10 mm cage height, 5.5 mm rod) via calibration (fallback ≈300 mm FOV)
 - [ ] Units still stored in px (labels convert with calibration) — mm storage is a later migration
 - [ ] Separate rotate knob for cage (currently: front handle sets width + angle)
+- [x] (UI5-05) On-image editing: screw diameter diamond, cage lordosis diamond, live size label; panel inputs removed
+- [x] (UI5-03) Tool ends after one implant is placed

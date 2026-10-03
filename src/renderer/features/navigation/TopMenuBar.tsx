@@ -16,10 +16,10 @@ import {
     DialogHeader,
     DialogTitle,
 } from "@/components/ui/dialog";
-import { useTheme } from "@/components/theme-provider";
+import { useDicomUpload } from "@/features/dicom/dicomPersistence";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { useNavigate, useLocation } from "react-router-dom";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { useAppStore, getStudyDisplayName } from "@/lib/store/index";
 
@@ -38,14 +38,12 @@ export const hasUntitledWork = () => {
 };
 
 const TopMenuBar = () => {
-    const { resolvedTheme } = useTheme();
     const navigate = useNavigate();
     const location = useLocation();
-    const isDark = resolvedTheme === 'dark';
 
     const {
         activePatientId, patients, activeContextId, contexts, syncStatus, hasUnsyncedChanges,
-        isComparisonMode, setComparisonMode, currentImage, measurements,
+        isComparisonMode, setComparisonMode, currentImage, measurements, isDicomMode,
     } = useAppStore(useShallow((s) => ({
         activePatientId: s.activePatientId,
         patients: s.patients,
@@ -57,7 +55,11 @@ const TopMenuBar = () => {
         setComparisonMode: s.setComparisonMode,
         currentImage: s.currentImage,
         measurements: s.measurements,
+        isDicomMode: s.isDicomMode,
     })));
+    const upload = useDicomUpload();
+    // A CT/MR study has only Planning and Report (UI10-07)
+    const tabs = isDicomMode ? WS_TABS.filter((t) => t.key === 'planning' || t.key === 'report') : WS_TABS;
 
     const [closeAttemptRoute, setCloseAttemptRoute] = useState<string | null>(null);
     const [discardRoute, setDiscardRoute] = useState<string | null>(null);
@@ -65,6 +67,12 @@ const TopMenuBar = () => {
     const wsTab: WsTab = location.pathname === '/compare'
         ? 'compare'
         : ((new URLSearchParams(location.search).get('tab') as WsTab) || 'assessment');
+    useEffect(() => {
+        if (isDicomMode && (wsTab === 'assessment' || wsTab === 'compare')) {
+            if (wsTab === 'compare') setComparisonMode(false);
+            navigate('/workspace?tab=planning', { replace: true });
+        }
+    }, [isDicomMode, wsTab, navigate, setComparisonMode]);
 
     /* ── Title ─────────────────────────────────────────────── */
     const patient = useMemo(() => patients.find((p) => p.id === activePatientId) ?? null, [activePatientId, patients]);
@@ -84,10 +92,12 @@ const TopMenuBar = () => {
         const parts: string[] = [];
         if (patient.age) parts.push(`${patient.age}${patient.gender ?? ''}`);
         if (patient.id) parts.push(`ID ${patient.id}`);
-        const dx = patient.visits?.[0]?.diagnosis;
-        if (dx) parts.push(dx);
+        // The case's own visit (falls back to the first visit)
+        const visit = patient.visits?.find((v) => v.id === context?.visitId) ?? patient.visits?.[0];
+        const dx = visit?.diagnosis;
+        if (dx && dx !== 'New Diagnosis') parts.push(dx);
         return parts.join(' · ') || null;
-    }, [patient]);
+    }, [patient, context]);
 
     /* ── Tabs: always available; replace history so Back leaves the workspace ── */
     const handleWsTab = (key: WsTab) => {
@@ -147,7 +157,11 @@ const TopMenuBar = () => {
 
     /* ── Save status ───────────────────────────────────────── */
     const untitled = !activeContextId && (!!currentImage || measurements.length > 0);
-    const status = untitled
+    const status = upload.error
+        ? { icon: <CloudOff className="w-3.5 h-3.5 text-red-500" />, text: 'Series upload failed', title: upload.error }
+        : upload.total > 0
+        ? { icon: <Loader2 className="w-3.5 h-3.5 animate-spin" />, text: `Uploading series ${upload.done}/${upload.total}`, title: 'The CT/MR files are being saved to this study' }
+        : untitled
         ? { icon: <AlertCircle className="w-3.5 h-3.5 text-amber-500" />, text: 'Not saved — add patient details', title: 'Fill in the patient name in the right panel to save this study' }
         : syncStatus === 'saving' ? { icon: <Loader2 className="w-3.5 h-3.5 animate-spin" />, text: 'Saving…', title: '' }
         : syncStatus === 'error' ? { icon: <CloudOff className="w-3.5 h-3.5 text-red-500" />, text: 'Save failed — retrying', title: '' }
@@ -160,9 +174,9 @@ const TopMenuBar = () => {
             className="fixed top-0 left-0 right-0 z-50 flex items-center"
             style={{
                 height: 54,
-                background: isDark ? 'rgba(10,10,11,0.97)' : 'rgba(255,255,255,0.97)',
+                // Same surface as the side panels (UI6-07)
+                background: 'var(--surface)',
                 borderBottom: '1px solid var(--border)',
-                backdropFilter: 'blur(20px)',
             }}
         >
             {/* Logo */}
@@ -171,9 +185,7 @@ const TopMenuBar = () => {
                 title="Dashboard"
                 style={{ width: 54, height: 54, flexShrink: 0, display: 'grid', placeItems: 'center', borderRight: '1px solid var(--border)' }}
             >
-                <div style={{ width: 32, height: 32, borderRadius: 8, background: 'var(--accent)', display: 'grid', placeItems: 'center', color: '#fff', fontSize: 16, fontWeight: 800 }}>
-                    S
-                </div>
+                <img src="/spinesurge.png" alt="SpineSurge" draggable={false} style={{ width: 32, height: 32, objectFit: 'contain' }} />
             </button>
 
             {/* Back + title */}
@@ -198,7 +210,7 @@ const TopMenuBar = () => {
             {/* Tabs (always navigable) */}
             <div style={{ flex: 1, display: 'flex', justifyContent: 'center' }}>
                 <div style={{ display: 'flex', gap: 2, background: 'var(--surface-3)', padding: 3, borderRadius: 10 }}>
-                    {WS_TABS.map((t) => (
+                    {tabs.map((t) => (
                         <button
                             key={t.key}
                             onClick={() => handleWsTab(t.key)}

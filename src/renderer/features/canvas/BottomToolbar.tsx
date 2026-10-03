@@ -18,6 +18,8 @@ import {
     GripVertical,
 } from "lucide-react";
 import { useAppStore } from "@/lib/store/index";
+import { useShallow } from "zustand/react/shallow";
+import { useSettings } from "@/lib/settings";
 import { ScreenshotDialog } from "@/features/navigation/ScreenshotDialog";
 import * as Popover from "@radix-ui/react-popover";
 import { Slider } from "@/components/ui/slider";
@@ -127,9 +129,39 @@ const Divider = () => (
     <div className="h-px w-6 bg-[var(--border)] rounded-full mx-auto" />
 );
 
+/* ── Docking (floating variant) ───────────────────────────────── */
+/**
+ * Free position inside the canvas, or docked to its left/right edge. A docked
+ * toolbar is anchored to that edge, so it stays at the edge when the side
+ * panels open or close (UI5-02). Remembered per browser.
+ */
+type ToolbarPos = { dock: 'left' | 'right' | null; left: number; top: number };
+const DOCK_PX = 56;
+const POS_KEY = 'spinesurge.toolbarPos';
+const loadPos = (): ToolbarPos | null => {
+    try {
+        const v = JSON.parse(localStorage.getItem(POS_KEY) || 'null');
+        return v && typeof v.top === 'number' ? v : null;
+    } catch { return null; }
+};
+const savePos = (p: ToolbarPos) => { try { localStorage.setItem(POS_KEY, JSON.stringify(p)); } catch { /* storage unavailable */ } };
+
 /* ── Main component ────────────────────────────────────────────── */
-const BottomToolbar = () => {
-    const store = useAppStore();
+/**
+ * `floating` (Assessment / Planning): draggable, docks to the canvas edges.
+ * `embedded` (Compare): static, lives in the gutter between Image A and B and
+ * acts on the selected image.
+ */
+const BottomToolbar = ({ variant = 'floating' }: { variant?: 'floating' | 'embedded' }) => {
+    const embedded = variant === 'embedded';
+    const store = useAppStore(useShallow((s) => ({
+        activeTool: s.activeTool, setActiveTool: s.setActiveTool,
+        setBrightness: s.setBrightness, setContrast: s.setContrast, setSharpness: s.setSharpness,
+        setZoom: s.setZoom, setRotation: s.setRotation, toggleFlipX: s.toggleFlipX, resetCanvas: s.resetCanvas,
+        undo: s.undo, redo: s.redo, isComparisonMode: s.isComparisonMode,
+        activeCanvasSide: s.activeCanvasSide, setActiveCanvasSide: s.setActiveCanvasSide,
+        comparison: s.comparison, currentImage: s.currentImage, canvas: s.canvas,
+    })));
     const {
         activeTool,
         setActiveTool,
@@ -182,12 +214,18 @@ const BottomToolbar = () => {
     const dragging = useRef(false);
     const dragOffset = useRef({ x: 0, y: 0 });
 
-    // Position INSIDE the canvas area (the offset parent). null = default:
-    // right edge, vertically centred. Dragging is clamped to the canvas.
-    const [pos, setPos] = useState<{ left: number; top: number } | null>(null);
+    // Position INSIDE the canvas area (the offset parent). Default: docked
+    // to the right edge (next to the measurement panel), vertically centred.
+    const [pos, setPos] = useState<ToolbarPos | null>(() => loadPos());
+    // Settings → "Reset toolbar position"
+    useEffect(() => useSettings.subscribe((s, prev) => {
+        if (s.toolbarResetAt === prev.toolbarResetAt) return;
+        try { localStorage.removeItem(POS_KEY); } catch { /* storage unavailable */ }
+        setPos(null);
+    }), []);
 
     const onMouseDown = useCallback((e: React.MouseEvent) => {
-        if (!(e.target as HTMLElement).closest("[data-grip]")) return;
+        if (embedded || !(e.target as HTMLElement).closest("[data-grip]")) return;
         const panel = panelRef.current;
         const parent = panel?.offsetParent as HTMLElement | null;
         if (!panel || !parent) return;
@@ -195,28 +233,33 @@ const BottomToolbar = () => {
         dragging.current = true;
         const pr = panel.getBoundingClientRect();
         dragOffset.current = { x: e.clientX - pr.left, y: e.clientY - pr.top };
+        let latest: ToolbarPos | null = null;
 
         const onMove = (ev: MouseEvent) => {
             if (!dragging.current) return;
             const box = parent.getBoundingClientRect();
             const w = panel.offsetWidth, h = panel.offsetHeight;
             const M = 8;
-            setPos({
-                left: Math.max(M, Math.min(box.width - w - M, ev.clientX - box.left - dragOffset.current.x)),
-                top: Math.max(M, Math.min(box.height - h - M, ev.clientY - box.top - dragOffset.current.y)),
-            });
+            const left = Math.max(M, Math.min(box.width - w - M, ev.clientX - box.left - dragOffset.current.x));
+            const top = Math.max(M, Math.min(box.height - h - M, ev.clientY - box.top - dragOffset.current.y));
+            // Snap to an edge when released near it.
+            const dock = box.width - (left + w) < DOCK_PX ? 'right' : left < DOCK_PX ? 'left' : null;
+            latest = { dock, left, top };
+            setPos(latest);
         };
         const onUp = () => {
             dragging.current = false;
+            if (latest) savePos(latest);
             window.removeEventListener("mousemove", onMove);
             window.removeEventListener("mouseup", onUp);
         };
         window.addEventListener("mousemove", onMove);
         window.addEventListener("mouseup", onUp);
-    }, []);
+    }, [embedded]);
 
     // Keep it inside the canvas when the canvas resizes (sidebars toggled).
     useEffect(() => {
+        if (embedded) return;
         const panel = panelRef.current;
         const parent = panel?.offsetParent as HTMLElement | null;
         if (!panel || !parent) return;
@@ -225,6 +268,7 @@ const BottomToolbar = () => {
                 if (!p) return p;
                 const w = panel.offsetWidth, h = panel.offsetHeight;
                 return {
+                    ...p,
                     left: Math.max(8, Math.min(parent.clientWidth - w - 8, p.left)),
                     top: Math.max(8, Math.min(parent.clientHeight - h - 8, p.top)),
                 };
@@ -232,7 +276,7 @@ const BottomToolbar = () => {
         });
         ro.observe(parent);
         return () => ro.disconnect();
-    });
+    }, [embedded]);
 
     /* ── Handlers ─────────────────────────────────────────────── */
     const handleScreenshot = useCallback(() => {
@@ -317,9 +361,15 @@ const BottomToolbar = () => {
     if (!canvas || !hasToolbarTargetImage) return null;
 
     /* ── Computed position styles ────────────────────────────── */
-    const posStyle: React.CSSProperties = pos
-        ? { position: "absolute", left: pos.left, top: pos.top, zIndex: 30 }
-        : { position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)", zIndex: 30 };
+    const posStyle: React.CSSProperties = embedded
+        ? { position: "relative" }
+        : !pos
+            ? { position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)", zIndex: 30 }
+            : pos.dock === 'right'
+                ? { position: "absolute", right: 12, top: pos.top, zIndex: 30 }
+                : pos.dock === 'left'
+                    ? { position: "absolute", left: 12, top: pos.top, zIndex: 30 }
+                    : { position: "absolute", left: pos.left, top: pos.top, zIndex: 30 };
 
     const rotationDisplay = ((canvas.rotation % 360) + 360) % 360;
 
@@ -330,16 +380,39 @@ const BottomToolbar = () => {
                 style={posStyle}
                 onMouseDown={onMouseDown}
                 onClick={handleClick}
-                className="flex flex-col items-center gap-1 p-1.5 rounded-2xl border border-[var(--border)] bg-[var(--surface)]/90 backdrop-blur-xl shadow-2xl select-none pointer-events-auto"
+                className={embedded
+                    ? "flex flex-col items-center gap-1 p-1.5 rounded-2xl border border-[var(--border)] bg-[var(--surface)] select-none"
+                    : "flex flex-col items-center gap-1 p-1.5 rounded-2xl border border-[var(--border)] bg-[var(--surface)]/90 backdrop-blur-xl shadow-2xl select-none pointer-events-auto"}
             >
-                {/* ── Grip handle ─────────────────────────────── */}
-                <div
-                    data-grip="true"
-                    title="Drag to move"
-                    className="w-full flex items-center justify-center py-0.5 cursor-grab active:cursor-grabbing text-[var(--text-3)] hover:text-[var(--text-2)] transition-colors"
-                >
-                    <GripVertical className="h-3.5 w-3.5" />
-                </div>
+                {embedded ? (
+                    /* ── Target image (Compare) ─────────────────── */
+                    <div className="flex flex-col gap-1 w-full" title="Image the tools act on">
+                        {(['left', 'right'] as const).map((sd) => (
+                            <button
+                                key={sd}
+                                disabled={sd === 'left' ? !hasLeftImage : !hasRightImage}
+                                onClick={() => setActiveCanvasSide(sd)}
+                                className={[
+                                    "h-6 w-9 rounded-lg text-[10px] font-bold transition-colors disabled:opacity-30",
+                                    effectiveCanvasSide === sd
+                                        ? "bg-[var(--accent-soft)] text-[var(--accent)]"
+                                        : "text-[var(--text-3)] hover:bg-[var(--surface-3)] hover:text-[var(--text)]",
+                                ].join(" ")}
+                            >
+                                {sd === 'left' ? 'A' : 'B'}
+                            </button>
+                        ))}
+                    </div>
+                ) : (
+                    /* ── Grip handle ─────────────────────────────── */
+                    <div
+                        data-grip="true"
+                        title="Drag to move — drop near an edge to dock"
+                        className="w-full flex items-center justify-center py-0.5 cursor-grab active:cursor-grabbing text-[var(--text-3)] hover:text-[var(--text-2)] transition-colors"
+                    >
+                        <GripVertical className="h-3.5 w-3.5" />
+                    </div>
+                )}
 
                 <Divider />
 

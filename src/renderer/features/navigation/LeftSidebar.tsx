@@ -23,6 +23,8 @@ import { useState, useMemo } from 'react';
 import { Scale, Box, Layers, HelpCircle, ChevronLeft, ChevronRight } from 'lucide-react';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { useAppStore } from '@/lib/store/index';
+import { useShallow } from 'zustand/react/shallow';
+import { TargetsPanel } from '@/features/planning2d/TargetsPanel';
 import { Button } from '@/components/ui/button';
 import { useLocation } from 'react-router-dom';
 import { cn } from '@/lib/utils';
@@ -33,79 +35,6 @@ import { useTheme } from '@/components/theme-provider';
 
 /* ── Planning sub-tab ──────────────────────────────────────── */
 type PlanningTab = 'target' | 'simulation';
-
-/** Minimal display-name map reused from RightSidebar constants. */
-const TC_DISPLAY_NAMES: Record<string, string> = {
-  'cobb':     'Cobb Angle',
-  'sva':      'SVA',
-  'pi_ll':    'PI-LL Mismatch',
-  'cl':       'Cervical Lordosis (CL)',
-  'tk':       'Thoracic Kyphosis (TK)',
-  'll':       'Lumbar Lordosis (LL)',
-  'pelvis':   'Pelvic Parameters',
-  'stenosis': 'Canal Area',
-  'spondy':   'Spondylolisthesis',
-  'line':     'Distance Line',
-  'ts':       'Trunk Shift',
-  'avt':      'Apical Vert. Translation',
-  'rvad':     'RVAD',
-  'po':       'Pelvic Obliquity',
-  'tpa':      'TPA',
-  'spa':      'SPA',
-  'ssa':      'SSA',
-  't1spi':    'T1SPi',
-  't9spi':    'T9SPi',
-  'odha':     'ODHA',
-  'cbva':     'CBVA',
-  'cmc':      'Cobb Multi-Curve',
-  'pi':       'Pelvic Incidence (PI)',
-  'pt':       'Pelvic Tilt (PT)',
-  'ss':       'Sacral Slope (SS)',
-  'sc':       'Custom Curve',
-  'vbm':      'Vertebral Body Metrics',
-  'ost-pso':  'PSO',
-  'ost-spo':  'SPO',
-  'ost-resect':'Resection Plan',
-  'ost-open': 'Opening Wedge',
-};
-
-/**
- * Derive a concise, human-readable current-value string for a measurement.
- * Mirrors the core logic of `formatValue` in RightSidebar without calibration
- * (calibration is a display concern the user sees in Current Measurements).
- */
-function tcFormatValue(m: any): string {
-  if (['ost-pso','ost-spo','ost-open','ost-resect'].includes(m.toolKey)) {
-    const existing = typeof m.result === 'string' ? m.result : '';
-    if (existing && existing !== 'Planning...') return existing.split('\n')[0];
-    if (Array.isArray(m.points) && m.points.length >= 3) {
-      const p = m.points[0], h = m.points[1], a = m.points[2];
-      const mov = Math.atan2(p.y - h.y, p.x - h.x);
-      const fix = Math.atan2(a.y - h.y, a.x - h.x);
-      const norm = ((fix - mov + Math.PI) % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI) - Math.PI;
-      return `${Math.abs(norm * 180 / Math.PI).toFixed(1)}°`;
-    }
-    return '—';
-  }
-  if (['vbm','spondy','pelvis','pi_ll','cmc','rvad'].includes(m.toolKey)) {
-    if (typeof m.result === 'string' && m.result) {
-      // Return just the first line as a compact summary
-      return m.result.split('\n')[0] || 'Metrics';
-    }
-    return 'Metrics';
-  }
-  if (typeof m.result === 'string' && m.result && m.result !== 'Planning...') {
-    return m.result.split('\n')[0];
-  }
-  return '—';
-}
-
-/** Determine the accent colour for a value string (mirrors MeasurementCard). */
-function tcValueColor(val: string): string {
-  if (val.includes('°')) return 'var(--val-bad)';
-  if (val.includes('mm')) return 'var(--val-good)';
-  return 'var(--text-2)';
-}
 
 /* ── Types ─────────────────────────────────────────────────── */
 type TabKey = 'alignment' | 'extended' | 'morphology' | 'generic' | 'planning';
@@ -171,7 +100,6 @@ const TABS: TabDef[] = [
       {
         title: 'Curvature',
         tools: [
-          { id: 'cobb',  abbr: 'Cobb', label: 'Cobb Angle',              desc: 'Coronal Cobb angle' },
           { id: 'cmc',   abbr: 'CMC',  label: 'Cobb Multi-Curve',        desc: 'Multiple coronal Cobb angles' },
           { id: 'rvad',  abbr: 'RVAD', label: 'Rib Vertebral Angle Diff',desc: 'Rib-vertebra angle asymmetry' },
         ],
@@ -444,12 +372,6 @@ function RefLineRow({ refLine, active, onClick }: { refLine: RefLineDef; active:
   );
 }
 
-const SPINAL_LEVELS = [
-  'C1', 'C2', 'C3', 'C4', 'C5', 'C6', 'C7',
-  'T1', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'T8', 'T9', 'T10', 'T11', 'T12',
-  'L1', 'L2', 'L3', 'L4', 'L5',
-  'S1', 'S2',
-];
 
 const ScrewIcon = ({ className }: { className?: string }) => (
   <svg className={className} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
@@ -480,10 +402,9 @@ const DicomLeftSidebar = () => {
     setDicom3DIsoThreshold,
     setDicom3DVolumeThreshold,
     setDicom3DMode,
-    setScrewConfig,
     setDicomCroppingActive,
     updateRoiCrop,
-  } = useAppStore();
+  } = useAppStore(useShallow((s) => ({ dicom3D: s.dicom3D, setDicom3DRenderMode: s.setDicom3DRenderMode, setDicom3DIsoThreshold: s.setDicom3DIsoThreshold, setDicom3DVolumeThreshold: s.setDicom3DVolumeThreshold, setDicom3DMode: s.setDicom3DMode, setDicomCroppingActive: s.setDicomCroppingActive, updateRoiCrop: s.updateRoiCrop })));
 
   const isSegMode = dicom3D.renderMode === 'segmentation';
   const currentThreshold = isSegMode ? dicom3D.isoThreshold : dicom3D.volumeThreshold;
@@ -683,111 +604,23 @@ const DicomLeftSidebar = () => {
           </button>
         </div>
         {dicom3D.isCroppingActive && (
-          <div className="space-y-2">
-            {([['x', 'Right ↔ Left'], ['y', 'Anterior ↔ Posterior'], ['z', 'Inferior ↔ Superior']] as const).map(([axis, name]) => {
-              const lo = dicom3D.roiCrop[`${axis}0` as const];
-              const hi = dicom3D.roiCrop[`${axis}1` as const];
-              return (
-                <div key={axis}>
-                  <div className="text-[9px] text-[var(--text-3)] mb-1">{name}</div>
-                  <div className="flex gap-2">
-                    <input type="range" min={0} max={100} value={Math.round(lo * 100)} className="w-full"
-                      onChange={(e) => updateRoiCrop({ [`${axis}0`]: Math.min(parseInt(e.target.value) / 100, hi - 0.02) })} />
-                    <input type="range" min={0} max={100} value={Math.round(hi * 100)} className="w-full"
-                      onChange={(e) => updateRoiCrop({ [`${axis}1`]: Math.max(parseInt(e.target.value) / 100, lo + 0.02) })} />
-                  </div>
-                </div>
-              );
-            })}
+          // The crop box is edited directly in the 3D view (UI10-05)
+          <div className="flex items-center justify-between gap-2 text-[11px] text-[var(--text-3)]">
+            <span>Drag the box faces in the 3D view.</span>
             <button onClick={() => updateRoiCrop({ x0: 0, x1: 1, y0: 0, y1: 1, z0: 0, z1: 1 })}
-              className="text-[10px] text-[var(--text-3)] hover:text-[var(--text)]">Reset crop</button>
+              className="shrink-0 hover:text-[var(--text)]">Reset</button>
           </div>
         )}
       </div>
 
-      {/* ── Screw configuration form ──────────────────────────── */}
-      {dicom3D.interactionMode === 'place_screw' && (
-        <div className="p-3 bg-cyan-950/5 border border-cyan-500/10 rounded-xl space-y-3">
-          <p className="text-[9px] font-bold tracking-[0.15em] uppercase text-cyan-700/70 dark:text-cyan-400/50">
-            Screw Settings
-          </p>
-
-          <div>
-            <label htmlFor="screw-level-sidebar" className="text-[9px] text-[var(--text-3)] mb-1 block">
-              Level
-            </label>
-            <select
-              id="screw-level-sidebar"
-              value={dicom3D.screwLevel}
-              onChange={e => setScrewConfig({ screwLevel: e.target.value })}
-              className="w-full bg-[var(--surface-2)] border border-[var(--border)] rounded-lg px-2 py-1.5 text-xs text-[var(--text)] focus:outline-none focus:border-cyan-500/50 appearance-none cursor-pointer"
-            >
-              {SPINAL_LEVELS.map(l => (
-                <option key={l} value={l} className="bg-[var(--sidebar)]">{l}</option>
-              ))}
-            </select>
-          </div>
-
-          <div>
-            <label className="text-[9px] text-[var(--text-3)] mb-1 block">Side</label>
-            <div className="flex gap-1.5">
-              {(['L', 'R'] as const).map(s => (
-                <button
-                  key={s}
-                  onClick={() => setScrewConfig({ screwSide: s })}
-                  className={cn(
-                    'flex-1 py-1.5 text-xs font-semibold rounded-lg transition-all border',
-                    dicom3D.screwSide === s
-                      ? 'bg-cyan-500/20 text-cyan-600 dark:text-cyan-400 border-cyan-500/30'
-                      : 'text-[var(--text-3)] border-[var(--border)] hover:border-[var(--border)] hover:text-[var(--text-2)]',
-                  )}
-                >
-                  {s === 'L' ? 'Left' : 'Right'}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div>
-            <label htmlFor="screw-diameter-sidebar" className="text-[9px] text-[var(--text-3)] mb-1 block">
-              Diameter (mm)
-            </label>
-            <input
-              id="screw-diameter-sidebar"
-              type="number"
-              min={3.0}
-              max={9.0}
-              step={0.5}
-              value={dicom3D.screwDiameter}
-              onChange={e => setScrewConfig({ screwDiameter: parseFloat(e.target.value) })}
-              className="w-full bg-[var(--surface-2)] border border-[var(--border)] rounded-lg px-2 py-1.5 text-xs text-[var(--text)] focus:outline-none focus:border-cyan-500/50"
-            />
-          </div>
-
-          <div>
-            <label htmlFor="screw-length-sidebar" className="text-[9px] text-[var(--text-3)] mb-1 block">
-              Length (mm)
-            </label>
-            <input
-              id="screw-length-sidebar"
-              type="number"
-              min={10}
-              max={80}
-              step={5}
-              value={dicom3D.screwLength}
-              onChange={e => setScrewConfig({ screwLength: parseInt(e.target.value) })}
-              className="w-full bg-[var(--surface-2)] border border-[var(--border)] rounded-lg px-2 py-1.5 text-xs text-[var(--text)] focus:outline-none focus:border-cyan-500/50"
-            />
-          </div>
-        </div>
-      )}
     </div>
   );
 };
 
 /* ── Normal LeftSidebar Content ────────────────────────────────── */
 const NormalLeftSidebarContent = () => {
-  const { activeTool, setActiveTool, measurements, canvas } = useAppStore();
+  const { activeTool, setActiveTool } = useAppStore(useShallow((s) => ({ activeTool: s.activeTool, setActiveTool: s.setActiveTool })));
+  const activeContextId = useAppStore((s) => s.activeContextId);
   const location = useLocation();
   const queryParams = useMemo(() => new URLSearchParams(location.search), [location.search]);
   const isPlanningMode = queryParams.get('tab') === 'planning';
@@ -795,20 +628,6 @@ const NormalLeftSidebarContent = () => {
   const [activeTab, setActiveTab] = useState<TabKey>('alignment');
   const [plane, setPlane] = useState<Plane>('coronal');
   const [planningTab, setPlanningTab] = useState<PlanningTab>('target');
-  const [targetValues, setTargetValues] = useState<Record<string, string>>({});
-  const setTarget = (id: string, val: string) =>
-    setTargetValues((prev) => ({ ...prev, [id]: val }));
-
-  const REF_LINE_KEYS = new Set(['c7pl', 'csvl']);
-  const checkedMeasurements = useMemo(() =>
-    measurements.filter(
-      (m: any) =>
-        m.selected &&
-        !m?.measurement?.isCalibration &&
-        !REF_LINE_KEYS.has(m.toolKey),
-    ),
-    [measurements],
-  );
 
   const currentTabKey = isPlanningMode ? 'planning' : activeTab;
   const tab = TABS.find((t) => t.key === currentTabKey)!;
@@ -981,151 +800,8 @@ const NormalLeftSidebarContent = () => {
       {/* ── Scrollable content ────────────────────────────────── */}
       <ScrollArea style={{ flex: 1 }}>
 
-        {/* ── Targets panel (planning mode only) ───── */}
-        {isPlanningMode && planningTab === 'target' && (
-          <div style={{ padding: '12px 12px 16px' }}>
-
-            {/* Hint */}
-            <div style={{
-              fontSize: 10,
-              fontWeight: 700,
-              letterSpacing: '.06em',
-              textTransform: 'uppercase',
-              color: 'var(--text-3)',
-              marginBottom: 10,
-            }}>
-              Alignment Goals
-            </div>
-
-            {checkedMeasurements.length === 0 ? (
-              /* Empty state */
-              <div style={{
-                textAlign: 'center',
-                padding: '32px 12px',
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                gap: 8,
-              }}>
-                <div style={{ fontWeight: 600, fontSize: 12.5, color: 'var(--text)' }}>
-                  No measurements selected
-                </div>
-                <div style={{ fontSize: 11, color: 'var(--text-3)', lineHeight: 1.4 }}>
-                  Check measurements in the{' '}
-                  <span style={{ color: 'var(--text-2)', fontWeight: 600 }}>Current Measurements</span>
-                  {' '}panel on the right to set targets here.
-                </div>
-              </div>
-            ) : (
-              /* Rows — one per checked measurement */
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                {checkedMeasurements.map((m: any) => {
-                  const name = TC_DISPLAY_NAMES[m.toolKey] ?? m.toolKey.toUpperCase();
-                  const currentVal = tcFormatValue(m);
-                  const currentColor = tcValueColor(currentVal);
-                  const targetVal = targetValues[m.id] ?? '';
-
-                  return (
-                    <div
-                      key={m.id}
-                      style={{
-                        background: 'var(--surface-2)',
-                        borderRadius: 10,
-                        padding: '10px 12px',
-                        border: '1px solid var(--border)',
-                        marginBottom: 6,
-                      }}
-                    >
-                      {/* Measurement name */}
-                      <div style={{
-                        fontSize: 12,
-                        fontWeight: 700,
-                        color: 'var(--text)',
-                        marginBottom: 8,
-                        overflow: 'hidden',
-                        textOverflow: 'ellipsis',
-                        whiteSpace: 'nowrap',
-                      }}>
-                        {name}
-                      </div>
-
-                      {/* Current / Target row */}
-                      <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end' }}>
-                        {/* Current */}
-                        <div style={{ flex: 1 }}>
-                          <div style={{
-                            fontSize: 9,
-                            fontWeight: 700,
-                            textTransform: 'uppercase',
-                            letterSpacing: '.06em',
-                            color: 'var(--text-3)',
-                            marginBottom: 3,
-                          }}>
-                            Current
-                          </div>
-                          <div style={{
-                            fontSize: 14,
-                            fontWeight: 700,
-                            color: currentColor,
-                            lineHeight: 1.2,
-                          }}>
-                            {currentVal}
-                          </div>
-                        </div>
-
-                        {/* Arrow */}
-                        <div style={{
-                          color: 'var(--text-3)',
-                          fontSize: 16,
-                          paddingBottom: 2,
-                          flexShrink: 0,
-                        }}>→</div>
-
-                        {/* Target */}
-                        <div style={{ flex: 1 }}>
-                          <div style={{
-                            fontSize: 9,
-                            fontWeight: 700,
-                            textTransform: 'uppercase',
-                            letterSpacing: '.06em',
-                            color: 'var(--text-3)',
-                            marginBottom: 3,
-                          }}>
-                            Target
-                          </div>
-                          <input
-                            type="text"
-                            value={targetVal}
-                            onChange={(e) => setTarget(m.id, e.target.value)}
-                            placeholder="e.g. 10°"
-                            style={{
-                              width: '100%',
-                              background: 'var(--surface)',
-                              border: '1px solid var(--border-2)',
-                              borderRadius: 6,
-                              padding: '4px 7px',
-                              fontSize: 13,
-                              fontWeight: 700,
-                              color: 'var(--accent)',
-                              outline: 'none',
-                              boxSizing: 'border-box',
-                            }}
-                            onFocus={(e) => {
-                              (e.currentTarget as HTMLInputElement).style.borderColor = 'var(--accent)';
-                            }}
-                            onBlur={(e) => {
-                              (e.currentTarget as HTMLInputElement).style.borderColor = 'var(--border-2)';
-                            }}
-                          />
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-        )}
+        {/* ── Targets (planning) — TK / LL / SVA only (UI9-05) ── */}
+        {isPlanningMode && planningTab === 'target' && <TargetsPanel key={activeContextId ?? 'untitled'} />}
 
         {/* ── Simulation tool list (unchanged) ─────────────── */}
         {(!isPlanningMode || planningTab === 'simulation') && (
@@ -1253,7 +929,7 @@ const ReportLeftSidebar = () => {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-      <div style={{ padding: '20px 20px 6px' }}>
+      <div style={{ padding: '20px 20px 12px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
           <div style={{ width: 32, height: 32, borderRadius: 8, background: 'linear-gradient(135deg, var(--val-good) 0%, #10b981 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff' }}>
             <LayoutTemplate size={18} />
@@ -1262,10 +938,6 @@ const ReportLeftSidebar = () => {
             Report Contents
           </span>
         </div>
-        <p style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 10, lineHeight: 1.45 }}>
-          The report updates live from Assessment, Planning and Compare. Sections without data are left out.
-          Drag to reorder, eye to show/hide.
-        </p>
       </div>
 
       <ScrollArea style={{ flex: 1 }}>
@@ -1285,28 +957,29 @@ const ReportLeftSidebar = () => {
                           ref={provided.innerRef}
                           {...provided.draggableProps}
                           className={cn(
-                            "flex items-center gap-3 p-3 rounded-lg border transition-all",
-                            snapshot.isDragging ? "shadow-lg bg-accent/50 border-blue-500 z-50" : "bg-card border-border",
+                            // Borderless rows on the panel surface (UI9-07)
+                            "flex items-center gap-3 p-3 rounded-lg transition-colors",
+                            snapshot.isDragging ? "shadow-lg bg-[var(--surface-3)] z-50" : "bg-[var(--surface-2)] hover:bg-[var(--surface-3)]",
                             !section.enabled && "opacity-50"
                           )}
                         >
                           <div 
                             {...provided.dragHandleProps}
-                            className="cursor-grab active:cursor-grabbing text-muted-foreground hover:text-foreground"
+                            className="cursor-grab active:cursor-grabbing text-[var(--text-3)] hover:text-[var(--text)]"
                           >
                             <GripVertical size={16} />
                           </div>
                           
                           <span className="flex-1 min-w-0">
-                            <span className="block text-sm font-medium leading-tight">{section.title}</span>
-                            {section.description && <span className="block text-[10px] text-muted-foreground mt-0.5 truncate">{section.description}</span>}
+                            <span className="block text-sm font-medium leading-tight text-[var(--text)]">{section.title}</span>
+                            {section.description && <span className="block text-[10px] text-[var(--text-3)] mt-0.5 truncate">{section.description}</span>}
                           </span>
                           
                           <button 
                             onClick={() => toggleSection(section.id)}
                             className={cn(
                               "p-1.5 rounded-md transition-colors",
-                              section.enabled ? "text-blue-500 hover:bg-blue-500/10" : "text-muted-foreground hover:bg-muted"
+                              section.enabled ? "text-[var(--accent)] hover:bg-[var(--accent-soft)]" : "text-[var(--text-3)] hover:bg-[var(--surface-3)]"
                             )}
                           >
                             {section.enabled ? <Eye size={16} /> : <EyeOff size={16} />}

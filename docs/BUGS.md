@@ -309,3 +309,117 @@ empty click deselects + pans, Delete key, mm-based default sizes, deep-copied ro
 - DEPLOY-01 [~] Hosted demo stage: Dockerfile, .dockerignore, render.yaml, SERVE_CLIENT static serving + /healthz,
         UPLOADS_DIR, DB TLS, DEMO_MODE sign-up, demo seed (prod-guarded), JWT secret guard, login pre-fill via
         VITE_DEMO_*. Verified locally (production build served by API on one port). Not deployed yet.
+
+## UI batch 5 (2026-10-03) — tools, toolbar, compare, performance
+- UI5-01 [?] Case Summary collapsed by default once the patient details are filled.
+- UI5-02 [?] Image toolbar docks to the canvas edges (right edge = next to the measurement panel) and stays docked
+        when panels open/close. Compare: fixed in a gutter between Image A and Image B (not draggable).
+- UI5-03 [?] 2D instruments: placing a screw/cage/rod ends the tool (no accidental second implant).
+- UI5-04 [?] Latency between clicks: every drag move saved to the server + re-rendered the whole app; canvas
+        redrawn at 60 fps while idle; console.log in the canvas manager hot path.
+- UI5-05 [?] 2D instruments: edit length / diameter / angle / cage height+lordosis on the image (handles + live
+        label); fine-tune inputs removed from the measurement panel.
+- UI5-06 [?] Compare: small import icon top-right of each pane → dialog (existing study / local image).
+- UI5-07 [?] Tool colour families + uniform lines, points and labels: generic white, alignment orange-red,
+        extended lime, morphology cyan, planning yellow. Lines clipped to the image.
+- UI5-08 [?] Landmark reuse: shared anatomical points (femoral heads, S1 endplate, C7/T1 centroid, …) are
+        pre-filled from earlier measurements; clicks snap to existing points; dragging a shared point moves it
+        in every measurement.
+- UI5-09 [ ] (later, not now — landmark table in features/measurements/landmarks.ts is its basis) Skeleton overlay: drag a full landmark template into place.
+- UI5-10 [?] Measurement panel categories = sidebar tabs: Alignment (incl. pelvic), Coronal Deformity,
+        Sagittal Deformity, Morphology, Planning, Instruments, Others (generic), Reference Lines.
+- UI5-11 [?] Osteotomy (planning) colours/lines uniform, finite cut lines kept inside the image.
+  Notes (2026-10-03): all [?] items done in code; tsc errors 83→80, tests 101/101, vite build OK; not yet checked on
+  screen. Style: lib/canvas/annotationStyle.ts (colours, lines, points, labels, label hit boxes); landmarks:
+  features/measurements/landmarks.ts; results: features/measurements/results.ts. Latency causes fixed: per-move
+  server saves, whole-store subscriptions (canvas, sidebars, toolbar), idle 60 fps redraw, manager console.log,
+  every drag state retained in memory.
+
+## UI batch 6 (2026-10-03) — undo, osteotomy cuts, report logo, settings
+- UI6-01 [?] Undo/redo consistent for every tool (Ctrl+Z, Ctrl+Y / Ctrl+Shift+Z, toolbar). Causes: osteotomies were
+        several history steps + unsaved fragments; Ctrl+Z blocked by a stale `activeDialog` flag (now checks the DOM
+        for an open modal); store→canvas syncs mutated the current history node in place (now replace it); side-panel
+        deletes are undoable steps.
+- UI6-02 [x] Cobb removed from Extended → Coronal → Curvature (it is in Alignment).
+- UI6-03 [?] Labels may sit outside the image (drawn after the clip, on top); lines/points stay clipped.
+- UI6-04 [?] Osteotomy cuts rendered from the measurement (lib/canvas/osteotomyPieces.ts): PSO/SPO wedge removed, the
+        piece beyond BA rotates onto BC, the lower piece (beyond BC) is cut and stays; resection slab removed; opening
+        wedge opens about C. Image pieces form one layer, all annotations above. Saved with the case, undoable.
+        Legacy fragment ops (SurgicalOperations / OpenOsteotomyOperation) are no longer called by the canvas.
+- UI6-05 [?] Compare dark mode white pane outline: `border-border`/`border-primary` generate no CSS under Tailwind v4
+        (tailwind.config.js is never loaded) → border fell back to currentColor. Now explicit vars.
+        FOLLOW-UP: all shadcn token classes (bg-primary, border-border, bg-card, text-muted-foreground…, ~57+ uses)
+        are no-ops app-wide; fix with an `@theme inline` block — owner to decide (changes visuals broadly).
+- UI6-06 [?] Middle-button (wheel) drag pans while placing points (browser autoscroll suppressed).
+- UI6-07 [?] Header uses var(--surface), same as the side panels.
+- UI6-08 [?] Diagnosis field inside Study Notes; saves to the case's visit → header/dashboard/report update.
+- UI6-09 [?] Dashboard recent-study cards match the Patients page: thumbnail, name, date, diagnosis + modality.
+- UI6-10 [?] Report: Image B only while the Comparison section is on; hospital logo upload (Report panel) shown at
+        the left of the header (preview + PDF); default logo/institution from Settings.
+- UI6-11 [?] Settings (gear above the profile in the dashboard rail): theme, default report logo + institution,
+        snap to points, reuse landmarks, reset toolbar position (lib/settings.ts, stored per browser).
+- UI6-12 [x] SpineSurge logo (public/spinesurge.png) in the header, dashboard rail and favicon.
+
+## UI batch 7 (2026-10-03)
+- UI7-01 [?] Open osteotomy restored to the original model (OpenOsteotomyOperation): CD extended to the image edges,
+        upper half aligned to AB and lower half to EF via TransformationCalculator (both halves move, gap opens).
+        Still rendered from the measurement (osteotomyPieces.ts), so undo/reload keep working.
+- UI7-02 [?] Patients page "Add New Study" opens the workspace directly with a new empty study (no dialogs); the
+        image is imported there and attaches to that study. (A dated visit is still created silently — data model.)
+- UI7-03 [?] New/Edit Patient dialog: name, ID, age, sex, DOB, contact only; filled fields without outlines;
+        New Patient button in the page's accent-soft style.
+- UI7-04 [x] Login/register page logo → new SpineSurge icon + name.
+
+## UI batch 8 (2026-10-03)
+- UI8-01 [?] Mouse: left = all actions; right-drag (or middle-drag) = pan, always; wheel = zoom. A right *click*
+        (moved < 5 px) still finishes polygon / canal area / CMC / rod. Touchpad: two-finger swipe pans, pinch zooms
+        (heuristic: ctrl+wheel = pinch; fractional / small / horizontal deltas = touchpad). Live zoom read from
+        the store (fixes CV-25 stale zoom).
+- UI8-02 [?] Measurement eye toggle (replaces the checkbox): off hides lines/labels on the canvas AND drops it from the
+        report; hidden measurements can't be grabbed or snapped to. Osteotomy cuts stay on the image.
+- UI8-03 [x] Compare: pane border removed (inactive pane stays dimmed).
+- UI8-04 [?] Open osteotomy flipped when a reference line pointed the "other way": rotation now wrapped to ±90°
+        (lines are undirected); "Opening" angle wrapped the same way.
+- UI8-05 [?] Clinical colours (features/measurements/clinicalRanges.ts): green healthy / yellow borderline / red
+        abnormal / normal text = not judged. Owner's tables (fixed + age-corrected). Signs: facing inferred from
+        Pelvis/PI-LL/TPA/SPA/SSA; T1SPi/ODHA positive = anterior (not judged until facing is known); symmetric
+        criteria use magnitudes. mm values only when calibrated; age bands need patient age; LL vs PI on the case.
+        Panel "Normal …" text now age-aware. Not yet on canvas labels or in the report.
+
+## UI batch 9 (2026-10-03) — plans, study list sync, reports
+- UI9-01 [?] Home "Recent Studies" + "Unfinished" use the Patients page list (lib/studies.ts: no archived / quick-analysis
+        patients) and the same StudyCard (components/StudyCard.tsx).
+- UI9-02 [?] "Open in workspace" always continues the study's latest session (store.openStudy); Session Manager dialog
+        and "new session from existing study" removed. New work = Add New Study.
+- UI9-03 [?] Reports button: live preview of the study's current report (built from its latest saved session without
+        loading it — lib/report/studyReport.ts) + saved copies + Download.
+- UI9-04 [x] Study status: Draft / In Progress / Completed (old 'Archived' studies read as Completed). Patient
+        archiving unchanged.
+- UI9-05 [?] 2D plans (features/planning2d): Assessment = preop only (no cuts/implants/plan items). Planning = cut image
+        with preop landmarks registered to the moved bone (mapPointThroughOsteotomies) and re-measured. Targets: TK, LL,
+        SVA only, when measured (toolState.targets). Right panel in Planning: Plan (save as Plan N / update / new / load /
+        delete — toolState.plans, activePlanId), Targets table (Measured·Target·Diff·Plan), Preop vs Plan table.
+        Report: preop image + every saved plan (image, targets, preop vs plan, implants); unsaved work not reported.
+        Not yet: Compare between plans; dragging preop points in Planning (they are derived, read-only there).
+- UI9-06 [?] Eye toggle now reaches the canvas (store toggle never synced the canvas manager).
+- UI9-07 [x] Report contents: explanation text removed; borderless section rows.
+
+## UI batch 10 (2026-10-03) — targets, DICOM storage, 3D interaction
+- UI10-01 [?] Preop vs plan: named measurements once (features/planning2d/metrics.ts — PI from Pelvis or PI-LL, LL from LL
+        or PI-LL, latest wins); targets excluded; repeatable tools (Cobb per level, VBM…) per instance.
+- UI10-02 [?] Settings → Planning → Target measurements (dropdown with checkboxes, Alignment + Extended); default TK/LL/SVA.
+- UI10-03 [?] Add New Study opens the same import dialog as Home (workspace empty state = shared EmptyImport, autoOpen).
+- UI10-04 [x] 3D: screw settings removed from the left panel (right panel only).
+- UI10-05 [?] 3D crop: Slicer-style ROI box in the 3D view, drag face handles (CropBox3D.tsx); sliders removed.
+- UI10-06 [?] Slice slider on top of each MPR view (SliceSlider.tsx).
+- UI10-07 [?] CT/MR studies: only Planning + Report tabs (auto-redirect). Report: 4-up screenshot with implant overlays
+        + 3D view (planning3d/capture.ts), full width.
+- UI10-08 [?] DICOM storage: series were only loaded in memory (never uploaded, detached from the study, study saved as
+        X-Ray). Now uploaded as the study's scans (4 parallel, progress in header), study modality from the headers
+        (CT / MRI / …), empty patient fields autofilled (name, age, sex, DOB, hospital ID → MRN). DICOM detection on
+        reopen accepts MRI/PET; a study still uploading no longer drops the viewer.
+        Not done: calibration from 2D DICOM X-rays (the 2D canvas doesn't decode DICOM files).
+- UI10-09 [?] 3D mouse: right-drag pans (MPR: left W/L, right pan, middle zoom, wheel slices; 3D: left rotate, right pan, wheel zoom).
+- UI10-10 [?] 3D implants editable on the views: screw diameter diamond (+ entry/tip for trajectory & length), cage
+        width/depth/height diamonds + rotate knob + size label, rod: drag points to bend, drag "+" to add a bend point,
+        double-click a point to remove it; rods drawn as smooth curves in 2D and 3D.

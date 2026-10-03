@@ -341,7 +341,8 @@ export const createCanvasSlice: StateCreator<AppState, [], [], CanvasSlice> = (s
         if (isPaneB(state)) {
             const side = state.activeCanvasSide;
             const updated = state.comparison[side].measurements.filter(m => m.id !== id);
-            syncManagerMeasurements(state.managers[side], updated);
+            // A delete is an undoable step on the canvas (UI6-01).
+            void state.managers[side]?.applyOperation?.('DELETE_MEASUREMENT', { id });
             set({
                 comparison: {
                     ...state.comparison,
@@ -353,7 +354,7 @@ export const createCanvasSlice: StateCreator<AppState, [], [], CanvasSlice> = (s
         }
 
         const updated = resolveActiveMeasurements(state).filter(m => m.id !== id);
-        syncManagerMeasurements(state.managers.main, updated);
+        void state.managers.main?.applyOperation?.('DELETE_MEASUREMENT', { id });
 
         if (state.activeContextId) {
             get().updateContextState(state.activeContextId, { measurements: updated });
@@ -393,16 +394,20 @@ export const createCanvasSlice: StateCreator<AppState, [], [], CanvasSlice> = (s
         if (isPaneB(state)) {
             const side = state.activeCanvasSide;
             const updated = mapSelection(state.comparison[side].measurements);
+            // The canvas hides switched-off measurements, so it must see the flag (UI9-06).
+            syncManagerMeasurements(state.managers[side], updated);
             set({
                 comparison: {
                     ...state.comparison,
                     [side]: { ...state.comparison[side], measurements: updated },
                 },
             });
+            persistImageB(get);
             return;
         }
 
         const updated = mapSelection(resolveActiveMeasurements(state));
+        syncManagerMeasurements(state.managers.main, updated);
 
         if (state.activeContextId) {
             get().updateContextState(state.activeContextId, { measurements: updated });

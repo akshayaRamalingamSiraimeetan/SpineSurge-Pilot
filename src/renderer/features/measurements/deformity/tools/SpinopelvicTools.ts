@@ -1,7 +1,7 @@
 import { Point, getMidpoint } from "@/lib/canvas/GeometryUtils";
 import { Measurement } from "@/lib/canvas/CanvasManager";
-import { drawMeasurementLabel } from "@/lib/canvas/CanvasUtils";
-import { drawAngleArc, getHipAxisCenter, drawFemoralHeads } from "./BaseTools";
+import { drawArc, drawLabel, drawPoints, strokeLine, toolColor } from "@/lib/canvas/annotationStyle";
+import { getHipAxisCenter, drawFemoralHeads } from "./BaseTools";
 
 export function calculateSSA(points: Point[]) {
     if (points.length < 3) return null;
@@ -17,29 +17,17 @@ export function calculateSSA(points: Point[]) {
     return { angle: diff, s1Mid, c7, s1a, a1, a2 };
 }
 
-export function drawSSA(ctx: CanvasRenderingContext2D, m: Measurement, k: number, color: string = '#f43f5e') {
+export function drawSSA(ctx: CanvasRenderingContext2D, m: Measurement, k: number) {
     const data = calculateSSA(m.points);
     if (!data) return;
+    const color = toolColor(m.toolKey);
     const { angle, s1Mid, c7, s1a, a1, a2 } = data;
-
-    ctx.save();
-    ctx.strokeStyle = color;
-    ctx.lineWidth = 2 / k;
-
-    ctx.beginPath(); ctx.moveTo(s1Mid.x, s1Mid.y); ctx.lineTo(c7.x, c7.y); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(s1Mid.x, s1Mid.y); ctx.lineTo(s1a.x, s1a.y); ctx.stroke();
-
-    drawAngleArc(ctx, s1Mid, 50 / k, a1, a2, k, color);
-
-    ctx.fillStyle = color;
-    [c7, s1Mid, s1a].forEach(p => {
-        ctx.beginPath(); ctx.arc(p.x, p.y, 4 / k, 0, Math.PI * 2); ctx.fill();
-    });
-
+    strokeLine(ctx, m.points[1], m.points[2], k, color);
+    strokeLine(ctx, s1Mid, c7, k, color);
+    drawArc(ctx, s1Mid, 50 / k, a1, a2, k, color);
+    drawPoints(ctx, [c7, m.points[1], s1a, s1Mid], k, color);
     m.result = `SSA: ${angle.toFixed(1)}°`;
-    const labelPos = m.measurement?.labelPos || { x: s1Mid.x + 30 / k, y: s1Mid.y - 20 / k };
-    drawMeasurementLabel(ctx, m.result, labelPos, k, color);
-    ctx.restore();
+    drawLabel(ctx, m.result, m.measurement?.labelPos || { x: s1Mid.x + 30 / k, y: s1Mid.y - 20 / k }, k, color);
 }
 
 export function calculateSPi(points: Point[]) {
@@ -54,36 +42,18 @@ export function calculateSPi(points: Point[]) {
     return { angle: diff, hipAxis, centroid, a1, aVert };
 }
 
-export function drawSPi(ctx: CanvasRenderingContext2D, m: Measurement, k: number, color: string = '#0ea5e9', bounds?: { minY: number, maxY: number }) {
+export function drawSPi(ctx: CanvasRenderingContext2D, m: Measurement, k: number, bounds?: { minY: number, maxY: number }) {
+    const color = toolColor(m.toolKey);
+    drawFemoralHeads(ctx, m.points, k, color);
     const data = calculateSPi(m.points);
     if (!data) return;
     const { angle, hipAxis, centroid, a1, aVert } = data;
-
-    drawFemoralHeads(ctx, m.points, k);
-
-    const minY = bounds?.minY ?? (hipAxis.y - 150 / k);
-
-    ctx.save();
-    ctx.strokeStyle = color;
-    ctx.lineWidth = 2 / k;
-
-    ctx.beginPath(); ctx.moveTo(hipAxis.x, hipAxis.y); ctx.lineTo(centroid.x, centroid.y); ctx.stroke();
-
-    ctx.setLineDash([5 / k, 5 / k]);
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.4)';
-    ctx.beginPath(); ctx.moveTo(hipAxis.x, hipAxis.y); ctx.lineTo(hipAxis.x, minY); ctx.stroke();
-    ctx.setLineDash([]);
-
-    drawAngleArc(ctx, hipAxis, 40 / k, aVert, a1, k, color);
-
-    ctx.fillStyle = color;
-    [hipAxis, centroid].forEach(p => {
-        ctx.beginPath(); ctx.arc(p.x, p.y, 4 / k, 0, Math.PI * 2); ctx.fill();
-    });
-
+    const top = Math.max(bounds?.minY ?? -Infinity, Math.min(centroid.y, hipAxis.y - 150 / k));
+    strokeLine(ctx, hipAxis, { x: hipAxis.x, y: top }, k, color, true);
+    strokeLine(ctx, hipAxis, centroid, k, color);
+    drawArc(ctx, hipAxis, 40 / k, aVert, a1, k, color);
+    drawPoints(ctx, m.points, k, color);
     const prefix = m.toolKey === 't1spi' ? 'T1SPi' : m.toolKey === 't9spi' ? 'T9SPi' : 'ODHA';
     m.result = `${prefix}: ${Math.abs(angle).toFixed(1)}°`;
-    const labelPos = m.measurement?.labelPos || { x: hipAxis.x + 20 / k, y: (hipAxis.y + centroid.y) / 2 };
-    drawMeasurementLabel(ctx, m.result, labelPos, k, color);
-    ctx.restore();
+    drawLabel(ctx, m.result, m.measurement?.labelPos || { x: hipAxis.x + 20 / k, y: (hipAxis.y + centroid.y) / 2 }, k, color);
 }

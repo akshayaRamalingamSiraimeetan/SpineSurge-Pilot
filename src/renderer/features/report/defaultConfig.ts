@@ -9,7 +9,7 @@ export const DEFAULT_REPORT_SECTIONS: ReportSectionConfig[] = [
     { id: "patient_summary",   type: "patient_summary",   enabled: true, order: 0, title: "Patient Summary",  description: "Demographics and diagnosis" },
     { id: "images",            type: "images",            enabled: true, order: 1, title: "Images",           description: "Annotated case image (and comparison image)" },
     { id: "measurement_table", type: "measurement_table", enabled: true, order: 2, title: "Assessment",       description: "Measurements from the Assessment tab" },
-    { id: "surgical_plan",     type: "surgical_plan",     enabled: true, order: 3, title: "Surgical Plan",    description: "Implants and osteotomies from Planning" },
+    { id: "surgical_plan",     type: "surgical_plan",     enabled: true, order: 3, title: "Surgical Plan",    description: "Saved plans: image, targets, preop vs plan" },
     { id: "compare_table",     type: "compare_table",     enabled: true, order: 4, title: "Comparison",       description: "Image A vs Image B from Compare" },
     { id: "notes",             type: "notes",             enabled: true, order: 5, title: "Clinical Notes",   description: "Free-text notes" },
 ];

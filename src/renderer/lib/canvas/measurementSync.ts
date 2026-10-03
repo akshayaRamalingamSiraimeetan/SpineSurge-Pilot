@@ -5,12 +5,15 @@ export function syncManagerMeasurements(manager: any, measurements: Measurement[
     if (!manager?.current?.data) {
         return;
     }
-    manager.current.data.measurements = measurements.map((m) => ({
+    const copy = measurements.map((m) => ({
         ...m,
         points: m.points.map((p) => ({ ...p })),
         result: m.result,
         measurement: m.measurement ? { ...m.measurement } : m.measurement,
     }));
+    // Never mutate a history node in place: earlier undo states must stay intact (UI6-01).
+    if (typeof manager.replaceCurrentMeasurements === 'function') manager.replaceCurrentMeasurements(copy);
+    else manager.current.data.measurements = copy;
 }
 
 export function measurementsDiffer(a: Measurement[], b: Measurement[]): boolean {

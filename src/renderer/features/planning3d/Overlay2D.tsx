@@ -2,7 +2,7 @@ import { useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { Enums, type Types } from '@cornerstonejs/core';
 import type { PlanCage, PlanImplant, PlanRod, PlanScrew } from '@/lib/store/types';
 import { add, clipSegmentToSlab, cross, dot, lerp, norm, scale, sub, type Vec3 } from './vec3';
-import { screwLength, translateImplant } from './implantModel';
+import { cageAxisZ, rodLength, screwDir, screwLength, smoothRod, translateImplant } from './implantModel';
 
 /**
  * SVG overlay for one MPR viewport. Implants are projected into the current
@@ -29,7 +29,8 @@ interface Props {
 
 type Drag = {
     id: string;
-    handle: 'body' | 'head' | 'tip' | 'rotate' | number;
+    /** number = rod point; 'size0..2' = cage width/depth/height; 'diameter' = screw */
+    handle: 'body' | 'head' | 'tip' | 'rotate' | 'diameter' | 'size0' | 'size1' | 'size2' | number;
     startWorld: Vec3;
     start: PlanImplant;
     last: PlanImplant;
@@ -85,13 +86,26 @@ export function Overlay2D(p: Props) {
     const toWorld = (e: React.PointerEvent | PointerEvent) => viewport.canvasToWorld(localPoint(e) as Types.Point2) as Vec3;
 
     // ── Drag handling ─────────────────────────────────────────────────────
-    const beginDrag = (e: React.PointerEvent, imp: PlanImplant, handle: Drag['handle']) => {
+    const beginDrag = (e: React.PointerEvent, imp: PlanImplant, handle: Drag['handle'], insertAfter?: number) => {
         if (p.mode !== 'view' || e.button !== 0) return;
         e.stopPropagation();
         e.preventDefault();
         svgRef.current?.setPointerCapture(e.pointerId);
         p.onSelect(imp.id);
-        setDrag({ id: imp.id, handle, startWorld: toWorld(e), start: imp, last: imp });
+        let start = imp;
+        if (imp.type === 'rod' && insertAfter !== undefined) {
+            // New bend point between two control points (UI10 — rod bending)
+            const mid = lerp(imp.points[insertAfter], imp.points[insertAfter + 1], 0.5);
+            start = { ...imp, points: [...imp.points.slice(0, insertAfter + 1), mid, ...imp.points.slice(insertAfter + 1)] };
+            handle = insertAfter + 1;
+        }
+        setDrag({ id: imp.id, handle, startWorld: toWorld(e), start, last: start });
+    };
+
+    /** Double-click a rod point to remove it (a rod keeps at least 2 points). */
+    const removeRodPoint = (rod: PlanRod, i: number) => {
+        if (rod.points.length <= 2) return;
+        p.onChange({ ...rod, points: rod.points.filter((_, k) => k !== i) }, true);
     };
 
     const onPointerMove = (e: React.PointerEvent) => {
@@ -107,6 +121,18 @@ export function Overlay2D(p: Props) {
         else if (s.type === 'rod' && typeof drag.handle === 'number') {
             const i = drag.handle;
             next = { ...s, points: s.points.map((pt, k) => (k === i ? add(pt, delta) : pt)) };
+        } else if (s.type === 'screw' && drag.handle === 'diameter') {
+            // Distance of the cursor from the screw axis = radius (0.5 mm steps)
+            const axis = screwDir(s);
+            const off = sub(w, s.entry);
+            const radial = len3(sub(off, scale(axis, dot(off, axis))));
+            next = { ...s, diameter: Math.min(10, Math.max(2, Math.round(radial * 4) / 2)) };
+        } else if (s.type === 'cage' && typeof drag.handle === 'string' && drag.handle.startsWith('size')) {
+            const idx = Number(drag.handle.slice(4)) as 0 | 1 | 2;
+            const axis = idx === 0 ? s.axisX : idx === 2 ? s.axisY : cageAxisZ(s);
+            const size = [...s.size] as [number, number, number];
+            size[idx] = Math.min(60, Math.max(4, Math.round(2 * Math.abs(dot(sub(w, s.center), axis)) * 2) / 2));
+            next = { ...s, size };
         } else if (s.type === 'cage' && drag.handle === 'rotate') {
             const a = sub(drag.startWorld, s.center), b = sub(w, s.center);
             const angle = Math.atan2(dot(cross(a, b), n), dot(a, b));
@@ -217,6 +243,13 @@ export function Overlay2D(p: Props) {
                         <polygon points={pts(shaft)} className="ss-impl-sel" />
                         <Handle at={E} title="Entry point — drag to change trajectory" onDown={(e) => beginDrag(e, s, 'head')} />
                         <Handle at={T} title="Tip — drag to change trajectory/length" onDown={(e) => beginDrag(e, s, 'tip')} />
+                        {(() => {
+                            // Diameter handle: mid-shaft, perpendicular to the screw in this view
+                            const side = cross(n, screwDir(s));
+                            if (len3(side) < 0.2) return null;
+                            const D = P(add(lerp(s.entry, s.tip, 0.5), scale(norm(side), s.diameter / 2)));
+                            return <Diamond at={D} title="Drag to change the diameter" onDown={(e) => beginDrag(e, s, 'diameter')} />;
+                        })()}
                         <text x={T[0] + 10} y={T[1] - 10} className="ss-impl-label">{`${L.toFixed(1)} × ${s.diameter} mm${s.level ? ` · ${s.level}${s.side ?? ''}` : ''}`}</text>
                     </>
                 )}
@@ -227,7 +260,7 @@ export function Overlay2D(p: Props) {
     const renderRod = (rod: PlanRod) => {
         const sel = rod.id === p.selectedId;
         const pts2 = rod.points.map(P);
-        const d = pts2.map((q, i) => `${i ? 'L' : 'M'}${q[0]},${q[1]}`).join(' ');
+        const d = smoothRod(rod.points).map(P).map((q, i) => `${i ? 'L' : 'M'}${q[0]},${q[1]}`).join(' ');
         const w = Math.max(2, rod.diameter * pxPerMm);
         const near = rod.points.some((pt, i) => i > 0 && clipSegmentToSlab(rod.points[i - 1], pt, f, n, rod.diameter / 2 + SLAB_MM));
         return (
@@ -236,8 +269,20 @@ export function Overlay2D(p: Props) {
                 <path d={d} className={near ? 'ss-rod' : 'ss-rod ss-rod-ghost'} style={{ strokeWidth: w, pointerEvents: 'stroke', cursor: 'move' }}
                     onPointerDown={(e) => beginDrag(e, rod, 'body')} />
                 {sel && pts2.map((q, i) => (
-                    <Handle key={i} at={q} title="Rod point — drag to bend" onDown={(e) => beginDrag(e, rod, i)} />
+                    <Handle key={i} at={q} title="Rod point — drag to bend · double-click to remove" onDown={(e) => beginDrag(e, rod, i)}
+                        onDoubleClick={() => removeRodPoint(rod, i)} />
                 ))}
+                {sel && pts2.slice(1).map((q, i) => {
+                    const m: [number, number] = [(pts2[i][0] + q[0]) / 2, (pts2[i][1] + q[1]) / 2];
+                    return (
+                        <g key={`ins-${i}`} style={{ cursor: 'copy', pointerEvents: 'all' }} onPointerDown={(e) => beginDrag(e, rod, 'body', i)}>
+                            <title>Drag to add a bend point</title>
+                            <circle cx={m[0]} cy={m[1]} r={5} className="ss-handle" style={{ opacity: 0.75 }} />
+                            <path d={`M${m[0] - 3},${m[1]} H${m[0] + 3} M${m[0]},${m[1] - 3} V${m[1] + 3}`} stroke="#0b0b0c" strokeWidth={1.5} />
+                        </g>
+                    );
+                })}
+                {sel && <text x={pts2[pts2.length - 1][0] + 10} y={pts2[pts2.length - 1][1] - 10} className="ss-impl-label">{`Rod ${rodLength(rod.points).toFixed(0)} mm · Ø${rod.diameter}`}</text>}
             </g>
         );
     };
@@ -260,6 +305,13 @@ export function Overlay2D(p: Props) {
                         <polygon points={corners.map((q) => q.join(',')).join(' ')} className="ss-impl-sel" />
                         <line x1={C[0]} y1={C[1]} x2={K[0]} y2={K[1]} className="ss-impl-sel" />
                         <Handle at={K} title="Rotate cage" onDown={(e) => beginDrag(e, c, 'rotate')} />
+                        {([[c.axisX, 0, 'width'], [cageAxisZ(c), 1, 'depth'], [c.axisY, 2, 'height']] as const).map(([axis, idx, name]) => {
+                            const H = P(add(c.center, scale(axis as Vec3, -c.size[idx] / 2)));
+                            // only when that side of the cage lies in this view
+                            if (Math.hypot(H[0] - C[0], H[1] - C[1]) < 10) return null;
+                            return <Diamond key={name} at={H} title={`Drag to change the ${name}`} onDown={(e) => beginDrag(e, c, `size${idx}` as Drag['handle'])} />;
+                        })}
+                        <text x={C[0] + 12} y={C[1] - 12} className="ss-impl-label">{`${c.size[0].toFixed(0)} × ${c.size[1].toFixed(0)} × ${c.size[2].toFixed(0)} mm`}</text>
                     </>
                 )}
             </g>
@@ -292,11 +344,24 @@ export function Overlay2D(p: Props) {
     );
 }
 
-function Handle({ at, title, onDown }: { at: [number, number] | number[]; title: string; onDown: (e: React.PointerEvent) => void }) {
+function Handle({ at, title, onDown, onDoubleClick }: { at: [number, number] | number[]; title: string; onDown: (e: React.PointerEvent) => void; onDoubleClick?: () => void }) {
     return (
-        <circle cx={at[0]} cy={at[1]} r={6} className="ss-handle" style={{ pointerEvents: 'all', cursor: 'grab' }} onPointerDown={onDown}>
+        <circle cx={at[0]} cy={at[1]} r={6} className="ss-handle" style={{ pointerEvents: 'all', cursor: 'grab' }} onPointerDown={onDown}
+            onDoubleClick={(e) => { if (onDoubleClick) { e.stopPropagation(); onDoubleClick(); } }}>
             <title>{title}</title>
         </circle>
     );
 }
 
+/** Size handle (diameter / cage dimensions) — a diamond, like the 2D canvas. */
+function Diamond({ at, title, onDown }: { at: [number, number] | number[]; title: string; onDown: (e: React.PointerEvent) => void }) {
+    const [x, y] = at, r = 6;
+    return (
+        <path d={`M${x},${y - r} L${x + r},${y} L${x},${y + r} L${x - r},${y} Z`} fill="#ffffff" stroke="rgba(0,0,0,0.75)" strokeWidth={1.5}
+            style={{ pointerEvents: 'all', cursor: 'grab' }} onPointerDown={onDown}>
+            <title>{title}</title>
+        </path>
+    );
+}
+
+const len3 = (v: Vec3) => Math.hypot(v[0], v[1], v[2]);

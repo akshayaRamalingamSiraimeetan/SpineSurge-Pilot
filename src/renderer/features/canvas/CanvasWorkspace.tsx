@@ -22,7 +22,7 @@ import {
     calculateTPA, calculateSPA, calculateSSA, calculateSPi, calculateCBVA, calculateRVAD, calculateITilt
 } from "@/features/measurements/deformity/DeformityTools";
 import {
-    AlertCircle, Ruler, Plus, X
+    AlertCircle, Ruler, X
 } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -30,11 +30,10 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
 import { useTheme } from "@/components/theme-provider";
-import { ImportDialog } from "../import-export/ImportDialog";
+import { EmptyImport } from "../import-export/EmptyImport";
 import {
     drawWedgeOsteotomy,
     calculateOpenOsteotomyPrimitives,
-    calculateResectionPrimitives,
     drawDeformedSuperiorSegment,
     drawResection
 } from "@/features/measurements/planning/PlanningTools";
@@ -43,13 +42,22 @@ import {
     drawRod,
     drawCage,
     drawPlate,
-    getImplantHandles,
+    getImplantHandleSpecs,
     hitTestImplant,
-    IMPLANT_ANNOTATION
 } from "@/features/measurements/planning/ImplantRenderer";
 
-import { performResectionOnFragment, performOpenOsteotomyOnFragment } from "@/lib/canvas/SurgicalOperations";
 import { renderScene } from "@/lib/canvas/renderScene";
+import { useShallow } from "zustand/react/shallow";
+import { drawLabel, drawPoint, getLabelRegions, STYLE, toolColor } from "@/lib/canvas/annotationStyle";
+import { autoFillLandmarks, collectLandmarks, landmarkCount } from "@/features/measurements/landmarks";
+import { computeMeasurementResult } from "@/features/measurements/results";
+import { useSettings } from "@/lib/settings";
+import { useLocation } from "react-router-dom";
+import { isPlanMeasurement } from "@/features/planning2d/plan";
+
+/** Tools whose clicks snap onto existing measurement points (landmark reuse, UI5-08). */
+const NO_SNAP_TOOLS = new Set(['crop', 'pencil', 'circle', 'ellipse', 'text', 'imp-screw', 'imp-cage', 'imp-plate', 'imp-rod', 'calibration']);
+const SNAP_PX = 9;
 
 interface ViewTransform {
     k: number;
@@ -87,7 +95,22 @@ const CalibrationPrompt = ({ onStart, onSkip }: { onStart: () => void; onSkip: (
 );
 
 const CanvasWorkspace = ({ side }: CanvasWorkspaceProps) => {
-    const store = useAppStore();
+    // Subscribe only to what the canvas uses — a whole-store subscription
+    // re-rendered both canvases on every unrelated store change (UI5-04).
+    const store = useAppStore(useShallow((s) => ({
+        activeTool: s.activeTool, setActiveTool: s.setActiveTool,
+        undoTrigger: s.undoTrigger, redoTrigger: s.redoTrigger,
+        isComparisonMode: s.isComparisonMode, setActiveDialog: s.setActiveDialog,
+        activeCanvasSide: s.activeCanvasSide, setActiveCanvasSide: s.setActiveCanvasSide,
+        setComparisonMeasurements: s.setComparisonMeasurements, setComparisonImplants: s.setComparisonImplants,
+        setMeasurements: s.setMeasurements, setImplants: s.setImplants,
+        isWizardVisible: s.isWizardVisible, setWizardVisible: s.setWizardVisible, isWizardIconVisible: s.isWizardIconVisible,
+        managers: s.managers, registerManager: s.registerManager,
+        contexts: s.contexts, activeContextId: s.activeContextId, contextStates: s.contextStates,
+        comparison: s.comparison, canvas: s.canvas, currentImage: s.currentImage,
+        measurements: s.measurements, implants: s.implants, patients: s.patients,
+        setCurrentImage: s.setCurrentImage, inspectionMode: s.inspectionMode, updateContextState: s.updateContextState,
+    })));
     const { resolvedTheme } = useTheme();
     const isDark = resolvedTheme === 'dark';
     const {
@@ -224,33 +247,31 @@ const CanvasWorkspace = ({ side }: CanvasWorkspaceProps) => {
 
     const [managerReady, setManagerReady] = useState(false);
 
-    // Undo/Redo Response from Store
+    // Undo / redo — one path for Ctrl+Z / Ctrl+Y and the toolbar (UI6-01).
+    // Measurements, implants and osteotomy cuts all live in the manager's
+    // history, so a step restores all of them; the store follows.
     const lastUndoRef = useRef(undoTrigger);
     const lastRedoRef = useRef(redoTrigger);
+    const historyStepRef = useRef<(dir: 'undo' | 'redo') => void>(() => {});
+    historyStepRef.current = (dir) => {
+        const mgr = managerRef.current;
+        if (!mgr) return;
+        const st = dir === 'undo' ? mgr.undo() : mgr.redo();
+        if (!st) return;
+        syncStoreWithCanvas(st.data.measurements, st.data.implants);
+        setSelection(null);
+        dirtyRef.current = true;
+    };
 
     useEffect(() => {
-        if (!isInteractive) {
-            lastUndoRef.current = undoTrigger;
-            return;
-        }
-        if (managerRef.current && managerReady && undoTrigger > lastUndoRef.current) {
-            const newState = managerRef.current.undo();
-            if (newState) syncStoreWithCanvas(newState.data.measurements, newState.data.implants);
-        }
+        if (isInteractive && managerReady && undoTrigger > lastUndoRef.current) historyStepRef.current('undo');
         lastUndoRef.current = undoTrigger;
-    }, [undoTrigger, syncStoreWithCanvas, managerReady, isInteractive]);
+    }, [undoTrigger, managerReady, isInteractive]);
 
     useEffect(() => {
-        if (!isInteractive) {
-            lastRedoRef.current = redoTrigger;
-            return;
-        }
-        if (managerRef.current && managerReady && redoTrigger > lastRedoRef.current) {
-            const newState = managerRef.current.redo();
-            if (newState) syncStoreWithCanvas(newState.data.measurements, newState.data.implants);
-        }
+        if (isInteractive && managerReady && redoTrigger > lastRedoRef.current) historyStepRef.current('redo');
         lastRedoRef.current = redoTrigger;
-    }, [redoTrigger, syncStoreWithCanvas, managerReady, isInteractive]);
+    }, [redoTrigger, managerReady, isInteractive]);
 
     // View State
     const viewTransformRef = useRef<ViewTransform>({ k: 1, x: 0, y: 0 });
@@ -259,7 +280,24 @@ const CanvasWorkspace = ({ side }: CanvasWorkspaceProps) => {
 
     // Tool/Interaction State
     const [tempPoints, setTempPoints] = useState<Point[]>([]);
-    const { selection, setSelection } = useAppStore();
+    const selection = useAppStore((s) => s.selection);
+    const setSelection = useAppStore((s) => s.setSelection);
+    // Render only when something changed (UI5-04); see the rAF loop below.
+    const dirtyRef = useRef(true);
+    const isDraggingRef = useRef(false);
+    const dragMovedRef = useRef(false);
+    /** Measurement points moved together with the grabbed one (shared landmark). */
+    const linkedPointsRef = useRef<{ id: string; index: number }[]>([]);
+    const labelGrabOffsetRef = useRef<Point>({ x: 0, y: 0 });
+    const [reusedCount, setReusedCount] = useState(0);
+    const sceneKey = side === 'right' ? 'right' : 'main';
+    // Assessment shows the preop case; Planning shows the plan on the cut image (UI9-05).
+    const location = useLocation();
+    const canvasView: 'assessment' | 'planning' =
+        location.pathname === '/workspace' && new URLSearchParams(location.search).get('tab') === 'planning' && side !== 'right'
+            ? 'planning' : 'assessment';
+    /** Measurements that can be edited in this view (preop in Assessment, plan items in Planning). */
+    const editableHere = (m: Measurement) => (canvasView === 'planning' ? isPlanMeasurement(m) : !isPlanMeasurement(m));
     const [isDragging, setIsDragging] = useState(false);
     const [cropRect, setCropRect] = useState<{ start: Point; current: Point } | null>(null);
     const [isCalibrationDialogOpen, setIsCalibrationDialogOpen] = useState(false);
@@ -297,7 +335,9 @@ const CanvasWorkspace = ({ side }: CanvasWorkspaceProps) => {
         if (!containerRef.current) return { x: 0, y: 0 };
 
         const { k, x, y } = viewTransformRef.current;
-        const ek = k * (storeCanvas.zoom || 1);
+        // Live zoom from the store: wheel events can outrun re-renders (CV-25).
+        const st = useAppStore.getState();
+        const ek = k * (((side === 'right' ? st.comparison.right.canvas : st.canvas).zoom) || 1);
         const rad = (storeCanvas.rotation * Math.PI) / 180;
 
         const cx = containerRef.current.clientWidth / 2;
@@ -320,7 +360,7 @@ const CanvasWorkspace = ({ side }: CanvasWorkspaceProps) => {
             x: (rx - x) / ek,
             y: (ry - y) / ek
         };
-    }, [storeCanvas.zoom, storeCanvas.rotation, storeCanvas.flipX]);
+    }, [side, storeCanvas.rotation, storeCanvas.flipX]);
 
     // Resize Handling
     useEffect(() => {
@@ -343,6 +383,7 @@ const CanvasWorkspace = ({ side }: CanvasWorkspaceProps) => {
         if (imageCacheRef.current.has(url)) return imageCacheRef.current.get(url)!;
         const img = new Image();
         img.crossOrigin = 'anonymous'; // Added for CORS support
+        img.onload = () => { dirtyRef.current = true; };
         img.src = url;
         img.onerror = (e) => console.error(`[CanvasWorkspace] Image failed to load: ${url}`, e);
         imageCacheRef.current.set(url, img);
@@ -432,6 +473,8 @@ const CanvasWorkspace = ({ side }: CanvasWorkspaceProps) => {
         if (!managerRef.current || !managerReady || !currentImage) {
             return;
         }
+        // Mid-drag the manager is ahead of the store (synced on mouseup).
+        if (isDraggingRef.current) return;
 
         const managerMeasurements = managerRef.current.current?.data.measurements ?? [];
         if (measurementsDiffer(managerMeasurements, storeMeasurements)) {
@@ -479,27 +522,26 @@ const CanvasWorkspace = ({ side }: CanvasWorkspaceProps) => {
             sharpness: storeCanvas.sharpness,
             displayRatio: storeCanvas.calibrationApplied ? storeCanvas.pixelToMm : null,
             calibrationEnabledAt: storeCanvas.calibrationEnabledAt,
-            selectedImplantId: selection?.type === 'implant' ? selection.measurementId : null,
+            selectedImplantId: selection?.type === 'implant' || selection?.type === 'implant-point' ? selection.measurementId : null,
+            labelScene: sceneKey,
+            hideUnselected: true,
+            view: canvasView,
         });
 
         const isAnyDialogOpen = isCalibrationDialogOpen || isVBMDialogOpen || isTiltDialogOpen || isTextDialogOpen;
 
-        // UNIFIED PREVIEW DRAWING
+        // LIVE PREVIEW — same colours / widths / points as finished measurements (UI5-07)
         if (tempPoints.length > 0 && !isAnyDialogOpen) {
             ctx.save();
-            if (activeTool === 'cobb') ctx.strokeStyle = '#3b82f6';
-            else if (activeTool === 'cmc') ctx.strokeStyle = '#dc2626';
-            else if (activeTool === 'csvl') ctx.strokeStyle = '#eab308';
-            else if (['pelvis', 'pi_ll', 'po'].includes(activeTool || '')) ctx.strokeStyle = '#10b981';
-            else if (activeTool === 'itilt') ctx.strokeStyle = '#8b5cf6';
-            else if (activeTool === 'cbva') ctx.strokeStyle = '#f97316';
-            else if (activeTool === 'slope') ctx.strokeStyle = '#ec4899';
-            else ctx.strokeStyle = '#3b82f6';
-
-            ctx.lineWidth = 2.5 / ek;
-            ctx.fillStyle = ctx.strokeStyle;
+            const color = toolColor(activeTool);
+            ctx.strokeStyle = color;
+            ctx.fillStyle = color;
+            ctx.lineWidth = STYLE.line / ek;
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
             const wPos = mouseWorldPosRef.current;
             const pts = [...tempPoints, wPos];
+            const dashed = (on: boolean) => ctx.setLineDash(on ? STYLE.dash.map((d) => d / ek) : []);
 
             // 1. Osteotomy/Resection Previews
             const tempM: Measurement = {
@@ -516,216 +558,114 @@ const CanvasWorkspace = ({ side }: CanvasWorkspaceProps) => {
                     drawDeformedSuperiorSegment(ctx, img, tempM, targetFrag, 0.5);
                 }
             } else if (activeTool === 'ost-open' && tempPoints.length >= 2) {
-                // OPEN OSTEOTOMY: Only draw the line visualization, no deformed segment preview
-                // The new implementation will handle the actual cutting and transformation
-                // when all 6 points are placed
                 drawWedgeOsteotomy(ctx, tempM, ek);
             } else if (activeTool === 'ost-resect' && pts.length === 4) {
                 drawResection(ctx, tempM, ek);
             }
 
-            // 2. Draw Points
-            pts.forEach(p => {
-                if (activeTool === 'pencil') return;
-
-                ctx.beginPath();
-                ctx.arc(p.x, p.y, 4 / ek, 0, Math.PI * 2);
-                ctx.fill();
-
-                // Exclude angle tools and other complex tools from white border during placement
-                if (!['cobb', 'angle-4pt', 'angle-2pt', 'angle-3pt', 'circle', 'ellipse', 'polygon', 'sva', 'vbm', 'pelvis', 'pi_ll', 'cmc', 'csvl', 'ts', 'avt', 'rvad', 'po', 'itilt', 'cbva', 'slope', 'tpa', 'spa', 'ssa', 't1spi', 't9spi', 'odha', 'stenosis', 'spondy', 'pencil', 'text'].includes(activeTool || '')) {
-                    ctx.lineWidth = 1.2 / ek;
-                    ctx.strokeStyle = '#fff';
-                    ctx.stroke();
-                }
-
-                // Reset stroke for lines
-                if (activeTool === 'cmc') {
-                    ctx.strokeStyle = '#dc2626';
-                } else if (activeTool === 'csvl') {
-                    ctx.strokeStyle = '#eab308';
-                } else if (activeTool === 'po') {
-                    ctx.strokeStyle = '#10b981';
-                } else if (activeTool === 'itilt') {
-                    ctx.strokeStyle = '#8b5cf6';
-                } else if (activeTool === 'rvad') {
-                    ctx.strokeStyle = '#3b82f6';
-                } else if (activeTool === 'cbva') {
-                    ctx.strokeStyle = '#f97316';
-                } else if (activeTool === 'slope') {
-                    ctx.strokeStyle = '#ec4899';
-                } else if (['pelvis', 'pi_ll'].includes(activeTool || '')) {
-                    ctx.strokeStyle = '#10b981';
-                } else {
-                    ctx.strokeStyle = (['cobb', 'angle-4pt'].includes(activeTool || '') ? '#3b82f6' : '#3b82f6');
-                }
-                ctx.lineWidth = 2.5 / ek;
-            });
-
-            // 3. Draw Lines based on Tool Type
+            // 2. Lines based on tool type
             ctx.beginPath();
             if (activeTool === 'vbm') {
                 ctx.moveTo(pts[0].x, pts[0].y);
                 for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
                 if (pts.length === 4) ctx.closePath();
-            } else if (activeTool === 'pelvis' || activeTool === 'pi_ll') {
-                if (pts.length >= 2) {
-                    const mid = { x: (pts[0].x + pts[1].x) / 2, y: (pts[0].y + pts[1].y) / 2 };
-                    const rad = Math.sqrt(Math.pow(pts[0].x - pts[1].x, 2) + Math.pow(pts[0].y - pts[1].y, 2)) / 2;
-                    ctx.moveTo(mid.x + rad, mid.y); ctx.arc(mid.x, mid.y, rad, 0, Math.PI * 2);
-                } else if (pts.length === 1) {
-                    ctx.moveTo(pts[0].x, pts[0].y); ctx.lineTo(wPos.x, wPos.y);
-                }
-                if (pts.length >= 4) {
-                    const mid = { x: (pts[2].x + pts[3].x) / 2, y: (pts[2].y + pts[3].y) / 2 };
-                    const rad = Math.sqrt(Math.pow(pts[2].x - pts[3].x, 2) + Math.pow(pts[2].y - pts[3].y, 2)) / 2;
-                    ctx.moveTo(mid.x + rad, mid.y); ctx.arc(mid.x, mid.y, rad, 0, Math.PI * 2);
-                } else if (pts.length === 3) {
-                    ctx.moveTo(pts[2].x, pts[2].y); ctx.lineTo(wPos.x, wPos.y);
-                }
-                if (pts.length >= 6) {
-                    ctx.moveTo(pts[4].x, pts[4].y); ctx.lineTo(pts[5].x, pts[5].y);
-                } else if (pts.length === 5) {
-                    ctx.moveTo(pts[4].x, pts[4].y); ctx.lineTo(wPos.x, wPos.y);
-                }
-                if (activeTool === 'pi_ll') {
-                    if (pts.length >= 8) {
-                        ctx.moveTo(pts[6].x, pts[6].y); ctx.lineTo(pts[7].x, pts[7].y);
-                    } else if (pts.length === 7) {
-                        ctx.moveTo(pts[6].x, pts[6].y); ctx.lineTo(wPos.x, wPos.y);
+            } else if (['pelvis', 'pi_ll', 'tpa', 'spa', 't1spi', 't9spi', 'odha'].includes(activeTool || '')) {
+                // Femoral heads (circles through the two diameter clicks)
+                for (const i of [0, 2]) {
+                    if (pts.length >= i + 2) {
+                        const c = getMidpoint(pts[i], pts[i + 1]);
+                        const r = getDistance(pts[i], pts[i + 1]) / 2;
+                        ctx.moveTo(c.x + r, c.y); ctx.arc(c.x, c.y, r, 0, Math.PI * 2);
                     }
+                }
+                const pairs = activeTool === 'pelvis' ? [4] : activeTool === 'pi_ll' ? [4, 6] : ['tpa', 'spa'].includes(activeTool || '') ? [5] : [];
+                pairs.forEach((i) => {
+                    if (pts.length >= i + 2) { ctx.moveTo(pts[i].x, pts[i].y); ctx.lineTo(pts[i + 1].x, pts[i + 1].y); }
+                });
+                const single = ['tpa', 'spa', 't1spi', 't9spi', 'odha'].includes(activeTool || '') ? 4 : -1;
+                if (single > 0 && pts.length > single) {
+                    const hip = getHipAxisCenter(pts.slice(0, 4));
+                    if (hip) { ctx.moveTo(hip.x, hip.y); ctx.lineTo(pts[single].x, pts[single].y); }
                 }
             } else if (['cobb', 'cl', 'tk', 'll', 'sc', 'spondy', 'angle-4pt', 'ost-resect'].includes(activeTool || '')) {
-                if (pts.length >= 1) {
-                    ctx.moveTo(pts[0].x, pts[0].y);
-                    ctx.lineTo(pts.length > 1 ? pts[1].x : wPos.x, pts.length > 1 ? pts[1].y : wPos.y);
-                }
-                if (pts.length >= 3) {
-                    ctx.moveTo(pts[2].x, pts[2].y);
-                    ctx.lineTo(pts.length > 3 ? pts[3].x : wPos.x, pts.length > 3 ? pts[3].y : wPos.y);
-
-                    if (['cobb', 'cl', 'tk', 'll', 'sc'].includes(activeTool || '')) {
-                        const previewPts = [...pts.slice(0, pts.length === 3 ? 3 : 4)];
-                        if (previewPts.length === 3) previewPts.push(wPos);
-
-                        let angle = 0;
-                        let prefix = '';
-                        if (activeTool === 'cobb' || activeTool === 'angle-4pt') {
-                            angle = calculateCobbAngle(previewPts).angle;
-                            prefix = activeTool === 'cobb' ? 'Cobb' : '4 pt angle';
-                        } else {
-                            angle = calculateSpinalCurvature(previewPts).angle;
-                            prefix = activeTool!.toUpperCase() === 'SC' ? 'Angle' : activeTool!.toUpperCase();
-                        }
-
-                        if (angle > 0) {
-                            ctx.save();
-                            ctx.fillStyle = ctx.strokeStyle;
-                            ctx.font = `bold ${14 / ek}px Inter, sans-serif`;
-                            ctx.shadowColor = "rgba(0,0,0,0.5)";
-                            ctx.shadowBlur = 4 / ek;
-                            ctx.fillText(`${prefix}: ${angle.toFixed(1)}°`, wPos.x + 10 / ek, wPos.y - 10 / ek);
-                            ctx.restore();
-                        }
-                    }
-                }
-            } else if (['tpa', 'spa', 't1spi', 't9spi', 'odha'].includes(activeTool || '')) {
-                const count = pts.length;
-                if (count >= 2) {
-                    const mid = getMidpoint(pts[0], pts[1]);
-                    const rad = getDistance(pts[0], pts[1]) / 2;
-                    ctx.moveTo(mid.x + rad, mid.y); ctx.arc(mid.x, mid.y, rad, 0, Math.PI * 2);
-                } else if (count === 1) { ctx.moveTo(pts[0].x, pts[0].y); ctx.lineTo(wPos.x, wPos.y); }
-
-                if (count >= 4) {
-                    const mid = getMidpoint(pts[2], pts[3]);
-                    const rad = getDistance(pts[2], pts[3]) / 2;
-                    ctx.moveTo(mid.x + rad, mid.y); ctx.arc(mid.x, mid.y, rad, 0, Math.PI * 2);
-                } else if (count === 3) { ctx.moveTo(pts[2].x, pts[2].y); ctx.lineTo(wPos.x, wPos.y); }
-
-                if (count >= 5) {
-                    const hip = getHipAxisCenter(pts.slice(0, 4));
-                    if (hip) { ctx.moveTo(hip.x, hip.y); ctx.lineTo(pts[4].x, pts[4].y); }
-                }
-
-                if (['tpa', 'spa'].includes(activeTool || '')) {
-                    if (count >= 7) { ctx.moveTo(pts[5].x, pts[5].y); ctx.lineTo(pts[6].x, pts[6].y); }
-                    else if (count === 6) { ctx.moveTo(pts[5].x, pts[5].y); ctx.lineTo(wPos.x, wPos.y); }
-                }
-            } else if (['sva', 'line', 'calibration', 'stenosis', 'po', 'csvl', 'slope', 'cbva', 'itilt', 'angle-2pt', 'angle-3pt'].includes(activeTool || '')) {
-                if (pts.length > 0) {
-                    ctx.moveTo(pts[0].x, pts[0].y);
-                    for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
-                }
-                if (activeTool === 'sva' && pts.length >= 1) {
-                    ctx.setLineDash([5 / ek, 5 / ek]);
-                    ctx.moveTo(pts[0].x, pts[0].y - 200 / ek);
-                    ctx.lineTo(pts[0].x, pts[0].y + 200 / ek);
-                    ctx.setLineDash([]);
-                }
-            } else if (['ts', 'avt', 'ssa'].includes(activeTool || '')) {
-                if (pts.length >= 1) {
-                    ctx.beginPath(); ctx.arc(pts[0].x, pts[0].y, 4 / ek, 0, Math.PI * 2); ctx.fill();
-                    if (pts.length === 1) { ctx.moveTo(pts[0].x, pts[0].y); ctx.lineTo(wPos.x, wPos.y); }
-                }
-                if (pts.length >= 3) {
-                    ctx.moveTo(pts[1].x, pts[1].y); ctx.lineTo(pts[2].x, pts[2].y);
-                    const mid = getMidpoint(pts[1], pts[2]);
-                    ctx.setLineDash([5 / ek, 5 / ek]);
-                    ctx.moveTo(pts[0].x, pts[0].y); ctx.lineTo(mid.x, mid.y);
-                    ctx.setLineDash([]);
-                } else if (pts.length === 2) {
-                    ctx.moveTo(pts[1].x, pts[1].y); ctx.lineTo(wPos.x, wPos.y);
-                }
+                ctx.moveTo(pts[0].x, pts[0].y);
+                ctx.lineTo(pts[1].x, pts[1].y);
+                if (pts.length >= 4) { ctx.moveTo(pts[2].x, pts[2].y); ctx.lineTo(pts[3].x, pts[3].y); }
+            } else if (['sva', 'line', 'calibration', 'stenosis', 'po', 'csvl', 'slope', 'cbva', 'itilt', 'angle-2pt', 'angle-3pt', 'polygon', 'ssa'].includes(activeTool || '')) {
+                ctx.moveTo(pts[0].x, pts[0].y);
+                for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
+            } else if (['ts', 'avt'].includes(activeTool || '')) {
+                if (pts.length >= 3) { ctx.moveTo(pts[1].x, pts[1].y); ctx.lineTo(pts[2].x, pts[2].y); }
+                else if (pts.length === 2) { ctx.moveTo(pts[0].x, pts[0].y); ctx.lineTo(pts[1].x, pts[1].y); }
             } else if (activeTool === 'cmc') {
-                for (let i = 0; i < Math.floor(pts.length / 2); i++) {
-                    ctx.moveTo(pts[i * 2].x, pts[i * 2].y); ctx.lineTo(pts[i * 2 + 1].x, pts[i * 2 + 1].y);
-                }
-                if (pts.length % 2 === 1) { ctx.moveTo(pts[pts.length - 1].x, pts[pts.length - 1].y); ctx.lineTo(wPos.x, wPos.y); }
+                for (let i = 0; i + 1 < pts.length; i += 2) { ctx.moveTo(pts[i].x, pts[i].y); ctx.lineTo(pts[i + 1].x, pts[i + 1].y); }
             } else if (['imp-screw', 'imp-cage', 'imp-plate'].includes(activeTool || '')) {
                 if (pts.length >= 2) {
                     const type = activeTool!.replace('imp-', '');
                     const angle = Math.atan2(pts[1].y - pts[0].y, pts[1].x - pts[0].x) * (180 / Math.PI);
                     const length = getDistance(pts[0], pts[1]);
-                    if (type === 'screw') drawScrew(ctx, pts[0], angle, { length, diameter: 6 }, ek, 'rgba(148, 163, 184, 0.5)');
-                    if (type === 'cage') drawCage(ctx, pts[0], angle, { width: length, height: 10, wedgeAngle: 5 }, ek, 'rgba(16, 185, 129, 0.5)');
-                    if (type === 'plate') drawPlate(ctx, pts[0], angle, { width: 15, height: length, holes: 4 }, ek, 'rgba(100, 116, 139, 0.5)');
+                    const pxPerMm = mmToPx();
+                    if (type === 'screw') drawScrew(ctx, pts[0], angle, { length, diameter: 6.5 * pxPerMm }, ek, 'rgba(255, 255, 255, 0.5)');
+                    if (type === 'cage') drawCage(ctx, pts[0], angle, { width: length, height: 10 * pxPerMm, wedgeAngle: 6 }, ek, 'rgba(255, 255, 255, 0.5)');
+                    if (type === 'plate') drawPlate(ctx, pts[0], angle, { width: 16 * pxPerMm, height: length, holes: 4 }, ek, 'rgba(255, 255, 255, 0.5)');
                 }
             } else if (activeTool === 'imp-rod') {
-                drawRod(ctx, pts, ek, 6, 'rgba(148, 163, 184, 0.5)');
+                drawRod(ctx, pts, ek, 5.5 * mmToPx(), 'rgba(255, 255, 255, 0.5)');
             } else if (activeTool === 'text') {
-                const anchor = pts[0];
-                ctx.fillStyle = '#fff';
-                ctx.beginPath(); ctx.arc(anchor.x, anchor.y, 4 / ek, 0, Math.PI * 2); ctx.fill();
-                ctx.setLineDash([5 / ek, 5 / ek]);
-                ctx.strokeStyle = '#fff';
-                ctx.beginPath(); ctx.moveTo(anchor.x, anchor.y); ctx.lineTo(wPos.x, wPos.y); ctx.stroke();
-                ctx.setLineDash([]);
-            } else if (activeTool === 'pencil') {
-                if (pts.length > 1) {
-                    ctx.strokeStyle = '#facc15';
-                    ctx.beginPath();
-                    ctx.moveTo(pts[0].x, pts[0].y);
-                    for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
-                    ctx.stroke();
-                }
-            } else if (activeTool === 'circle' && pts.length >= 2) {
-                const center = getMidpoint(pts[0], pts[1]);
-                const radius = getDistance(pts[0], pts[1]) / 2;
-                ctx.beginPath(); ctx.arc(center.x, center.y, radius, 0, Math.PI * 2); ctx.stroke();
-            } else if (activeTool === 'ellipse' && pts.length >= 2) {
-                const center = getMidpoint(pts[0], pts[1]);
-                const rx = Math.abs(pts[0].x - pts[1].x) / 2;
-                const ry = Math.abs(pts[0].y - pts[1].y) / 2;
-                ctx.beginPath(); ctx.ellipse(center.x, center.y, rx, ry, 0, 0, Math.PI * 2); ctx.stroke();
-            } else if (activeTool === 'polygon' && pts.length > 0) {
+                ctx.moveTo(pts[0].x, pts[0].y); ctx.lineTo(wPos.x, wPos.y);
+            } else if (activeTool === 'pencil' && pts.length > 2) {
                 ctx.moveTo(pts[0].x, pts[0].y);
-                for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
-                ctx.stroke();
+                for (let i = 1; i < pts.length - 1; i++) ctx.lineTo(pts[i].x, pts[i].y);
+            } else if (activeTool === 'circle' && tempPoints.length >= 2) {
+                const c = getMidpoint(tempPoints[0], tempPoints[1]);
+                const r = getDistance(tempPoints[0], tempPoints[1]) / 2;
+                ctx.moveTo(c.x + r, c.y); ctx.arc(c.x, c.y, r, 0, Math.PI * 2);
+            } else if (activeTool === 'ellipse' && tempPoints.length >= 2) {
+                const c = getMidpoint(tempPoints[0], tempPoints[1]);
+                ctx.ellipse(c.x, c.y, Math.abs(tempPoints[0].x - tempPoints[1].x) / 2, Math.abs(tempPoints[0].y - tempPoints[1].y) / 2, 0, 0, Math.PI * 2);
+            }
+            ctx.stroke();
+
+            // Dashed helpers: SVA plumb, CSVL offset for TS / AVT
+            if (activeTool === 'sva' && pts.length >= 2) {
+                dashed(true);
+                ctx.beginPath(); ctx.moveTo(pts[1].x, pts[1].y - 200 / ek); ctx.lineTo(pts[1].x, pts[1].y + 60 / ek); ctx.stroke();
+                dashed(false);
+            } else if (['ts', 'avt'].includes(activeTool || '') && pts.length >= 3) {
+                const mid = getMidpoint(pts[1], pts[2]);
+                dashed(true);
+                ctx.beginPath(); ctx.moveTo(pts[0].x, pts[0].y); ctx.lineTo(mid.x, pts[0].y); ctx.stroke();
+                dashed(false);
             }
 
-            ctx.stroke();
+            // 3. Points (cursor point is drawn smaller)
+            if (!['pencil', 'circle', 'ellipse', 'imp-rod', 'imp-screw', 'imp-cage', 'imp-plate'].includes(activeTool || '')) {
+                tempPoints.forEach((p) => drawPoint(ctx, p, ek, color));
+                drawPoint(ctx, wPos, ek, color, 0.7);
+            }
+
+            // 4. Live angle while placing the second line of 4-point tools
+            if (['cobb', 'angle-4pt', 'cl', 'tk', 'll', 'sc'].includes(activeTool || '') && pts.length === 4) {
+                const preview = activeTool === 'cobb' || activeTool === 'angle-4pt'
+                    ? `${activeTool === 'cobb' ? 'Cobb' : '4 pt angle'}: ${calculateCobbAngle(pts).angle.toFixed(1)}°`
+                    : `${activeTool === 'sc' ? 'Angle' : activeTool!.toUpperCase()}: ${calculateSpinalCurvature(pts).angle.toFixed(1)}°`;
+                drawLabel(ctx, preview, { x: wPos.x + 14 / ek, y: wPos.y - 14 / ek }, ek, color);
+            }
             ctx.restore();
+        }
+
+        // Snap ring: hovering an existing point while placing reuses it (UI5-08)
+        if (activeTool && !NO_SNAP_TOOLS.has(activeTool) && !isAnyDialogOpen) {
+            const snap = findSnapPoint(mouseWorldPosRef.current, ek);
+            if (snap) {
+                ctx.save();
+                ctx.strokeStyle = '#ffffff';
+                ctx.lineWidth = 1.5 / ek;
+                ctx.beginPath();
+                ctx.arc(snap.x, snap.y, 8 / ek, 0, Math.PI * 2);
+                ctx.stroke();
+                ctx.restore();
+            }
         }
 
         // 4. Overlays & HUD (outside the main tempPoints block if necessary, or inside)
@@ -741,31 +681,25 @@ const CanvasWorkspace = ({ side }: CanvasWorkspaceProps) => {
             ctx.restore();
         }
 
-        if (isDragging && selection?.type === 'implant-point') {
-            const imp = state.data.implants.find((i: any) => i.id === selection.measurementId);
-            if (imp) {
-                ctx.save();
-                ctx.fillStyle = IMPLANT_ANNOTATION; ctx.font = `bold ${14 / ek}px Inter, sans-serif`; ctx.textAlign = "center";
-                ctx.shadowColor = "rgba(0,0,0,0.8)"; ctx.shadowBlur = 4 / ek;
-                const displayRatio = storeCanvas.calibrationApplied ? storeCanvas.pixelToMm : null;
-                const ratio = displayRatio || 1;
-                const unit = displayRatio ? 'mm' : 'px';
-                let label = "";
-                if (imp.type === 'screw') label = `${(imp.properties.length * ratio).toFixed(1)} ${unit}`;
-                else if (imp.type === 'cage') label = `H: ${(imp.properties.height * ratio).toFixed(1)} ${unit}, W: ${(imp.properties.width * ratio).toFixed(1)} ${unit}`;
-                if (label) ctx.fillText(label, mouseWorldPosRef.current.x, mouseWorldPosRef.current.y - 20 / ek);
-                ctx.restore();
-            }
-        }
-
         ctx.restore(); // Final balance
-    }, [storeCanvas, getCachedImage, activeTool, tempPoints, cropRect, isDragging, mouseWorldPosRef, selection, vbmMode, tiltMode, managerReady, isCalibrationDialogOpen, isVBMDialogOpen, isTiltDialogOpen, isTextDialogOpen]);
+    }, [storeCanvas, getCachedImage, activeTool, tempPoints, cropRect, isDragging, mouseWorldPosRef, selection, vbmMode, tiltMode, managerReady, isCalibrationDialogOpen, isVBMDialogOpen, isTiltDialogOpen, isTextDialogOpen, canvasView]);
 
     useEffect(() => {
         let rafId: number;
+        // Redraw only when the scene, view or canvas size changed, or something
+        // flagged dirtyRef — idle frames cost nothing (UI5-04).
+        let last = { state: null as unknown, k: NaN, x: NaN, y: NaN, w: -1, h: -1 };
+        dirtyRef.current = true;
         // Schedule first, then draw: one exception must not kill the loop (RPT-15).
         const loop = () => {
             rafId = requestAnimationFrame(loop);
+            const c = canvasRef.current;
+            const state = managerRef.current?.current ?? null;
+            const { k, x, y } = viewTransformRef.current;
+            const w = c?.width ?? 0, h = c?.height ?? 0;
+            if (!dirtyRef.current && state === last.state && k === last.k && x === last.x && y === last.y && w === last.w && h === last.h) return;
+            last = { state, k, x, y, w, h };
+            dirtyRef.current = false;
             try {
                 draw();
             } catch (e) {
@@ -795,7 +729,7 @@ const CanvasWorkspace = ({ side }: CanvasWorkspaceProps) => {
             // Never hijack typing in inputs / notes / dialogs.
             const t = e.target as HTMLElement | null;
             if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return;
-            if (useAppStore.getState().activeDialog) return;
+            if (document.querySelector('[role="dialog"][data-state="open"], [role="alertdialog"][data-state="open"]')) return;
 
             const key = e.key.toLowerCase();
             const mod = e.ctrlKey || e.metaKey;
@@ -822,7 +756,6 @@ const CanvasWorkspace = ({ side }: CanvasWorkspaceProps) => {
             if (e.key === 'Enter' && activeTool === 'polygon' && tempPoints.length >= 3) {
                 // Close polygon on Enter
                 if (managerRef.current) {
-                    const ratio = storeCanvas.pixelToMm;
                     const area = getPolygonArea(tempPoints);
                     const perim = getPolygonPerimeter(tempPoints);
                     let result = '';
@@ -837,37 +770,85 @@ const CanvasWorkspace = ({ side }: CanvasWorkspaceProps) => {
             if (isUndoShortcut) {
                 e.preventDefault();
                 e.stopPropagation();
-
-                if (tempPoints.length > 0) {
-                    setTempPoints(prev => prev.slice(0, -1));
-                } else if (managerRef.current) {
-                    const newState = managerRef.current.undo();
-                    if (newState) setMeasurements(newState.data.measurements);
-                }
+                // While placing, Ctrl+Z removes the last clicked point first.
+                if (tempPoints.length > 0) setTempPoints(prev => prev.slice(0, -1));
+                else historyStepRef.current('undo');
+                return;
             }
-
-            if (isRedoShortcut && managerRef.current) {
+            if (isRedoShortcut) {
                 e.preventDefault();
                 e.stopPropagation();
-
-                const newState = managerRef.current.redo();
-                if (newState) setMeasurements(newState.data.measurements);
+                historyStepRef.current('redo');
             }
         };
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [tempPoints, setMeasurements, setActiveTool, isInteractive, activeTool]);
+    }, [tempPoints, setMeasurements, setActiveTool, isInteractive, activeTool, selection, syncStoreWithCanvas, setSelection]);
 
-    // Ensure tempPoints is cleared when tool changes or is deactivated
+    // New tool: start from the landmarks earlier measurements already placed
+    // (UI5-08). If every landmark is known, the measurement is created at once.
     useEffect(() => {
+        const mgr = managerRef.current;
+        const total = landmarkCount(activeTool);
+        if (!activeTool || !isInteractive || !mgr?.current || total === 0 || !useSettings.getState().reuseLandmarks) {
+            setTempPoints([]);
+            setReusedCount(0);
+            return;
+        }
+        const existing = mgr.current.data.measurements;
+        let filled = autoFillLandmarks(activeTool, [], collectLandmarks(existing));
+        // Re-selecting a tool whose measurement already exists on exactly these
+        // landmarks starts a fresh placement instead of creating a duplicate.
+        const duplicate = filled.length === total && existing.some((m) =>
+            m.toolKey === activeTool && m.points.length === total &&
+            m.points.every((p, i) => Math.abs(p.x - filled[i].x) < 0.01 && Math.abs(p.y - filled[i].y) < 0.01));
+        if (duplicate) filled = [];
+        setReusedCount(filled.length);
+        if (filled.length < total) {
+            setTempPoints(filled);
+            return;
+        }
         setTempPoints([]);
+        const toolKey = activeTool;
+        void mgr.applyOperation('ADD_MEASUREMENT', {
+            toolKey,
+            points: filled,
+            result: computeMeasurementResult(toolKey, filled) ?? '',
+        }).then((s) => {
+            syncStoreWithCanvas(s.data.measurements, s.data.implants);
+            setActiveTool(null);
+        });
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [activeTool]);
 
     /** Begin a drag: one undo step for the whole drag (BUGS CV-07). */
     const startDrag = () => {
         managerRef.current?.beginHistoryTransaction('drag');
+        isDraggingRef.current = true;
+        dragMovedRef.current = false;
         setIsDragging(true);
     };
+
+    /** Nearest existing measurement point within the snap radius (landmark reuse). */
+    const findSnapPoint = (p: Point, ek: number): Point | null => {
+        if (!useSettings.getState().snapToPoints) return null;
+        const ms = managerRef.current?.current?.data.measurements ?? [];
+        let best: Point | null = null;
+        let bestD = SNAP_PX / ek;
+        for (const m of ms) {
+            if (m.measurement?.isCalibration || m.selected === false || !editableHere(m)) continue;
+            for (const q of m.points) {
+                const d = getDistance(p, q);
+                if (d < bestD) { bestD = d; best = q; }
+            }
+        }
+        return best ? { x: best.x, y: best.y } : null;
+    };
+
+    /** Points for the next click: the click itself plus any landmarks already known. */
+    const nextTemp = (wp: Point): Point[] => useSettings.getState().reuseLandmarks
+        ? autoFillLandmarks(activeTool, [...tempPoints, wp], collectLandmarks(managerRef.current?.current?.data.measurements ?? []))
+        : [...tempPoints, wp];
 
     /** px per mm for new implants: calibration, else assume a ~300 mm field of view. */
     const mmToPx = () => {
@@ -876,11 +857,20 @@ const CanvasWorkspace = ({ side }: CanvasWorkspaceProps) => {
         return w / 300;
     };
 
-    const handleMouseDown = async (e: React.MouseEvent) => {
+    /**
+     * Mouse model (UI8-01): LEFT = every action (place, select, drag, edit);
+     * RIGHT drag (or middle drag) = pan, always — even mid-placement;
+     * wheel = zoom. A right CLICK (no movement) still finishes multi-point
+     * tools (polygon, canal area, CMC, rod) — it is replayed from mouseup.
+     */
+    const panStartRef = useRef<{ x: number; y: number; button: number } | null>(null);
+
+    const handleMouseDown = async (e: React.MouseEvent, opts?: { rightClick?: boolean }) => {
         handleCanvasClick();
 
-        // Always allow middle-click panning regardless of interaction focus
-        if (e.button === 1) {
+        if (e.button === 1 || (e.button === 2 && !opts?.rightClick)) {
+            e.preventDefault(); // no browser autoscroll / context menu
+            panStartRef.current = { x: e.clientX, y: e.clientY, button: e.button };
             setIsPanning(true);
             lastPanPos.current = { x: e.clientX, y: e.clientY };
             return;
@@ -890,13 +880,13 @@ const CanvasWorkspace = ({ side }: CanvasWorkspaceProps) => {
 
         if (!containerRef.current) return;
         const rect = containerRef.current.getBoundingClientRect();
-        const worldPos = getWorldPos(e.clientX - rect.left, e.clientY - rect.top);
-        lastWorldPosRef.current = worldPos;
+        const rawPos = getWorldPos(e.clientX - rect.left, e.clientY - rect.top);
+        lastWorldPosRef.current = rawPos;
         const { k } = viewTransformRef.current;
         const ek = k * (storeCanvas.zoom || 1);
         const currentState = managerRef.current?.current;
-
-
+        // Placing a point on an existing one reuses it exactly (UI5-08).
+        const worldPos = activeTool && !NO_SNAP_TOOLS.has(activeTool) ? (findSnapPoint(rawPos, ek) ?? rawPos) : rawPos;
 
         if (activeTool === 'crop') {
             setCropRect({ start: worldPos, current: worldPos });
@@ -919,7 +909,7 @@ const CanvasWorkspace = ({ side }: CanvasWorkspaceProps) => {
         // TOOL HANDLERS - Place points BEFORE checking for selection if a tool is active
         if (activeTool === 'cobb' || activeTool === 'cl' || activeTool === 'tk' || activeTool === 'll' || activeTool === 'sc') {
             if (e.button !== 0) return;
-            const newTemp = [...tempPoints, worldPos];
+            const newTemp = nextTemp(worldPos);
             if (newTemp.length === 4) {
                 let result = '';
                 if (activeTool === 'cobb') {
@@ -941,7 +931,7 @@ const CanvasWorkspace = ({ side }: CanvasWorkspaceProps) => {
 
         if (activeTool === 'sva') {
             if (e.button !== 0) return;
-            const newTemp = [...tempPoints, worldPos];
+            const newTemp = nextTemp(worldPos);
             if (newTemp.length === 2) {
                 const distancePx = Math.abs(newTemp[0].x - newTemp[1].x);
                 const result = `SVA: ${distancePx.toFixed(1)} px`;
@@ -956,7 +946,7 @@ const CanvasWorkspace = ({ side }: CanvasWorkspaceProps) => {
 
         if (activeTool === 'calibration') {
             if (e.button !== 0) return;
-            const newTemp = [...tempPoints, worldPos];
+            const newTemp = nextTemp(worldPos);
             if (newTemp.length === 2) {
                 setCalibrationPoints(newTemp as [Point, Point]);
                 setTempPoints(newTemp); // Keep visible on canvas while dialog is open
@@ -970,7 +960,7 @@ const CanvasWorkspace = ({ side }: CanvasWorkspaceProps) => {
 
         if (activeTool === 'vbm') {
             if (e.button !== 0) return;
-            const newTemp = [...tempPoints, worldPos];
+            const newTemp = nextTemp(worldPos);
             if (newTemp.length === 4) {
                 const result = calculateVBM(newTemp, vbmMode, null);
                 const newState = await managerRef.current?.applyOperation('ADD_MEASUREMENT', {
@@ -989,7 +979,7 @@ const CanvasWorkspace = ({ side }: CanvasWorkspaceProps) => {
 
         if (activeTool === 'pelvis') {
             if (e.button !== 0) return;
-            const newTemp = [...tempPoints, worldPos];
+            const newTemp = nextTemp(worldPos);
             if (newTemp.length === 6) {
                 const params = calculatePelvicParameters(newTemp);
                 let result = '';
@@ -1007,7 +997,7 @@ const CanvasWorkspace = ({ side }: CanvasWorkspaceProps) => {
 
         if (activeTool === 'pi_ll') {
             if (e.button !== 0) return;
-            const newTemp = [...tempPoints, worldPos];
+            const newTemp = nextTemp(worldPos);
             if (newTemp.length === 8) {
                 const params = calculatePILL(newTemp);
                 let result = '';
@@ -1025,7 +1015,7 @@ const CanvasWorkspace = ({ side }: CanvasWorkspaceProps) => {
 
         if (activeTool === 'tpa' || activeTool === 'spa') {
             if (e.button !== 0) return;
-            const newTemp = [...tempPoints, worldPos];
+            const newTemp = nextTemp(worldPos);
             if (newTemp.length === 7) {
                 let result = '';
                 if (activeTool === 'tpa') {
@@ -1046,7 +1036,7 @@ const CanvasWorkspace = ({ side }: CanvasWorkspaceProps) => {
 
         if (['t1spi', 't9spi', 'odha'].includes(activeTool || '')) {
             if (e.button !== 0) return;
-            const newTemp = [...tempPoints, worldPos];
+            const newTemp = nextTemp(worldPos);
             if (newTemp.length === 5) {
                 const data = calculateSPi(newTemp);
                 let result = '';
@@ -1065,7 +1055,7 @@ const CanvasWorkspace = ({ side }: CanvasWorkspaceProps) => {
 
         if (activeTool === 'ssa') {
             if (e.button !== 0) return;
-            const newTemp = [...tempPoints, worldPos];
+            const newTemp = nextTemp(worldPos);
             if (newTemp.length === 3) {
                 const data = calculateSSA(newTemp);
                 const result = data ? `SSA: ${data.angle.toFixed(1)}°` : '';
@@ -1080,7 +1070,7 @@ const CanvasWorkspace = ({ side }: CanvasWorkspaceProps) => {
 
         if (activeTool === 'cbva' || activeTool === 'rvad') {
             if (e.button !== 0) return;
-            const newTemp = [...tempPoints, worldPos];
+            const newTemp = nextTemp(worldPos);
             const maxPts = activeTool === 'cbva' ? 2 : 6;
 
             if (newTemp.length === maxPts) {
@@ -1131,7 +1121,7 @@ const CanvasWorkspace = ({ side }: CanvasWorkspaceProps) => {
 
         if (activeTool === 'spondy') {
             if (e.button !== 0) return;
-            const newTemp = [...tempPoints, worldPos];
+            const newTemp = nextTemp(worldPos);
             if (newTemp.length === 4) {
                 const resultObj = calculateSpondylolisthesis(newTemp, null);
                 const result = resultObj ? formatSpondylolisthesisResult(resultObj, null) : 'Calculating...';
@@ -1146,7 +1136,7 @@ const CanvasWorkspace = ({ side }: CanvasWorkspaceProps) => {
 
         if (['po', 'csvl', 'slope', 'itilt'].includes(activeTool || '')) {
             if (e.button !== 0) return;
-            const newTemp = [...tempPoints, worldPos];
+            const newTemp = nextTemp(worldPos);
             if (newTemp.length === 2) {
                 let result = '';
                 if (activeTool === 'po') {
@@ -1184,130 +1174,22 @@ const CanvasWorkspace = ({ side }: CanvasWorkspaceProps) => {
 
         if (['ost-pso', 'ost-spo', 'ost-resect', 'ost-open'].includes(activeTool || '')) {
             if (e.button !== 0) return;
-
-            const newTemp = [...tempPoints, worldPos];
-            const maxPts = (activeTool === 'ost-open') ? 6 : ((activeTool === 'ost-resect') ? 4 : (['ost-pso', 'ost-spo'].includes(activeTool || '') ? 3 : 2));
-
-            if (newTemp.length === maxPts) {
-                // Find fragment under first click
-                let finalFragId = null;
-                if (currentState?.data.fragments) {
-                    for (let i = currentState.data.fragments.length - 1; i >= 0; i--) {
-                        if (isPointInPolygon(newTemp[0], currentState.data.fragments[i].polygon)) {
-                            finalFragId = currentState.data.fragments[i].id;
-                            break;
-                        }
-                    }
-                }
-
-                if (activeTool === 'ost-resect' || activeTool === 'ost-open') {
-                    // DESTRUCTIVE OPERATION: Performs the actual split and move
-                    if (managerRef.current) {
-                        if (activeTool === 'ost-open') {
-                            const { phi, hinge, normal } = calculateOpenOsteotomyPrimitives(newTemp);
-                            console.log(`[CanvasWorkspace] Triggering Open Osteotomy. Phi: ${phi.toFixed(3)}, H: (${hinge.x.toFixed(1)}, ${hinge.y.toFixed(1)})`);
-                            try {
-                                const result = await performOpenOsteotomyOnFragment(
-                                    managerRef.current,
-                                    phi,
-                                    hinge,
-                                    normal,
-                                    newTemp
-                                );
-                                console.log('[CanvasWorkspace] Osteotomy result:', result);
-
-                                // Check history immediately after operation
-                                if (managerRef.current) {
-                                    const history = managerRef.current.getHistory();
-                                    console.log('[CanvasWorkspace] POST-OPERATION HISTORY CHECK:');
-                                    console.log('[CanvasWorkspace] Total operations:', history.length);
-                                    history.slice(-10).forEach((h, i) => {
-                                        console.log(`[CanvasWorkspace]   ${i}: ${h.description} (${h.isCurrent ? 'CURRENT' : ''})`);
-                                    });
-                                }
-                            } catch (err) {
-                                console.error('Osteotomy failed:', err);
-                            }
-
-                            const result = `Opening: ${Math.abs(phi * 180 / Math.PI).toFixed(1)}°`;
-                            const measurementState = await managerRef.current.applyOperation('ADD_MEASUREMENT', {
-                                toolKey: activeTool,
-                                points: newTemp,
-                                result,
-                                fragmentId: finalFragId,
-                                skipHistory: true,
-                                measurement: {
-                                    type: 'OPEN',
-                                    hingePoint: hinge,
-                                    rotationAngleRad: phi,
-                                    normal,
-                                    cutRays: [{ origin: hinge, angle: Math.atan2(newTemp[3].y - newTemp[2].y, newTemp[3].x - newTemp[2].x) }]
-                                }
-                            });
-                            if (measurementState) setMeasurements(measurementState.data.measurements);
-                        } else if (activeTool === 'ost-resect') {
-                            await performResectionOnFragment(managerRef.current, finalFragId, newTemp);
-
-                            const primitives = calculateResectionPrimitives(newTemp);
-                            if (primitives) {
-                                const result = `Resection: ${Math.abs(primitives.rotationAngleRad * 180 / Math.PI).toFixed(1)}°`;
-                                const measurementState = await managerRef.current.applyOperation('ADD_MEASUREMENT', {
-                                    toolKey: activeTool,
-                                    points: newTemp,
-                                    result,
-                                    fragmentId: finalFragId,
-                                    skipHistory: true,
-                                    measurement: {
-                                        type: 'RESECT',
-                                        hingePoint: primitives.hingePoint,
-                                        rotationAngleRad: primitives.rotationAngleRad,
-                                        translation: primitives.translation,
-                                        cutRays: primitives.cutRays
-                                    }
-                                });
-                                if (measurementState) setMeasurements(measurementState.data.measurements);
-                            }
-                        }
-                        const newest = managerRef.current.current;
-                        if (newest) {
-                            console.log('[CanvasWorkspace] About to call setMeasurements');
-                            console.log('[CanvasWorkspace] Measurements count:', newest.data.measurements.length);
-                            setMeasurements(newest.data.measurements);
-                            console.log('[CanvasWorkspace] setMeasurements called');
-
-                            // Final history check after setMeasurements
-                            const finalHistory = managerRef.current.getHistory();
-                            console.log('[CanvasWorkspace] FINAL HISTORY AFTER setMeasurements:');
-                            console.log('[CanvasWorkspace] Total operations:', finalHistory.length);
-                            finalHistory.slice(-10).forEach((h, i) => {
-                                console.log(`[CanvasWorkspace]   ${i}: ${h.description} (${h.isCurrent ? 'CURRENT' : ''})`);
-                            });
-                        }
-                    }
-                } else {
-                    let planningResult = 'Planning...';
-                    if ((activeTool === 'ost-pso' || activeTool === 'ost-spo') && newTemp.length >= 3) {
-                        const p = newTemp[0];
-                        const h = newTemp[1];
-                        const a = newTemp[2];
-                        const moving = Math.atan2(p.y - h.y, p.x - h.x);
-                        const fixed = Math.atan2(a.y - h.y, a.x - h.x);
-                        const theta = ((fixed - moving + Math.PI) % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI) - Math.PI;
-                        planningResult = `Correction: ${Math.abs(theta * 180 / Math.PI).toFixed(1)}°`;
-                    }
-
-                    const newState = await managerRef.current?.applyOperation('ADD_MEASUREMENT', {
-                        toolKey: activeTool,
-                        points: newTemp,
-                        result: planningResult,
-                        fragmentId: finalFragId
-                    });
-                    if (newState) setMeasurements(newState.data.measurements);
-                }
-                setTempPoints([]);
-            } else {
+            const newTemp = nextTemp(worldPos);
+            const maxPts = activeTool === 'ost-open' ? 6 : activeTool === 'ost-resect' ? 4 : 3;
+            if (newTemp.length < maxPts) {
                 setTempPoints(newTemp);
+                return;
             }
+            // The cut is rendered from the measurement itself (lib/canvas/osteotomyPieces):
+            // one measurement = one undo step, saved with the case (UI6-01 / UI6-04).
+            const newState = await managerRef.current?.applyOperation('ADD_MEASUREMENT', {
+                toolKey: activeTool,
+                points: newTemp,
+                result: computeMeasurementResult(activeTool!, newTemp)
+                    ?? (activeTool === 'ost-open' ? `Opening: ${Math.abs(calculateOpenOsteotomyPrimitives(newTemp).phi * 180 / Math.PI).toFixed(1)}°` : ''),
+            });
+            if (newState) setMeasurements(newState.data.measurements);
+            setTempPoints([]);
             return;
         }
 
@@ -1376,7 +1258,7 @@ const CanvasWorkspace = ({ side }: CanvasWorkspaceProps) => {
 
         if (activeTool === 'cobb' || activeTool === 'angle-4pt') {
             if (e.button !== 0) return;
-            const newTemp = [...tempPoints, worldPos];
+            const newTemp = nextTemp(worldPos);
             if (newTemp.length === 4) {
                 const { angle } = calculateCobbAngle(newTemp);
                 const prefix = activeTool === 'cobb' ? 'Cobb' : '4 pt angle';
@@ -1392,7 +1274,7 @@ const CanvasWorkspace = ({ side }: CanvasWorkspaceProps) => {
 
         if (['ts', 'avt'].includes(activeTool || '')) {
             if (e.button !== 0) return;
-            const newTemp = [...tempPoints, worldPos];
+            const newTemp = nextTemp(worldPos);
             if (newTemp.length === 3) {
                 let result = '';
                 if (activeTool === 'ts') {
@@ -1413,7 +1295,7 @@ const CanvasWorkspace = ({ side }: CanvasWorkspaceProps) => {
 
         if (activeTool === 'line' || activeTool === 'angle-2pt') {
             if (e.button !== 0) return;
-            const newTemp = [...tempPoints, worldPos];
+            const newTemp = nextTemp(worldPos);
             if (newTemp.length === 2) {
                 let result = '';
                 if (activeTool === 'line') {
@@ -1436,7 +1318,7 @@ const CanvasWorkspace = ({ side }: CanvasWorkspaceProps) => {
 
         if (activeTool === 'angle-3pt') {
             if (e.button !== 0) return;
-            const newTemp = [...tempPoints, worldPos];
+            const newTemp = nextTemp(worldPos);
             if (newTemp.length === 3) {
                 const a1 = Math.atan2(newTemp[0].y - newTemp[1].y, newTemp[0].x - newTemp[1].x);
                 const a2 = Math.atan2(newTemp[2].y - newTemp[1].y, newTemp[2].x - newTemp[1].x);
@@ -1469,7 +1351,7 @@ const CanvasWorkspace = ({ side }: CanvasWorkspaceProps) => {
 
         if (['imp-screw', 'imp-cage', 'imp-plate'].includes(activeTool || '')) {
             if (e.button !== 0) return;
-            const newTemp = [...tempPoints, worldPos];
+            const newTemp = nextTemp(worldPos);
             if (newTemp.length === 2) {
                 const type = activeTool!.replace('imp-', '');
                 const angle = Math.atan2(newTemp[1].y - newTemp[0].y, newTemp[1].x - newTemp[0].x) * (180 / Math.PI);
@@ -1500,11 +1382,13 @@ const CanvasWorkspace = ({ side }: CanvasWorkspaceProps) => {
                 });
                 if (newState) {
                     syncStoreWithCanvas(newState.data.measurements, newState.data.implants);
-                    // Persistent selection: Select the newly added implant
+                    // Select the new implant so it can be edited right away
                     const added = newState.data.implants[newState.data.implants.length - 1];
                     if (added) setSelection({ type: 'implant', measurementId: added.id });
                 }
                 setTempPoints([]);
+                // One implant per tool use: further clicks edit, never add (UI5-03).
+                setActiveTool(null);
             } else {
                 setTempPoints(newTemp);
             }
@@ -1524,6 +1408,7 @@ const CanvasWorkspace = ({ side }: CanvasWorkspaceProps) => {
                         if (added) setSelection({ type: 'implant', measurementId: added.id });
                     }
                     setTempPoints([]);
+                    setActiveTool(null);
                 }
                 return;
             }
@@ -1533,15 +1418,16 @@ const CanvasWorkspace = ({ side }: CanvasWorkspaceProps) => {
         }
 
         if (currentState) {
-            const imps = currentState.data.implants;
+            // Implants belong to the plan: only editable in Planning
+            const imps = canvasView === 'planning' ? currentState.data.implants : [];
             // 1. Handles of the selected implant win (so short screws' tips are grabbable)
             const selImp = selection && (selection.type === 'implant' || selection.type === 'implant-point')
                 ? imps.find(i => i.id === selection.measurementId) : null;
             if (selImp) {
-                const hs = getImplantHandles(selImp);
+                const hs = getImplantHandleSpecs(selImp);
                 for (let i = 0; i < hs.length; i++) {
-                    if (getDistance(worldPos, hs[i]) < 9 / ek) {
-                        if (selImp.type !== 'rod' && i === 0) setSelection({ type: 'implant', measurementId: selImp.id });
+                    if (getDistance(worldPos, hs[i].p) < 9 / ek) {
+                        if (hs[i].kind === 'move') setSelection({ type: 'implant', measurementId: selImp.id });
                         else setSelection({ type: 'implant-point', measurementId: selImp.id, pointIndex: i });
                         startDrag();
                         return;
@@ -1557,129 +1443,61 @@ const CanvasWorkspace = ({ side }: CanvasWorkspaceProps) => {
                 }
             }
 
-            for (const m of currentState.data.measurements) {
+            // Hidden measurements (eye off in the panel) can't be grabbed.
+            const ms = currentState.data.measurements.filter((m) => !m.measurement?.isCalibration && m.selected !== false && editableHere(m));
+            // 3. Measurement points (nearest wins). Points shared with other
+            //    measurements (reused landmarks) move together.
+            let hitM: Measurement | null = null;
+            let hitI = -1;
+            let hitD = 12 / ek;
+            for (const m of ms) {
                 for (let i = 0; i < m.points.length; i++) {
-                    if (getDistance(worldPos, m.points[i]) < 20 / ek) {
-                        setSelection({ type: 'point', measurementId: m.id, pointIndex: i });
-                        startDrag();
-                        return;
-                    }
+                    const d = getDistance(worldPos, m.points[i]);
+                    if (d < hitD) { hitD = d; hitM = m; hitI = i; }
                 }
-                let lp = m.measurement?.labelPos;
-                if (!lp) {
-                    if (m.toolKey === 'cobb' && m.points.length === 4) {
-                        const { intersection } = calculateCobbAngle(m.points);
-                        if (intersection) lp = intersection;
-                    } else if (m.toolKey === 'vbm' && m.points.length === 4) {
-                        const center = {
-                            x: (m.points[0].x + m.points[1].x + m.points[2].x + m.points[3].x) / 4,
-                            y: (m.points[0].y + m.points[1].y + m.points[2].y + m.points[3].y) / 4
-                        };
-                        lp = {
-                            x: Math.max(m.points[0].x, m.points[1].x, m.points[2].x, m.points[3].x) + 45 / ek,
-                            y: center.y
-                        };
-                    } else if (['cl', 'tk', 'll', 'sc'].includes(m.toolKey) && m.points.length === 4) {
-                        // Use the curve handle position or midpoint chord as fallback
-                        const mid1 = { x: (m.points[0].x + m.points[1].x) / 2, y: (m.points[0].y + m.points[1].y) / 2 };
-                        const mid2 = { x: (m.points[2].x + m.points[3].x) / 2, y: (m.points[2].y + m.points[3].y) / 2 };
-                        lp = { x: (mid1.x + mid2.x) / 2 + 30 / ek, y: (mid1.y + mid2.y) / 2 };
-                    } else if (m.toolKey === 'sva' && m.points.length === 2) {
-                        lp = { x: (m.points[0].x + m.points[1].x) / 2, y: m.points[0].y - 20 / ek };
-                    } else if (m.toolKey === 'pelvis' && m.points.length === 6) {
-                        const s1_center = { x: (m.points[4].x + m.points[5].x) / 2, y: (m.points[4].y + m.points[5].y) / 2 };
-                        lp = { x: s1_center.x + 50 / ek, y: s1_center.y };
-                    } else if (m.toolKey === 'pi_ll' && m.points.length === 8) {
-                        const s1_center = { x: (m.points[4].x + m.points[5].x) / 2, y: (m.points[4].y + m.points[5].y) / 2 };
-                        lp = { x: s1_center.x + 80 / ek, y: s1_center.y - 50 / ek };
-                    } else if (m.toolKey === 'spondy' && m.points.length === 4) {
-                        lp = {
-                            x: (m.points[0].x + m.points[1].x + m.points[2].x + m.points[3].x) / 4 + 40 / ek,
-                            y: (m.points[0].y + m.points[1].y + m.points[2].y + m.points[3].y) / 4
-                        };
-                    } else if (m.toolKey === 'po' && m.points.length === 2) {
-                        lp = getMidpoint(m.points[0], m.points[1]);
-                    } else if (['ts', 'avt'].includes(m.toolKey) && m.points.length === 3) {
-                        const mid = getMidpoint(m.points[1], m.points[2]);
-                        lp = { x: (m.points[0].x + mid.x) / 2, y: m.points[0].y - 15 / ek };
-                    } else if (m.toolKey === 'csvl' && m.points.length === 2) {
-                        const mid = getMidpoint(m.points[0], m.points[1]);
-                        lp = { x: mid.x + 20 / ek, y: mid.y };
-                    } else if (m.toolKey === 'c7pl' && m.points.length === 1) {
-                        lp = { x: m.points[0].x + 20 / ek, y: m.points[0].y };
-                    } else if (m.toolKey === 'slope' && m.points.length === 2) {
-                        lp = getMidpoint(m.points[0], m.points[1]);
-                    } else if (m.toolKey === 'itilt') {
-                        // For iTilt, label defaults to midpoint
-                        lp = getMidpoint(m.points[0], m.points[1]);
-                    } else if (m.toolKey === 'cmc' && m.points.length >= 4) {
-                        lp = { x: (m.points[1].x + m.points[2].x) / 2 + 20 / ek, y: (m.points[1].y + m.points[2].y) / 2 };
-                    } else if (['tpa', 'spa'].includes(m.toolKey) && m.points.length === 7) {
-                        const hip = getHipAxisCenter(m.points);
-                        lp = hip ? { x: hip.x + 30 / ek, y: hip.y - 30 / ek } : { x: m.points[4].x + 50 / ek, y: m.points[4].y };
-                    } else if (['t1spi', 't9spi', 'odha'].includes(m.toolKey) && m.points.length === 5) {
-                        const hip = getHipAxisCenter(m.points);
-                        lp = hip ? { x: hip.x + 20 / ek, y: (hip.y + m.points[4].y) / 2 } : { x: m.points[4].x + 50 / ek, y: m.points[4].y };
-                    } else if (m.toolKey === 'ssa' && m.points.length === 3) {
-                        const s1Mid = getMidpoint(m.points[1], m.points[2]);
-                        lp = { x: s1Mid.x + 40 / ek, y: s1Mid.y };
-                    } else if (m.toolKey === 'cbva' && m.points.length === 2) {
-                        lp = { x: m.points[0].x + 30 / ek, y: m.points[0].y - 30 / ek };
-                    } else if (m.toolKey === 'rvad' && m.points.length === 6) {
-                        const mid = getMidpoint(m.points[4], m.points[5]);
-                        lp = { x: mid.x + 50 / ek, y: mid.y + 50 / ek };
-                    } else if ((m.toolKey === 'text' || m.toolKey === 'pencil') && m.points.length > 0) {
-                        // Default text/pencil label is at the first point if not moved
-                        lp = m.points[0];
-                    } else if (m.toolKey === 'circle' && m.points.length === 2) {
-                        lp = getMidpoint(m.points[0], m.points[1]);
-                    } else if (m.toolKey === 'ellipse' && m.points.length === 2) {
-                        lp = getMidpoint(m.points[0], m.points[1]);
-                    } else if (m.toolKey === 'polygon' && m.points.length > 0) {
-                        // Centroidish
-                        let sx = 0, sy = 0;
-                        m.points.forEach(p => { sx += p.x; sy += p.y; });
-                        lp = { x: sx / m.points.length, y: sy / m.points.length };
-                    } else if (m.toolKey === 'line' && m.points.length === 2) {
-                        lp = getMidpoint(m.points[0], m.points[1]);
-                    } else if (['angle-2pt', 'angle-3pt', 'angle-4pt'].includes(m.toolKey)) {
-                        if (m.points.length > 0) lp = m.points[Math.floor(m.points.length / 2)];
-                    }
+            }
+            if (hitM) {
+                const m = hitM, i = hitI;
+                const grabbed = m.points[i];
+                linkedPointsRef.current = [];
+                for (const other of ms) {
+                    other.points.forEach((p, j) => {
+                        if (Math.abs(p.x - grabbed.x) < 0.01 && Math.abs(p.y - grabbed.y) < 0.01) {
+                            linkedPointsRef.current.push({ id: other.id, index: j });
+                        }
+                    });
                 }
+                setSelection({ type: 'point', measurementId: m.id, pointIndex: i });
+                startDrag();
+                return;
+            }
 
-                if (['cl', 'tk', 'll', 'sc'].includes(m.toolKey)) {
-                    const hp = (m.measurement as any)?.handlePos;
-                    if (hp && getDistance(worldPos, hp) < 20 / ek) {
-                        setSelection({ type: 'curvatureHandle', measurementId: m.id });
-                        startDrag();
-                        return;
-                    }
-                }
-
-                if (lp && getDistance(worldPos, lp) < 60 / ek) {
-                    setSelection({ type: 'label', measurementId: m.id });
+            // 4. Curvature handles (CL / TK / LL / custom curve)
+            for (const m of ms) {
+                const hp = (m.measurement as any)?.handlePos;
+                if (['cl', 'tk', 'll', 'sc'].includes(m.toolKey) && hp && getDistance(worldPos, hp) < 12 / ek) {
+                    setSelection({ type: 'curvatureHandle', measurementId: m.id });
                     startDrag();
                     return;
                 }
+            }
 
-                // Curve handle for curvature tools
-                if (['cl', 'tk', 'll', 'sc'].includes(m.toolKey)) {
-                    const handlePos = (m.measurement as any)?.handlePos;
-                    if (handlePos && getDistance(worldPos, handlePos) < 20 / ek) {
-                        setSelection({ type: 'curvatureHandle', measurementId: m.id });
-                        startDrag();
-                        return;
-                    }
+            // 5. Labels — exact boxes recorded while drawing (topmost first)
+            const regions = getLabelRegions(sceneKey);
+            for (let mi = ms.length - 1; mi >= 0; mi--) {
+                const r = regions.get(ms[mi].id)?.find((b) =>
+                    worldPos.x >= b.x && worldPos.x <= b.x + b.w && worldPos.y >= b.y && worldPos.y <= b.y + b.h);
+                if (r) {
+                    labelGrabOffsetRef.current = { x: worldPos.x - r.anchor.x, y: worldPos.y - r.anchor.y };
+                    setSelection({ type: 'label', measurementId: ms[mi].id });
+                    startDrag();
+                    return;
                 }
             }
         }
 
-        // Empty canvas: deselect and pan (BUGS CV-12)
-        if (!activeTool) {
-            if (selection) setSelection(null);
-            setIsPanning(true);
-            lastPanPos.current = { x: e.clientX, y: e.clientY };
-        }
+        // Empty canvas: left click deselects (panning is the right button)
+        if (!activeTool && selection) setSelection(null);
     };
 
     const handleMouseMove = useCallback(async (e: React.MouseEvent) => {
@@ -1707,6 +1525,8 @@ const CanvasWorkspace = ({ side }: CanvasWorkspaceProps) => {
 
         mouseWorldPosRef.current = worldPos;
         lastWorldPosRef.current = worldPos;
+        // Previews, snap rings and drags follow the cursor.
+        if (activeTool || isDragging) dirtyRef.current = true;
 
         if (activeTool === 'crop' && isDragging && cropRect) {
             setCropRect(prev => prev ? { ...prev, current: worldPos } : null);
@@ -1723,268 +1543,87 @@ const CanvasWorkspace = ({ side }: CanvasWorkspaceProps) => {
             return;
         }
 
+        // Drags edit the canvas manager only; the store (and the server save) is
+        // updated once on mouseup (UI5-04).
         if (isDragging && selection && managerRef.current) {
+            const mgr = managerRef.current;
+            dragMovedRef.current = true;
             if (selection.type === 'implant') {
-                const newStatePromise = managerRef.current.applyOperation('MOVE_IMPLANT', { id: selection.measurementId, deltaX: dwx, deltaY: dwy });
-                newStatePromise.then(newState => {
-                    if (newState) useAppStore.getState().setImplants(newState.data.implants);
-                });
+                await mgr.applyOperation('MOVE_IMPLANT', { id: selection.measurementId, deltaX: dwx, deltaY: dwy });
                 return;
             }
             if (selection.type === 'implant-point') {
-                const imp = managerRef.current.current?.data.implants.find(i => i.id === selection.measurementId);
-                if (imp) {
-                    if (imp.type === 'rod' && imp.properties?.points) {
-                        const newPts = [...imp.properties.points];
-                        newPts[selection.pointIndex!] = worldPos;
-                        const newStatePromise = managerRef.current.applyOperation('UPDATE_IMPLANT', { id: imp.id, properties: { points: newPts } });
-                        newStatePromise.then(newState => {
-                            if (newState) useAppStore.getState().setImplants(newState.data.implants);
-                        });
-                    } else if (imp.type === 'screw') {
-                        if (selection.pointIndex === 0) {
-                            // Move entire screw
-                            const newStatePromise = managerRef.current.applyOperation('MOVE_IMPLANT', { id: imp.id, deltaX: dwx, deltaY: dwy });
-                            newStatePromise.then(newState => {
-                                if (newState) useAppStore.getState().setImplants(newState.data.implants);
-                            });
-                        } else if (imp.position) {
-                            // Adjust length and angle from head (pos) and tip (dragging handle 1)
-                            const dist = getDistance(imp.position, worldPos);
-                            const angle = Math.atan2(worldPos.y - imp.position.y, worldPos.x - imp.position.x) * (180 / Math.PI);
-                            const newStatePromise = managerRef.current.applyOperation('UPDATE_IMPLANT', {
-                                id: imp.id,
-                                angle,
-                                properties: { length: dist }
-                            });
-                            newStatePromise.then(newState => {
-                                if (newState) useAppStore.getState().setImplants(newState.data.implants);
-                            });
-                        }
-                    } else if (imp.type === 'cage') {
-                        if (selection.pointIndex === 0) {
-                            const newStatePromise = managerRef.current.applyOperation('MOVE_IMPLANT', { id: imp.id, deltaX: dwx, deltaY: dwy });
-                            newStatePromise.then(newState => {
-                                if (newState) useAppStore.getState().setImplants(newState.data.implants);
-                            });
-                        } else if ((selection.pointIndex === 1 || selection.pointIndex === 2) && imp.position) {
-                            // Adjust height
-                            const dist = getDistance(imp.position, worldPos) * 2;
-                            const newStatePromise = managerRef.current.applyOperation('UPDATE_IMPLANT', {
-                                id: imp.id,
-                                properties: { height: dist }
-                            });
-                            newStatePromise.then(newState => {
-                                if (newState) useAppStore.getState().setImplants(newState.data.implants);
-                            });
-                        } else if (selection.pointIndex === 3 && imp.position) {
-                            // Adjust width/angle
-                            const dist = getDistance(imp.position, worldPos) * 2;
-                            const angle = Math.atan2(worldPos.y - imp.position.y, worldPos.x - imp.position.x) * (180 / Math.PI);
-                            const newStatePromise = managerRef.current.applyOperation('UPDATE_IMPLANT', {
-                                id: imp.id,
-                                angle,
-                                properties: { width: dist }
-                            });
-                            newStatePromise.then(newState => {
-                                if (newState) useAppStore.getState().setImplants(newState.data.implants);
-                            });
-                        }
-                    } else if (imp.type === 'plate') {
-                        if (selection.pointIndex === 0) {
-                            const newStatePromise = managerRef.current.applyOperation('MOVE_IMPLANT', { id: imp.id, deltaX: dwx, deltaY: dwy });
-                            newStatePromise.then(newState => {
-                                if (newState) useAppStore.getState().setImplants(newState.data.implants);
-                            });
-                        } else if (imp.position) {
-                            const dist = getDistance(imp.position, worldPos) * 2;
-                            const newStatePromise = managerRef.current.applyOperation('UPDATE_IMPLANT', {
-                                id: imp.id,
-                                properties: { height: dist }
-                            });
-                            newStatePromise.then(newState => {
-                                if (newState) useAppStore.getState().setImplants(newState.data.implants);
-                            });
-                        }
-                    }
+                const imp = mgr.current?.data.implants.find(i => i.id === selection.measurementId);
+                const spec = imp ? getImplantHandleSpecs(imp)[selection.pointIndex ?? -1] : undefined;
+                if (!imp || !spec) return;
+                const pos = imp.position;
+                // Distance across the implant axis (for diameter / height / lordosis).
+                const rad = (imp.angle * Math.PI) / 180;
+                const ux = Math.cos(rad), uy = Math.sin(rad);
+                const across = pos ? -(worldPos.x - pos.x) * uy + (worldPos.y - pos.y) * ux : 0;
+                const minSize = mmToPx(); // 1 mm
+                let update: any = null;
+                if (spec.kind === 'vertex' && imp.properties?.points) {
+                    const pts = imp.properties.points.map((p: Point) => ({ ...p }));
+                    pts[selection.pointIndex!] = worldPos;
+                    update = { properties: { points: pts } };
+                } else if (spec.kind === 'tip' && pos) {
+                    update = {
+                        angle: Math.atan2(worldPos.y - pos.y, worldPos.x - pos.x) * (180 / Math.PI),
+                        properties: { length: Math.max(getDistance(pos, worldPos), minSize * 5) },
+                    };
+                } else if (spec.kind === 'diameter') {
+                    update = { properties: { diameter: Math.max(Math.abs(across) * 2, minSize) } };
+                } else if (spec.kind === 'height' && pos) {
+                    update = imp.type === 'plate'
+                        ? { properties: { height: Math.max(getDistance(pos, worldPos) * 2, minSize * 5) } }
+                        : { properties: { height: Math.max(Math.abs(across) * 2, minSize) } };
+                } else if (spec.kind === 'width' && pos) {
+                    update = {
+                        angle: Math.atan2(worldPos.y - pos.y, worldPos.x - pos.x) * (180 / Math.PI),
+                        properties: { width: Math.max(getDistance(pos, worldPos) * 2, minSize * 3) },
+                    };
+                } else if (spec.kind === 'lordosis') {
+                    // Anterior height from the handle → wedge angle over the footprint.
+                    const w = Math.max(imp.properties.width, 1);
+                    const hAnt = Math.max(Math.abs(across) * 2, imp.properties.height);
+                    const wedge = Math.atan((hAnt - imp.properties.height) / w) * (180 / Math.PI);
+                    update = { properties: { wedgeAngle: Math.round(Math.min(30, Math.max(0, wedge))) } };
                 }
+                if (update) await mgr.applyOperation('UPDATE_IMPLANT', { id: imp.id, ...update });
                 return;
             }
 
-            const m = managerRef.current.current?.data.measurements.find(m => m.id === selection.measurementId);
-            if (m) {
-                if (selection.type === 'point' && selection.pointIndex !== undefined) {
-                    const newPoints = [...m.points];
-                    newPoints[selection.pointIndex] = worldPos;
-                    let result = m.result;
-                    if ((m.toolKey === 'cobb' || m.toolKey === 'angle-4pt') && newPoints.length === 4) {
-                        const { angle } = calculateCobbAngle(newPoints);
-                        result = `${m.toolKey === 'cobb' ? 'Cobb' : '4 pt angle'}: ${angle.toFixed(1)}°`;
-                    } else if (m.toolKey === 'angle-2pt' && newPoints.length === 2) {
-                        const dx = Math.abs(newPoints[1].x - newPoints[0].x);
-                        const dy = Math.abs(newPoints[1].y - newPoints[0].y);
-                        const angle = Math.atan2(dy, dx) * (180 / Math.PI);
-                        result = `2 pt angle: ${angle.toFixed(1)}°`;
-                    } else if (m.toolKey === 'angle-3pt' && newPoints.length === 3) {
-                        const a1 = Math.atan2(newPoints[0].y - newPoints[1].y, newPoints[0].x - newPoints[1].x);
-                        const a2 = Math.atan2(newPoints[2].y - newPoints[1].y, newPoints[2].x - newPoints[1].x);
-                        let diff = Math.abs(a1 - a2) * (180 / Math.PI);
-                        if (diff > 180) diff = 360 - diff;
-                        result = `3 pt angle: ${diff.toFixed(1)}°`;
-                    } else if (m.toolKey === 'sva' && newPoints.length === 2) {
-                        const distancePx = Math.abs(newPoints[0].x - newPoints[1].x);
-                        result = `SVA: ${distancePx.toFixed(1)} px`;
-                    } else if (m.toolKey === 'line' && newPoints.length === 2) {
-                        const distPx = getDistance(newPoints[0], newPoints[1]);
-                        result = `DIST: ${distPx.toFixed(1)} px`;
-                    } else if (m.toolKey === 'vbm' && newPoints.length === 4) {
-                        const mode = (m.measurement as any)?.vbmMode || 'lateral';
-                        result = calculateVBM(newPoints, mode, null) || '';
-                    } else if (['cl', 'tk', 'll', 'sc'].includes(m.toolKey) && newPoints.length === 4) {
-                        const { angle } = calculateSpinalCurvature(newPoints);
-                        const prefix = m.toolKey.toUpperCase();
-                        result = `${prefix === 'SC' ? 'Angle' : prefix}: ${angle.toFixed(1)}°`;
-                    } else if (m.toolKey === 'pelvis' && newPoints.length === 6) {
-                        const params = calculatePelvicParameters(newPoints);
-                        if (params) {
-                            result = `PI: ${params.pi.toFixed(1)}°\nPT: ${params.pt.toFixed(1)}°\nSS: ${params.ss.toFixed(1)}°`;
-                        }
-                    } else if (m.toolKey === 'pi_ll' && newPoints.length === 8) {
-                        const params = calculatePILL(newPoints);
-                        if (params) {
-                            result = `PI: ${params.pi.toFixed(1)}°\nLL: ${params.ll.toFixed(1)}°\nPI - LL: ${params.mismatch.toFixed(1)}°`;
-                        }
-                    } else if (m.toolKey === 'spondy' && newPoints.length === 4) {
-                        const resultObj = calculateSpondylolisthesis(newPoints, null);
-                        if (resultObj) {
-                            result = formatSpondylolisthesisResult(resultObj, null);
-                        }
-                    } else if (m.toolKey === 'stenosis' && newPoints.length >= 3) {
-                        const calc = calculateStenosisArea(newPoints, null);
-                        if (calc) result = `Area: ${calc.resultString} `;
-                    } else if (m.toolKey === 'po' && newPoints.length === 2) {
-                        const data = calculatePO(newPoints);
-                        if (data) result = `PO: ${data.angle.toFixed(1)}°`;
-                    } else if (m.toolKey === 'ts' && newPoints.length === 3) {
-                        const data = calculateTS(newPoints, null);
-                        if (data) result = data.resultString;
-                    } else if (m.toolKey === 'avt' && newPoints.length === 3) {
-                        const data = calculateAVT(newPoints, null);
-                        if (data) result = data.resultString;
-                    } else if (m.toolKey === 'slope' && newPoints.length === 2) {
-                        const data = calculateSlope(newPoints);
-                        if (data) result = `Slope: ${data.angle.toFixed(1)}°`;
-                    } else if (m.toolKey === 'itilt' && newPoints.length === 2) {
-                        const data = calculateITilt(newPoints);
-                        if (data) {
-                            const prefix = m.result.includes('UIV') ? 'UIV Tilt' : (m.result.includes('LIV') ? 'LIV Tilt' : 'Tilt');
-                            result = `${prefix}: ${data.angle.toFixed(1)}°`;
-                        }
-                    } else if (m.toolKey === 'cmc' && newPoints.length >= 4) {
-                        const angles = calculateCMC(newPoints);
-                        if (angles) result = angles.map((a: number, i: number) => `Cobb ${i + 1}: ${a.toFixed(1)}°`).join('\n');
-                    } else if (m.toolKey === 'tpa' && newPoints.length === 7) {
-                        const data = calculateTPA(newPoints);
-                        if (data) result = `TPA: ${data.angle.toFixed(1)}°`;
-                    } else if (m.toolKey === 'spa' && newPoints.length === 7) {
-                        const data = calculateSPA(newPoints);
-                        if (data) result = `SPA: ${data.angle.toFixed(1)}°`;
-                    } else if (['t1spi', 't9spi', 'odha'].includes(m.toolKey) && newPoints.length === 5) {
-                        const data = calculateSPi(newPoints);
-                        if (data) {
-                            const prefix = m.toolKey === 't1spi' ? 'T1SPi' : m.toolKey === 't9spi' ? 'T9SPi' : 'ODHA';
-                            result = `${prefix}: ${Math.abs(data.angle).toFixed(1)}°`;
-                        }
-                    } else if (m.toolKey === 'ssa' && newPoints.length === 3) {
-                        const data = calculateSSA(newPoints);
-                        if (data) result = `SSA: ${data.angle.toFixed(1)}°`;
-                    } else if (m.toolKey === 'cbva' && newPoints.length === 2) {
-                        const data = calculateCBVA(newPoints);
-                        if (data) result = `CBVA: ${data.angle.toFixed(1)}°`;
-                    } else if (m.toolKey === 'rvad' && newPoints.length === 6) {
-                        const data = calculateRVAD(newPoints);
-                        if (data) result = `Rib Angle R: ${data.rvaR.toFixed(1)}°\nRib Angle L: ${data.rvaL.toFixed(1)}°\nRVAD: ${data.rvad.toFixed(1)}°`;
-                    } else if (m.toolKey === 'pencil' && newPoints.length >= 2) {
-                        let len = 0;
-                        for (let i = 0; i < newPoints.length - 1; i++) len += getDistance(newPoints[i], newPoints[i + 1]);
-                        result = `Length: ${len.toFixed(1)} px`;
-                    } else if (m.toolKey === 'circle' && newPoints.length === 2) {
-                        const r = getDistance(newPoints[0], newPoints[1]) / 2;
-                        const d = r * 2;
-                        const area = Math.PI * r * r;
-                        const perimeter = 2 * Math.PI * r;
-                        result = `Area: ${area.toFixed(1)} px²\nPerimeter: ${perimeter.toFixed(1)} px\nDiameter: ${d.toFixed(1)} px`;
-                    } else if (m.toolKey === 'ellipse' && newPoints.length === 2) {
-                        const p1 = newPoints[0];
-                        const p2 = newPoints[1];
-                        const rx = Math.abs(p1.x - p2.x) / 2;
-                        const ry = Math.abs(p1.y - p2.y) / 2;
-                        const area = Math.PI * rx * ry;
-                        // Ramanujan approx
-                        const h = Math.pow((rx - ry), 2) / Math.pow((rx + ry), 2);
-                        const perimeter = Math.PI * (rx + ry) * (1 + (3 * h) / (10 + Math.sqrt(4 - 3 * h)));
-
-                        result = `Area: ${area.toFixed(1)} px²\nPerimeter: ${perimeter.toFixed(1)} px`;
-                    } else if (m.toolKey === 'polygon' && newPoints.length >= 3) {
-                        const area = getPolygonArea(newPoints);
-                        const perim = getPolygonPerimeter(newPoints);
-                        result = `Area: ${area.toFixed(1)} px²\nPerimeter: ${perim.toFixed(1)} px`;
-                    } else if (['ost-pso', 'ost-spo', 'ost-open', 'ost-resect'].includes(m.toolKey)) {
-                        if (m.toolKey === 'ost-resect' && newPoints.length >= 4) {
-                            const primitives = calculateResectionPrimitives(newPoints);
-                            if (primitives) {
-                                result = `Resection: ${Math.abs(primitives.rotationAngleRad * 180 / Math.PI).toFixed(1)}°`;
-                            }
-                        }
-                        const hinge = m.toolKey === 'ost-pso' ? (newPoints[1] || newPoints[0]) : { x: newPoints[0].x + 200, y: newPoints[0].y };
-                        const angMoving = Math.atan2(newPoints[0].y - hinge.y, newPoints[0].x - hinge.x);
-                        const A = m.toolKey === 'ost-pso' ? newPoints[2] : newPoints[1];
-                        if (A && m.toolKey !== 'ost-resect') {
-                            const angFixed = Math.atan2(A.y - hinge.y, A.x - hinge.x);
-                            let theta = ((angFixed - angMoving + Math.PI) % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI) - Math.PI;
-                            result = `${m.toolKey === 'ost-open' ? 'Opening' : 'Correction'}: ${Math.abs(theta * 180 / Math.PI).toFixed(1)}°`;
-                        }
-                    }
-
-                    const newState = await managerRef.current.applyOperation('UPDATE_MEASUREMENT', { id: m.id, points: newPoints, result });
-                    if (newState) setMeasurements(newState.data.measurements);
-                } else if (selection.type === 'label') {
-                    const newState = await managerRef.current.applyOperation('UPDATE_MEASUREMENT', { id: m.id, measurement: { labelPos: worldPos } });
-                    if (newState) setMeasurements(newState.data.measurements);
-                } else if (selection.type === 'curvatureHandle') {
-                    // Calculate new curve offset
-                    const m = managerRef.current.current?.data.measurements.find(m => m.id === selection.measurementId);
-                    if (m && m.points.length === 4) {
-                        const mid1 = getMidpoint(m.points[0], m.points[1]);
-                        const mid2 = getMidpoint(m.points[2], m.points[3]);
-
-                        // Vector for chord
-                        const chordDx = mid2.x - mid1.x;
-                        const chordDy = mid2.y - mid1.y;
-                        const dist = Math.sqrt(chordDx * chordDx + chordDy * chordDy);
-
-                        // Midpoint of chord
-                        const chordMid = { x: (mid1.x + mid2.x) / 2, y: (mid1.y + mid2.y) / 2 };
-
-                        // Vector from chord mid to mouse
-                        const mouseDx = worldPos.x - chordMid.x;
-                        const mouseDy = worldPos.y - chordMid.y;
-
-                        // Project mouse vector onto perpendicular of chord
-                        const perpX = -chordDy / dist;
-                        const perpY = chordDx / dist;
-
-                        // Dot product to get offset
-                        const offset = mouseDx * perpX + mouseDy * perpY;
-
-                        const newState = await managerRef.current.applyOperation('UPDATE_MEASUREMENT', {
-                            id: m.id,
-                            measurement: { ...m.measurement, curveOffset: offset }
-                        });
-                        if (newState) setMeasurements(newState.data.measurements);
-                    }
-                }
+            const m = mgr.current?.data.measurements.find(m => m.id === selection.measurementId);
+            if (!m) return;
+            if (selection.type === 'point' && selection.pointIndex !== undefined) {
+                const linked = linkedPointsRef.current.length
+                    ? linkedPointsRef.current
+                    : [{ id: m.id, index: selection.pointIndex }];
+                const byId = new Map<string, number[]>();
+                linked.forEach(({ id, index }) => byId.set(id, [...(byId.get(id) ?? []), index]));
+                const updates: { id: string; points: Point[]; result?: any }[] = [];
+                byId.forEach((indices, id) => {
+                    const target = mgr.current?.data.measurements.find(x => x.id === id);
+                    if (!target) return;
+                    const pts = target.points.map((p) => ({ ...p }));
+                    indices.forEach((ix) => { pts[ix] = { ...worldPos }; });
+                    updates.push({ id, points: pts, result: computeMeasurementResult(target.toolKey, pts, target) ?? target.result });
+                });
+                await mgr.applyOperation('UPDATE_MEASUREMENTS', { updates });
+            } else if (selection.type === 'label') {
+                const off = labelGrabOffsetRef.current;
+                await mgr.applyOperation('UPDATE_MEASUREMENT', { id: m.id, measurement: { labelPos: { x: worldPos.x - off.x, y: worldPos.y - off.y } } });
+            } else if (selection.type === 'curvatureHandle' && m.points.length === 4) {
+                const mid1 = getMidpoint(m.points[0], m.points[1]);
+                const mid2 = getMidpoint(m.points[2], m.points[3]);
+                const dist = getDistance(mid1, mid2) || 1;
+                const chordMid = getMidpoint(mid1, mid2);
+                // Offset of the mouse along the chord's perpendicular
+                const offset = (worldPos.x - chordMid.x) * (-(mid2.y - mid1.y) / dist) + (worldPos.y - chordMid.y) * ((mid2.x - mid1.x) / dist);
+                await mgr.applyOperation('UPDATE_MEASUREMENT', { id: m.id, measurement: { ...m.measurement, curveOffset: offset } });
             }
+            return;
         }
 
         if (isPanning && lastPanPos.current) {
@@ -1996,7 +1635,18 @@ const CanvasWorkspace = ({ side }: CanvasWorkspaceProps) => {
         }
     }, [isInteractive, containerRef, managerRef, getWorldPos, activeTool, isDragging, cropRect, selection, setCropRect, setMeasurements, storeCanvas, tempPoints, mouseWorldPosRef, setIsPanning, lastPanPos, viewTransformRef, isCalibrationDialogOpen, isVBMDialogOpen, isTiltDialogOpen, isTextDialogOpen]);
 
-    const handleMouseUp = async () => {
+    const handleMouseUp = async (e?: React.MouseEvent) => {
+        // End of a right/middle press: a right press that barely moved is a click
+        // (finishes polygon / canal area / CMC / rod); otherwise it was a pan.
+        const pan = panStartRef.current;
+        if (pan) {
+            panStartRef.current = null;
+            setIsPanning(false);
+            lastPanPos.current = null;
+            const moved = e ? Math.hypot(e.clientX - pan.x, e.clientY - pan.y) : Infinity;
+            if (e && e.type === 'mouseup' && pan.button === 2 && moved < 5) void handleMouseDown(e, { rightClick: true });
+            return;
+        }
         if (!isInteractive && !isPanning) return;
         if (activeTool === 'crop' && cropRect && isDragging) {
             const x1 = Math.min(cropRect.start.x, cropRect.current.x);
@@ -2068,12 +1718,15 @@ const CanvasWorkspace = ({ side }: CanvasWorkspaceProps) => {
 
         if (isDragging) {
             setIsDragging(false);
+            isDraggingRef.current = false;
+            linkedPointsRef.current = [];
             managerRef.current?.commitHistoryTransaction();
+            // Persist the final geometry once per drag (UI5-04).
             const mgrData = managerRef.current?.current?.data;
+            if (mgrData && dragMovedRef.current) syncStoreWithCanvas(mgrData.measurements, mgrData.implants);
+            dragMovedRef.current = false;
             if (selection && (selection.type === 'implant' || selection.type === 'implant-point')) {
-                // Keep the implant selected and persist the final geometry once.
                 setSelection({ type: 'implant', measurementId: selection.measurementId });
-                if (mgrData) syncStoreWithCanvas(mgrData.measurements, mgrData.implants);
             } else {
                 setSelection(null);
             }
@@ -2081,10 +1734,6 @@ const CanvasWorkspace = ({ side }: CanvasWorkspaceProps) => {
         setIsPanning(false);
         lastPanPos.current = null;
     };
-
-    useEffect(() => {
-        if (activeTool === 'vbm') setTempPoints([]);
-    }, [activeTool]);
 
     const handleWheel = useCallback((e: WheelEvent) => {
         if (!isInteractive) return;
@@ -2094,13 +1743,25 @@ const CanvasWorkspace = ({ side }: CanvasWorkspaceProps) => {
         const mouseX = e.clientX - rect.left;
         const mouseY = e.clientY - rect.top;
 
-        // Correct zoom-to-mouse:
-        // We want the point under the mouse to remain fixed in viewport space.
+        // Touchpad (UI8-01): two-finger swipe pans, pinch (sent as ctrl+wheel) zooms.
+        // A mouse wheel sends whole notches (deltaY ≈ ±100, no deltaX) and zooms.
+        const isPinch = e.ctrlKey;
+        const looksLikeTouchpad = e.deltaMode === 0 && (e.deltaX !== 0 || !Number.isInteger(e.deltaY) || Math.abs(e.deltaY) < 40);
+        if (!isPinch && looksLikeTouchpad) {
+            viewTransformRef.current.x -= e.deltaX;
+            viewTransformRef.current.y -= e.deltaY;
+            return;
+        }
+
+        // Zoom about the cursor: the point under the mouse stays fixed.
         const worldPosBefore = getWorldPos(mouseX, mouseY);
 
-        const delta = e.deltaY < 0 ? 1.1 : 0.9;
-        const currentZoom = storeCanvas.zoom || 1;
-        const newZoom = Math.max(0.1, Math.min(10, currentZoom * delta));
+        // Read the live zoom (rapid wheel events would otherwise reuse a stale value — CV-25).
+        const st = useAppStore.getState();
+        const liveCanvas = side === 'right' ? st.comparison.right.canvas : st.canvas;
+        const currentZoom = liveCanvas.zoom || 1;
+        const factor = isPinch ? Math.exp(-e.deltaY * 0.01) : (e.deltaY < 0 ? 1.1 : 1 / 1.1);
+        const newZoom = Math.max(0.1, Math.min(10, currentZoom * factor));
 
         useAppStore.getState().setZoom(newZoom);
 
@@ -2127,7 +1788,7 @@ const CanvasWorkspace = ({ side }: CanvasWorkspaceProps) => {
         // rx = worldPosBefore.x * newEk + newX => newX = rx - worldPosBefore.x * newEk
         viewTransformRef.current.x = rx - worldPosBefore.x * newEk;
         viewTransformRef.current.y = ry - worldPosBefore.y * newEk;
-    }, [isInteractive, getWorldPos, storeCanvas.zoom, storeCanvas.rotation, storeCanvas.flipX]);
+    }, [isInteractive, getWorldPos, side, storeCanvas.rotation, storeCanvas.flipX]);
 
     // Attach wheel listener with passive: false to allow preventDefault
     useEffect(() => {
@@ -2148,6 +1809,12 @@ const CanvasWorkspace = ({ side }: CanvasWorkspaceProps) => {
             if (tempPoints.length === 1) return "Select 2nd point of Line 1";
             if (tempPoints.length === 2) return "Select 1st point of Line 2";
             if (tempPoints.length === 3) return "Select 2nd point of Line 2";
+        }
+        if (activeTool === 'll') {
+            if (tempPoints.length === 0) return "[LL] L1 superior endplate (anterior)";
+            if (tempPoints.length === 1) return "[LL] L1 superior endplate (posterior)";
+            if (tempPoints.length === 2) return "[LL] S1 endplate (anterior)";
+            if (tempPoints.length === 3) return "[LL] S1 endplate (posterior)";
         }
         if (['cl', 'tk', 'll', 'sc'].includes(activeTool || '')) {
             const toolName = activeTool?.toUpperCase();
@@ -2348,40 +2015,18 @@ const CanvasWorkspace = ({ side }: CanvasWorkspaceProps) => {
             onMouseUp={handleMouseUp}
             onMouseLeave={handleMouseUp}
             onContextMenu={(e) => e.preventDefault()}
-            className={`w-full h-full bg-black relative overflow-hidden group border-2 transition-all duration-300 ${isComparisonMode ? (isInteractive ? 'border-primary shadow-[inset_0_0_40px_rgba(var(--primary),0.05)]' : 'border-border opacity-70 grayscale-[0.3]') : 'border-transparent'}`}        >
+            className={`w-full h-full bg-black relative overflow-hidden group transition-all duration-300 ${isComparisonMode && !isInteractive ? 'opacity-70 grayscale-[0.3]' : ''}`}        >
 
 
-            {!currentImage && (
-                <div className="absolute inset-0 flex items-center justify-center z-20">
-                    {/* In comparison mode, left side is auto-populated from the workspace.
-                        Show a passive message instead of the import dialog. */}
-                    {(
-                        <ImportDialog targetSide={side === 'right' ? 'right' : undefined}>
-                            <Button
-                                variant="outline"
-                                className={cn(
-                                    "group gap-2 py-8 px-8 rounded-2xl flex-col transition-all",
-                                    isDark
-                                        ? "bg-[#141416] border-[#242427] hover:bg-[#1B1B1E] hover:border-[#3a3a3d] text-[#9CA3AF]"
-                                        : "bg-[var(--surface)] border-[var(--border)] hover:bg-[var(--surface)] hover:border-[var(--border-strong)] text-[var(--text)]"
-                                )}
-                                onClick={(e) => { e.stopPropagation(); handleCanvasClick(); }}
-                            >
-                                <div className={cn(
-                                    "h-10 w-10 rounded-full flex items-center justify-center transition-all",
-                                    isDark
-                                        ? "bg-[#242427] group-hover:scale-110 group-hover:bg-[rgba(255,69,58,0.12)]"
-                                        : "bg-[var(--surface-2)] text-[var(--text-2)] group-hover:scale-110 group-hover:bg-[var(--surface-3)]"
-                                )}>
-                                    <Plus className="h-6 w-6" />
-                                </div>
-                                <span className="text-xs font-bold uppercase tracking-wider">{side === 'right' ? 'Load Image B' : 'Import image'}</span>
-                            </Button>
-                        </ImportDialog>
-                    )}
+            {!currentImage && !isComparisonMode && (
+                <div className="absolute inset-0 flex items-center justify-center z-20 bg-[var(--bg-2)]" onMouseDown={(e) => e.stopPropagation()}>
+                    <EmptyImport
+                        title="Import the study image"
+                        hint="Choose an X-ray or a CT/MR series for this study."
+                        autoOpen={new URLSearchParams(location.search).get('import') === '1'}
+                    />
                 </div>
             )}
-
 
             <div className="absolute inset-0 pointer-events-none opacity-[0.05]"
                 style={{
@@ -2496,6 +2141,11 @@ const CanvasWorkspace = ({ side }: CanvasWorkspaceProps) => {
                                         >
                                             {wizardContent}
                                         </div>
+                                        {activeTool && reusedCount > 0 && tempPoints.length >= reusedCount && (
+                                            <div className="text-[11px] mt-1" style={{ color: isDark ? '#9CA3AF' : '#64748B' }}>
+                                                {reusedCount} landmark{reusedCount > 1 ? 's' : ''} reused from earlier measurements
+                                            </div>
+                                        )}
 
                                         {/* Progress dots */}
                                         {activeTool && expectedPoints > 0 && (

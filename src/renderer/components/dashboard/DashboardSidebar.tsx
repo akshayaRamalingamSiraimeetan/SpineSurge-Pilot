@@ -1,10 +1,11 @@
 import { useState } from 'react';
 import { NavLink } from 'react-router-dom';
-import { Home, Users } from 'lucide-react';
+import { Home, Users, Settings } from 'lucide-react';
 import { useAppStore } from '@/lib/store/index';
 import WorkspaceSwitcher from './WorkspaceSwitcher';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import { resolveAssetUrl } from '@/lib/api';
+import { SettingsDialog } from '@/components/SettingsDialog';
 
 // Only routes that exist (Studies/Resources/Settings had no pages — BUGS NAV-14).
 const NAV_ITEMS = [
@@ -24,6 +25,7 @@ interface DashboardSidebarProps {
 
 const DashboardSidebar = ({ collapsible = false }: DashboardSidebarProps) => {
   const [switcherOpen, setSwitcherOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   const user            = useAppStore((state) => state.user);
   const activeWorkspace = useAppStore((state) => state.activeWorkspace);
@@ -50,9 +52,7 @@ const DashboardSidebar = ({ collapsible = false }: DashboardSidebarProps) => {
         )}
         <aside className={`absolute top-0 left-0 h-full w-16 bg-[var(--sidebar)] border-r border-[var(--border)] flex flex-col items-center py-5 gap-1 transition-transform duration-300 ${collapsible ? '-translate-x-full group-hover:translate-x-0' : 'translate-x-0'}`}>
           {/* Brand dot */}
-          <div className="mb-4 h-8 w-8 rounded-lg bg-[#FF453A] flex items-center justify-center">
-            <span className="text-white font-bold text-xs select-none">S</span>
-          </div>
+          <img src="/spinesurge.png" alt="SpineSurge" className="mb-4 h-9 w-9 object-contain select-none" draggable={false} />
 
           {/* Nav icons */}
           <nav className="flex flex-col items-center gap-1 flex-1">
@@ -82,6 +82,20 @@ const DashboardSidebar = ({ collapsible = false }: DashboardSidebarProps) => {
 
           {/* Light / dark mode */}
           <ThemeToggle className="mt-auto mb-2" />
+
+          {/* Settings — above the profile */}
+          <div className="group relative mb-2">
+            <button
+              onClick={() => setSettingsOpen(true)}
+              aria-label="Settings"
+              className="grid place-items-center h-8 w-8 rounded-lg border border-[var(--border-2)] text-[var(--text-2)] hover:text-[var(--text)] hover:bg-[var(--surface-3)] transition-colors"
+            >
+              <Settings className="h-4 w-4" />
+            </button>
+            <span className="pointer-events-none absolute left-14 top-1 z-50 hidden whitespace-nowrap rounded-md bg-[var(--surface-3)] px-2 py-1 text-xs text-[var(--text)] shadow-lg group-hover:block">
+              Settings
+            </span>
+          </div>
 
           {/* Profile avatar — click to open workspace switcher */}
           <div className="group relative">
@@ -115,6 +129,7 @@ const DashboardSidebar = ({ collapsible = false }: DashboardSidebarProps) => {
         isOpen={switcherOpen}
         onClose={() => setSwitcherOpen(false)}
       />
+      <SettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} />
     </>
   );
 };

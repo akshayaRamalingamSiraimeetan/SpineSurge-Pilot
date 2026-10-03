@@ -1,6 +1,6 @@
 import { Point, getDistance } from "@/lib/canvas/GeometryUtils";
 import { Measurement } from "@/lib/canvas/CanvasManager";
-import { drawMeasurementLabel } from "@/lib/canvas/CanvasUtils";
+import { drawLabel, drawPoint, drawPoints, drawPointTag, strokeLine, toolColor } from "@/lib/canvas/annotationStyle";
 
 export interface SpondylolisthesisResult {
     slipDistance: number;
@@ -81,85 +81,27 @@ export function calculateSpondylolisthesis(points: Point[], pixelToMm: number | 
     };
 }
 
-export function drawSpondylolisthesis(ctx: CanvasRenderingContext2D, m: Measurement, k: number, pixelToMm: number | null, color: string = '#f59e0b') {
+export function drawSpondylolisthesis(ctx: CanvasRenderingContext2D, m: Measurement, k: number, pixelToMm: number | null) {
     const points = m.points;
     if (points.length < 4) return;
-
     const [A, B, C, D] = points;
     const result = calculateSpondylolisthesis(points, pixelToMm);
     if (!result) return;
+    const color = toolColor(m.toolKey);
 
-    ctx.save();
-    ctx.strokeStyle = color;
-    ctx.lineWidth = 2 / k;
-    ctx.fillStyle = color;
+    strokeLine(ctx, A, B, k, color);
+    strokeLine(ctx, C, D, k, color);
+    strokeLine(ctx, B, result.pointP, k, color, true);   // perpendicular foot
+    strokeLine(ctx, result.pointP, D, k, color);         // slip distance
+    drawPoints(ctx, [A, B, C, D], k, color);
+    drawPoint(ctx, result.pointP, k, color, 0.8);
+    ['A', 'B', 'C', 'D'].forEach((t, i) => drawPointTag(ctx, t, points[i], k));
+    drawPointTag(ctx, 'P', result.pointP, k);
 
-    // Draw AB line (superior vertebra)
-    ctx.beginPath();
-    ctx.moveTo(A.x, A.y);
-    ctx.lineTo(B.x, B.y);
-    ctx.stroke();
-
-    // Draw CD line (inferior vertebra)
-    ctx.beginPath();
-    ctx.moveTo(C.x, C.y);
-    ctx.lineTo(D.x, D.y);
-    ctx.stroke();
-
-    // Draw perpendicular from B to P
-    ctx.strokeStyle = '#ef4444'; // Red for slip distance
-    ctx.setLineDash([5 / k, 5 / k]);
-    ctx.beginPath();
-    ctx.moveTo(B.x, B.y);
-    ctx.lineTo(result.pointP.x, result.pointP.y);
-    ctx.stroke();
-    ctx.setLineDash([]);
-
-    // Draw PD (the actual slip distance measurement)
-    ctx.strokeStyle = '#ef4444';
-    ctx.lineWidth = 3 / k;
-    ctx.beginPath();
-    ctx.moveTo(result.pointP.x, result.pointP.y);
-    ctx.lineTo(D.x, D.y);
-    ctx.stroke();
-
-    // Draw points
-    ctx.fillStyle = color;
-    [A, B, C, D].forEach((p, i) => {
-        ctx.beginPath();
-        ctx.arc(p.x, p.y, 4 / k, 0, Math.PI * 2);
-        ctx.fill();
-
-        // Label points
-        ctx.fillStyle = '#fff';
-        ctx.font = `${12 / k}px Arial`;
-        ctx.textAlign = 'center';
-        ctx.fillText(['A', 'B', 'C', 'D'][i], p.x, p.y - 8 / k);
-        ctx.fillStyle = color;
-    });
-
-    // Draw point P
-    ctx.fillStyle = '#ef4444';
-    ctx.beginPath();
-    ctx.arc(result.pointP.x, result.pointP.y, 4 / k, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillStyle = '#fff';
-    ctx.font = `${12 / k}px Arial`;
-    ctx.fillText('P', result.pointP.x, result.pointP.y - 8 / k);
-
-    // Format result string
-    const resultString = formatSpondylolisthesisResult(result, pixelToMm);
-
-    // Update measurement result
-    m.result = resultString;
-
-    // Draw label
+    m.result = formatSpondylolisthesisResult(result, pixelToMm);
     const labelPos = m.measurement?.labelPos || {
         x: (A.x + B.x + C.x + D.x) / 4 + 40 / k,
         y: (A.y + B.y + C.y + D.y) / 4
     };
-
-    drawMeasurementLabel(ctx, resultString, labelPos, k, color);
-
-    ctx.restore();
+    drawLabel(ctx, m.result, labelPos, k, color);
 }

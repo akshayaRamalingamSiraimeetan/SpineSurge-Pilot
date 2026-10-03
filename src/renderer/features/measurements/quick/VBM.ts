@@ -1,6 +1,6 @@
 import { Point, getDistance, endplateAngleDeg } from "@/lib/canvas/GeometryUtils";
 import { Measurement } from "@/lib/canvas/CanvasManager";
-import { drawMeasurementLabel } from "@/lib/canvas/CanvasUtils";
+import { drawLabel, drawPoints, strokePolyline, toolColor } from "@/lib/canvas/annotationStyle";
 
 export type VBMMode = 'ap' | 'lateral';
 
@@ -64,54 +64,20 @@ export function calculateVBM(points: Point[], mode: VBMMode, ratio: number | nul
 export function drawVBM(ctx: CanvasRenderingContext2D, m: Measurement, k: number, _ratio: number | null) {
     const points = m.points;
     if (points.length < 1) return;
+    const color = toolColor(m.toolKey);
 
-    const color = '#3b82f6'; // Blue for VBM
-    ctx.save();
-    ctx.strokeStyle = color;
-    ctx.lineWidth = 2.5 / k;
-    ctx.lineJoin = 'round';
-    ctx.lineCap = 'round';
+    strokePolyline(ctx, points, k, color, { closed: points.length === 4, fill: points.length === 4 });
 
-    // Draw the segments
-    ctx.beginPath();
-    ctx.moveTo(points[0].x, points[0].y);
-    for (let i = 1; i < points.length; i++) {
-        ctx.lineTo(points[i].x, points[i].y);
+    if (points.length === 4 && m.result) {
+        const levelHeader = m.measurement?.level ? `${m.measurement.level.toUpperCase()}
+---
+` : "";
+        const centerY = (points[0].y + points[1].y + points[2].y + points[3].y) / 4;
+        const labelPos = m.measurement?.labelPos || {
+            x: Math.max(points[0].x, points[1].x, points[2].x, points[3].x) + 45 / k,
+            y: centerY
+        };
+        drawLabel(ctx, levelHeader + m.result, labelPos, k, color);
     }
-
-    if (points.length === 4) {
-        ctx.closePath();
-        ctx.stroke();
-
-        ctx.fillStyle = 'rgba(59, 130, 246, 0.15)';
-        ctx.fill();
-
-        if (m.result) {
-            const levelHeader = m.measurement?.level ? `${m.measurement.level.toUpperCase()}\n---\n` : "";
-            const finalResult = levelHeader + m.result;
-
-            const center = {
-                x: (points[0].x + points[1].x + points[2].x + points[3].x) / 4,
-                y: (points[0].y + points[1].y + points[2].y + points[3].y) / 4
-            };
-
-            const labelPos = m.measurement?.labelPos || {
-                x: Math.max(points[0].x, points[1].x, points[2].x, points[3].x) + 45 / k,
-                y: center.y
-            };
-
-            drawMeasurementLabel(ctx, finalResult, labelPos, k, '#ffffff');
-        }
-    } else {
-        ctx.stroke();
-    }
-
-    // Draw corners on top
-    ctx.fillStyle = color;
-    points.forEach(p => {
-        ctx.beginPath();
-        ctx.arc(p.x, p.y, 4.5 / k, 0, Math.PI * 2);
-        ctx.fill();
-    });
-    ctx.restore();
+    drawPoints(ctx, points, k, color);
 }

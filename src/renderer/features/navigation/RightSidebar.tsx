@@ -20,6 +20,7 @@ import { useState, useMemo, useRef, useEffect, useCallback } from "react";
 import { PlanPanel } from "@/features/planning3d/PlanPanel";
 import { defaultStudyName } from "@/lib/store/types";
 import { useAppStore } from "@/lib/store/index";
+import { useShallow } from "zustand/react/shallow";
 import {
     ChevronDown,
     ChevronLeft,
@@ -31,10 +32,11 @@ import {
     Target,
     Pencil,
     ChevronUp,
+    Eye,
+    EyeOff,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Checkbox } from "@/components/ui/checkbox";
 import { MODULE_TOOL_MAPPING } from "./toolConstants";
 import { useTheme } from "@/components/theme-provider";
 import { cn } from "@/lib/utils";
@@ -50,11 +52,15 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { format } from "date-fns";
 import { VBM_FULL_FORMS } from "../measurements/quick/VBM";
+import { assessMeasurement, inferAnterior, latestPI, STATUS_COLOR, type AssessContext, type RangeStatus } from "@/features/measurements/clinicalRanges";
 import {
     calculateOpenOsteotomyPrimitives,
     calculateResectionPrimitives,
 } from "@/features/measurements/planning/PlanningTools";
 import { useLocation } from 'react-router-dom';
+import { PlanSummary } from "@/features/planning2d/PlanSummary";
+import { modalityLabel, persistSeriesInBackground, readDicomInfo, type DicomInfo } from "@/features/dicom/dicomPersistence";
+import { isPlanMeasurement } from "@/features/planning2d/plan";
 
 /* ── Constants ────────────────────────────────────────────────── */
 /**
@@ -176,108 +182,36 @@ const formatValue = (m: any, pixelToMm: number | null, shouldConvert: boolean): 
     if (['vbm', 'spondy', 'pelvis', 'pi_ll', 'cmc', 'rvad', 'circle', 'ellipse', 'polygon'].includes(m.toolKey)) {
         return 'Metrics';
     }
-    if (['screw', 'rod', 'cage', 'plate'].includes(m.toolKey)) return 'Properties';
+    if (['screw', 'rod', 'cage', 'plate'].includes(m.toolKey)) return implantSummary(m, shouldConvert ? pixelToMm : null);
     const formatted = formatResultWithCalibration(m.result, pixelToMm, shouldConvert);
     return formatted ? formatted.replace(/\n/g, ' | ') : '-';
 };
 
 /* ── MeasurementCard — screenshot-style row (label left, value right) ──────── */
-/* ── Implant fine-tune (2D) ───────────────────────────────────── */
-/** Apply property changes through the canvas manager (undoable) and persist. */
-async function updateImplantProps(id: string, changes: { properties?: Record<string, number>; angle?: number }) {
-    const st = useAppStore.getState();
-    const paneB = st.isComparisonMode && st.activeCanvasSide === 'right';
-    const mgr = st.managers[paneB ? 'right' : 'main'];
-    if (!mgr) return;
-    const ns = await mgr.applyOperation('UPDATE_IMPLANT', { id, ...changes });
-    if (!ns) return;
-    if (paneB) st.setComparisonImplants('right', ns.data.implants);
-    else if (st.activeContextId) await st.updateContextState(st.activeContextId, { implants: ns.data.implants });
-    else st.setImplants(ns.data.implants);
-}
-
-const ImplantNumber = ({ label, value, unit, step, onCommit }: { label: string; value: number; unit: string; step: number; onCommit: (v: number) => void }) => {
-    const [draft, setDraft] = useState(value.toFixed(1));
-    useEffect(() => { setDraft(value.toFixed(1)); }, [value]);
-    const commit = () => {
-        const n = parseFloat(draft);
-        if (Number.isFinite(n) && n > 0 && Math.abs(n - value) > 1e-6) onCommit(n);
-        else setDraft(value.toFixed(1));
-    };
-    return (
-        <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, fontSize: 12, padding: '3px 0' }}>
-            <span style={{ color: 'var(--text-2)' }}>{label}</span>
-            <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                <input
-                    type="number" step={step} value={draft}
-                    onChange={(e) => setDraft(e.target.value)}
-                    onBlur={commit}
-                    onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
-                    onClick={(e) => e.stopPropagation()}
-                    className="ss-mcard-input" style={{ width: 70, marginTop: 0, textAlign: 'right' }}
-                />
-                <span style={{ color: 'var(--text-3)', width: 22, fontSize: 11 }}>{unit}</span>
-            </span>
-        </label>
-    );
-};
-
-/** Screw: length + diameter. Cage: length, height, lordosis angle, rotation. Rod: diameter. */
-const ImplantEditor = ({ implant }: { implant: any }) => {
-    const canvas = useAppStore((st) => (st.isComparisonMode && st.activeCanvasSide === 'right' ? st.comparison.right.canvas : st.canvas));
-    const ratio = canvas.calibrationApplied && canvas.pixelToMm ? canvas.pixelToMm : null; // mm per px
-    const unit = ratio ? 'mm' : 'px';
-    const toUnit = (px: number) => (ratio ? px * ratio : px);
-    const toPx = (v: number) => (ratio ? v / ratio : v);
-    const p = implant.properties ?? {};
-    const mgrImplant = (() => {
-        const st = useAppStore.getState();
-        const mgr = st.managers[st.isComparisonMode && st.activeCanvasSide === 'right' ? 'right' : 'main'];
-        return mgr?.current?.data.implants.find((i: any) => i.id === implant.id);
-    })();
-    const angle = mgrImplant?.angle ?? 0;
-    const set = (properties: Record<string, number>) => void updateImplantProps(implant.id, { properties });
-
-    return (
-        <div style={{ padding: '2px 2px 2px 26px' }} onClick={(e) => e.stopPropagation()}>
-            {implant.toolKey === 'screw' && (
-                <>
-                    <ImplantNumber label="Length" value={toUnit(p.length ?? 0)} unit={unit} step={ratio ? 1 : 5} onCommit={(v) => set({ length: toPx(v) })} />
-                    <ImplantNumber label="Diameter" value={toUnit(p.diameter ?? 0)} unit={unit} step={ratio ? 0.5 : 1} onCommit={(v) => set({ diameter: toPx(v) })} />
-                </>
-            )}
-            {implant.toolKey === 'cage' && (
-                <>
-                    <ImplantNumber label="Length" value={toUnit(p.width ?? 0)} unit={unit} step={ratio ? 1 : 5} onCommit={(v) => set({ width: toPx(v) })} />
-                    <ImplantNumber label="Height" value={toUnit(p.height ?? 0)} unit={unit} step={ratio ? 0.5 : 1} onCommit={(v) => set({ height: toPx(v) })} />
-                    <ImplantNumber label="Angle (lordosis)" value={p.wedgeAngle ?? 0} unit="°" step={1} onCommit={(v) => set({ wedgeAngle: v })} />
-                    <ImplantNumber label="Rotation" value={((angle % 360) + 360) % 360} unit="°" step={1} onCommit={(v) => void updateImplantProps(implant.id, { angle: v })} />
-                </>
-            )}
-            {implant.toolKey === 'rod' && (
-                <ImplantNumber label="Diameter" value={toUnit(p.diameter ?? 0)} unit={unit} step={ratio ? 0.5 : 1} onCommit={(v) => set({ diameter: toPx(v) })} />
-            )}
-            {implant.toolKey === 'plate' && (
-                <ImplantNumber label="Length" value={toUnit(p.height ?? 0)} unit={unit} step={ratio ? 1 : 5} onCommit={(v) => set({ height: toPx(v) })} />
-            )}
-            {!ratio && <div style={{ fontSize: 10, color: 'var(--text-3)', marginTop: 4 }}>Calibrate the image to edit in millimetres.</div>}
-        </div>
-    );
+/** One-line implant size for the card (mm when calibrated). Editing happens on the image (UI5-05). */
+const implantSummary = (m: any, pixelToMm: number | null): string => {
+    const p = m.properties ?? {};
+    const f = (px: number) => (pixelToMm ? (px * pixelToMm).toFixed(1) : px.toFixed(0));
+    const u = pixelToMm ? 'mm' : 'px';
+    if (m.toolKey === 'screw') return `${f(p.length ?? 0)} × Ø${f(p.diameter ?? 0)} ${u}`;
+    if (m.toolKey === 'cage') return `${f(p.width ?? 0)} × ${f(p.height ?? 0)} ${u} · ${(p.wedgeAngle ?? 0).toFixed(0)}°`;
+    if (m.toolKey === 'rod') return `Ø${f(p.diameter ?? 0)} ${u}`;
+    if (m.toolKey === 'plate') return `${f(p.height ?? 0)} ${u}`;
+    return '';
 };
 
 const MeasurementCard = ({
     label, value, range, toolKey, checked, onCheckedChange, onDelete,
-    setMeasurements, m, pixelToMm, shouldConvert,
+    setMeasurements, m, pixelToMm, shouldConvert, ctx,
 }: {
     label: string; value: string; range: string; toolKey: string;
     checked: boolean; onCheckedChange: (v: boolean) => void; onDelete: () => void;
     setMeasurements: (m: any[]) => void; m: any;
     pixelToMm: number | null; shouldConvert: boolean;
+    ctx: AssessContext;
 }) => {
     const [expanded, setExpanded] = useState(false);
     const [level, setLevel] = useState(m.measurement?.level || '');
-    const selectedId = useAppStore((st) => st.selection?.measurementId);
-    useEffect(() => { if (m.isImplant && selectedId === m.id) setExpanded(true); }, [m.isImplant, m.id, selectedId]);
 
     const updateLevel = async () => {
         const st = useAppStore.getState();
@@ -291,14 +225,17 @@ const MeasurementCard = ({
     };
 
     const hasDetails = ['vbm','spondy','pelvis','pi_ll','cmc','rvad','circle','ellipse','polygon',
-        'screw','rod','cage','plate','ost-pso','ost-spo','ost-open','ost-resect'].includes(toolKey);
+        'ost-pso','ost-spo','ost-open','ost-resect'].includes(toolKey);
 
-    // Determine value color — angle = orange-red, mm = green, mismatch = red
-    const getValueColor = () => {
-        if (value.includes('°')) return 'var(--val-bad)';
-        if (value.includes('mm')) return 'var(--val-good)';
-        return 'var(--text-2)';
-    };
+    // Clinical colour: green healthy / yellow borderline / red abnormal;
+    // normal text when the app doesn't judge this value (UI8-05).
+    const colorOf = (st: RangeStatus) => (st ? STATUS_COLOR[st] : 'var(--text)');
+    const main = m.isImplant ? { status: null, range: '' } : assessMeasurement(m, '', ctx);
+    const rangeText = main.range || range;
+    // Multi-value tools: worst status of their judged lines, shown as a dot when collapsed
+    const lineKeys = toolKey === 'pelvis' ? ['PI'] : toolKey === 'pi_ll' ? ['PI', 'LL', 'PI - LL'] : [];
+    const lineStatuses = lineKeys.map((k) => assessMeasurement(m, k, ctx).status);
+    const worst: RangeStatus = lineStatuses.includes('bad') ? 'bad' : lineStatuses.includes('borderline') ? 'borderline' : lineStatuses.includes('good') ? 'good' : null;
 
     const renderDetails = () => {
         if (['ost-pso','ost-spo','ost-open','ost-resect'].includes(toolKey)) {
@@ -335,7 +272,7 @@ const MeasurementCard = ({
                         return (
                             <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', fontSize: 12 }}>
                                 <span style={{ color: 'var(--text-2)' }}>{displayKey}</span>
-                                <span style={{ fontWeight: 700, color: val.includes('°') ? 'var(--val-bad)' : val.includes('mm') ? 'var(--val-good)' : 'var(--text)' }}>{val}</span>
+                                <span style={{ fontWeight: 700, color: colorOf(assessMeasurement(m, key, ctx).status) }}>{val}</span>
                             </div>
                         );
                     })}
@@ -343,9 +280,6 @@ const MeasurementCard = ({
             );
         }
 
-        if (['screw','rod','cage','plate'].includes(toolKey) && m.properties) {
-            return <ImplantEditor implant={m} />;
-        }
         return null;
     };
 
@@ -359,13 +293,16 @@ const MeasurementCard = ({
                 onClick={() => hasDetails && setExpanded((o) => !o)}
             >
                 {!m.isImplant ? (
-                    <Checkbox
-                        checked={checked}
-                        onCheckedChange={(v) => { onCheckedChange(!!v); }}
-                        onClick={(e) => e.stopPropagation()}
-                        title={checked ? 'Included in report' : 'Not in report'}
-                        style={{ width: 16, height: 16, flexShrink: 0 }}
-                    />
+                    // Eye: shown on the image AND included in the report; off hides both (UI8-02)
+                    <button
+                        className="ss-mcard-eye"
+                        onClick={(e) => { e.stopPropagation(); onCheckedChange(!checked); }}
+                        title={checked ? 'Shown on image and in report — click to hide' : 'Hidden from image and report — click to show'}
+                        aria-pressed={checked}
+                        style={{ display: 'grid', placeItems: 'center', width: 22, height: 22, borderRadius: 6, flexShrink: 0, color: checked ? 'var(--text-2)' : 'var(--text-3)', opacity: checked ? 1 : 0.6 }}
+                    >
+                        {checked ? <Eye size={15} /> : <EyeOff size={15} />}
+                    </button>
                 ) : (
                     <span className="ss-mcard-chip">{toolKey.slice(0, 1).toUpperCase()}</span>
                 )}
@@ -397,16 +334,19 @@ const MeasurementCard = ({
                             onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
                             className="ss-mcard-input"
                         />
-                    ) : range ? (
-                        <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 1 }}>Normal {range}</div>
+                    ) : rangeText ? (
+                        <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 1 }}>Normal {rangeText}</div>
                     ) : null}
                 </div>
 
                 <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
                     {value && value !== 'Metrics' && value !== 'Properties' && (
-                        <span style={{ fontSize: 15, fontWeight: 700, color: 'var(--text)', fontVariantNumeric: 'tabular-nums', textAlign: 'right', maxWidth: 140, overflowWrap: 'anywhere', lineHeight: 1.2 }}>
+                        <span style={{ fontSize: 15, fontWeight: 700, color: colorOf(main.status), fontVariantNumeric: 'tabular-nums', textAlign: 'right', maxWidth: 140, overflowWrap: 'anywhere', lineHeight: 1.2 }}>
                             {value}
                         </span>
+                    )}
+                    {worst && !expanded && (
+                        <span title="Worst value in this measurement" style={{ width: 8, height: 8, borderRadius: 99, background: STATUS_COLOR[worst], flexShrink: 0 }} />
                     )}
                     {hasDetails && (
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"
@@ -432,29 +372,6 @@ const MeasurementCard = ({
 };
 
 /* ── ComparisonTable ──────────────────────────────────────────── */
-const COMPARISON_GROUPS: Record<string, string> = {
-    'pi_ll': 'Sagittal Alignment',
-    'sva': 'Sagittal Alignment',
-    'tk': 'Sagittal Alignment',
-    'll': 'Sagittal Alignment',
-    'pt': 'Sagittal Alignment',
-    'cobb': 'Coronal Alignment',
-    'csvl': 'Coronal Alignment',
-    'ts': 'Coronal Alignment',
-    'avt': 'Coronal Alignment',
-    'rvad': 'Coronal Alignment',
-    'pi': 'Pelvic Parameters',
-    'ss': 'Pelvic Parameters',
-    'c7pl': 'Global',
-    'tpa': 'Global',
-    'spa': 'Global',
-    'ssa': 'Global',
-    't1spi': 'Global',
-    't9spi': 'Global',
-    'odha': 'Global',
-    'cbva': 'Global',
-};
-
 const ComparisonTable = ({
     leftMeasurements, rightMeasurements, category,
     leftPixelToMm, rightPixelToMm,
@@ -522,13 +439,12 @@ const ComparisonTable = ({
 
     const groupedData = useMemo(() => {
         const groups = new Map<string, typeof tableData>();
-        const ORDER = ['Sagittal Alignment', 'Coronal Alignment', 'Pelvic Parameters', 'Global', 'Other'];
         tableData.forEach((item) => {
-            const groupName = COMPARISON_GROUPS[item.key] || 'Other';
+            const groupName = TOOL_GROUP_LABELS[item.key] || 'Others';
             if (!groups.has(groupName)) groups.set(groupName, []);
             groups.get(groupName)!.push(item);
         });
-        return ORDER.filter((g) => groups.has(g)).map((g) => ({
+        return GROUP_ORDER.filter((g) => groups.has(g)).map((g) => ({
             label: g,
             items: groups.get(g)!,
         }));
@@ -610,55 +526,35 @@ const ComparisonTable = ({
     );
 };
 
-/* ── Tool-to-category group labels (matches screenshot section headers) ────── */
+/* ── Categories mirror the left-sidebar tabs (UI5-10) ────────── */
 const TOOL_GROUP_LABELS: Record<string, string> = {
-    // Sagittal deformity
-    'tpa': 'Sagittal Deformity',
-    'ssa': 'Sagittal Deformity',
-    'spa': 'Sagittal Deformity',
-    't1spi': 'Sagittal Deformity',
-    't9spi': 'Sagittal Deformity',
-    'odha': 'Sagittal Deformity',
-    'cbva': 'Sagittal Deformity',
-    // Coronal deformity
-    'cmc': 'Coronal Deformity',
-    'ts': 'Coronal Deformity',
-    'avt': 'Coronal Deformity',
-    'rvad': 'Coronal Deformity',
-    'po': 'Coronal Deformity',
-    // Alignment
-    'cobb': 'Alignment',
-    'pelvis': 'Pelvic Parameters',
-    'pi_ll': 'Alignment',
-    'sva': 'Alignment',
-    'tk': 'Alignment',
-    'll': 'Alignment',
-    'cl': 'Alignment',
+    // Alignment (pelvic parameters included)
+    cobb: 'Alignment', pelvis: 'Alignment', pi_ll: 'Alignment', sva: 'Alignment',
+    tk: 'Alignment', ll: 'Alignment', cl: 'Alignment', sc: 'Alignment',
+    // Extended → coronal deformity
+    cmc: 'Coronal Deformity', rvad: 'Coronal Deformity', ts: 'Coronal Deformity',
+    avt: 'Coronal Deformity', po: 'Coronal Deformity', slope: 'Coronal Deformity',
+    // Extended → sagittal deformity
+    tpa: 'Sagittal Deformity', spa: 'Sagittal Deformity', ssa: 'Sagittal Deformity',
+    t1spi: 'Sagittal Deformity', t9spi: 'Sagittal Deformity', odha: 'Sagittal Deformity', cbva: 'Sagittal Deformity',
     // Morphology
-    'vbm': 'Morphology',
-    'stenosis': 'Pathology',
-    'spondy': 'Pathology',
+    vbm: 'Morphology', stenosis: 'Morphology', spondy: 'Morphology',
     // Planning
-    'ost-pso': 'Planning',
-    'ost-spo': 'Planning',
-    'ost-resect': 'Planning',
-    'ost-open': 'Planning',
-    'screw': 'Implants',
-    'rod': 'Implants',
-    'cage': 'Implants',
-    'plate': 'Implants',
+    'ost-pso': 'Planning', 'ost-spo': 'Planning', 'ost-resect': 'Planning', 'ost-open': 'Planning', itilt: 'Planning',
+    // Instruments
+    screw: 'Instruments', rod: 'Instruments', cage: 'Instruments', plate: 'Instruments',
 };
+const GROUP_ORDER = ['Alignment', 'Coronal Deformity', 'Sagittal Deformity', 'Morphology', 'Planning', 'Instruments', 'Others'];
 
 /** Group a flat list by category label, returning ordered sections */
 function groupMeasurementsByCategory(items: any[]): { label: string; items: any[] }[] {
     const groups = new Map<string, any[]>();
-    const ORDER = ['Alignment', 'Pelvic Parameters', 'Sagittal Deformity', 'Coronal Deformity', 'Morphology', 'Pathology', 'Planning', 'Implants', 'Other'];
     for (const m of items) {
-        const label = TOOL_GROUP_LABELS[m.toolKey] ?? 'Other';
+        const label = TOOL_GROUP_LABELS[m.toolKey] ?? 'Others';
         if (!groups.has(label)) groups.set(label, []);
         groups.get(label)!.push(m);
     }
-    return ORDER.filter((l) => groups.has(l)).map((l) => ({ label: l, items: groups.get(l)! }));
+    return GROUP_ORDER.filter((l) => groups.has(l)).map((l) => ({ label: l, items: groups.get(l)! }));
 }
 function CollapseSection({ title, badge, defaultOpen = true, open: controlledOpen, onOpenChange, children }: {
     title: React.ReactNode; badge?: React.ReactNode; defaultOpen?: boolean; open?: boolean; onOpenChange?: (open: boolean) => void; children: React.ReactNode;
@@ -713,7 +609,7 @@ function CaseSummary({ isOpen, onOpenChange }: { isOpen: boolean; onOpenChange: 
         addStudy,
         addContext,
         setActivePatient
-    } = useAppStore();
+    } = useAppStore(useShallow((s) => ({ activePatientId: s.activePatientId, patients: s.patients, activeContextId: s.activeContextId, contexts: s.contexts, updatePatient: s.updatePatient, updateVisit: s.updateVisit, addPatient: s.addPatient, addVisit: s.addVisit, addStudy: s.addStudy, addContext: s.addContext, setActivePatient: s.setActivePatient })));
 
     const patient = useMemo(() => {
         if (!activePatientId) return null;
@@ -733,10 +629,26 @@ function CaseSummary({ isOpen, onOpenChange }: { isOpen: boolean; onOpenChange: 
     const [editingField, setEditingField] = useState<string | null>(null);
     const [editValue, setEditValue] = useState<string>('');
     const [notes, setNotes] = useState(visit?.comments || '');
+    const shownDiagnosis = (d?: string) => (d && d !== 'New Diagnosis' ? d : '');
+    const [diagnosis, setDiagnosis] = useState(shownDiagnosis(visit?.diagnosis));
 
     useEffect(() => {
         setNotes(visit?.comments || '');
     }, [visit?.comments]);
+    useEffect(() => {
+        setDiagnosis(shownDiagnosis(visit?.diagnosis));
+    }, [visit?.diagnosis]);
+
+    // Diagnosis lives on the visit, so the header, dashboard and report pick it up (UI6-08).
+    const saveDiagnosis = async () => {
+        const next = diagnosis.trim();
+        if (!patient || !visit || next === shownDiagnosis(visit.diagnosis)) return;
+        try {
+            await updateVisit(patient.id, visit.id, { ...visit, diagnosis: next });
+        } catch (err) {
+            console.error('Failed to save diagnosis', err);
+        }
+    };
 
     const startEdit = (field: string, val: string) => {
         setEditingField(field);
@@ -744,6 +656,7 @@ function CaseSummary({ isOpen, onOpenChange }: { isOpen: boolean; onOpenChange: 
     };
 
     const creatingCaseRef = useRef(false);
+    const dicomInfoRef = useRef<DicomInfo | null>(null);
     const ensurePatientAndStartEdit = async (field?: string, val?: string) => {
         let currentPatientId = activePatientId;
         let currentContextId = activeContextId;
@@ -757,17 +670,23 @@ function CaseSummary({ isOpen, onOpenChange }: { isOpen: boolean; onOpenChange: 
             const studyId = `std-${crypto.randomUUID()}`;
             const contextId = `ctx-${crypto.randomUUID()}`;
 
+            // An untitled DICOM series: take modality / patient details from its headers (UI10-08)
+            const st0 = useAppStore.getState();
+            const seriesFiles = st0.isDicomMode ? (st0.dicomSeries as unknown[]).filter((f): f is File => f instanceof File) : [];
+            dicomInfoRef.current = seriesFiles.length ? await readDicomInfo(seriesFiles[0]) : null;
+            const dx = dicomInfoRef.current;
+
             const newPatient: any = {
                 id: patientId,
-                name: '',
-                age: 0,
-                gender: 'M',
-                dob: `${new Date().getFullYear()}-01-01`,
+                name: dx?.patientName ?? '',
+                age: dx?.age ?? 0,
+                gender: dx?.sex ?? 'M',
+                dob: dx?.birthDate ?? `${new Date().getFullYear()}-01-01`,
                 lastVisit: format(new Date(), 'MMM dd, yyyy'),
                 visits: [],
                 studies: [],
                 sex: '',
-                contact: ''
+                contact: dx?.patientId ?? ''
             };
 
             const newVisit: any = {
@@ -789,9 +708,9 @@ function CaseSummary({ isOpen, onOpenChange }: { isOpen: boolean; onOpenChange: 
                 id: studyId,
                 patientId: patientId,
                 visitId: visitId,
-                modality: 'X-Ray',
+                modality: seriesFiles.length ? modalityLabel(dx?.modality) : 'X-Ray',
                 source: 'Import',
-                acquisitionDate: format(new Date(), 'yyyy-MM-dd'),
+                acquisitionDate: dx?.studyDate ?? format(new Date(), 'yyyy-MM-dd'),
                 name: defaultStudyName('Study'),
             };
 
@@ -813,6 +732,8 @@ function CaseSummary({ isOpen, onOpenChange }: { isOpen: boolean; onOpenChange: 
                 // into the new study and makes it active — no reload needed,
                 // so the live canvas is kept as-is.
                 await addContext(newContext);
+                // The series itself is uploaded as the study's scans (UI10-08)
+                if (seriesFiles.length) persistSeriesInBackground(patientId, studyId, seriesFiles);
             } catch (e) {
                 console.error('Could not create study for untitled session', e);
                 alert('Could not save this session as a study. Please check your connection and try again.');
@@ -828,9 +749,11 @@ function CaseSummary({ isOpen, onOpenChange }: { isOpen: boolean; onOpenChange: 
         if (field !== undefined) {
             let initialVal = val;
             if (!activePatientId) {
-                if (field === 'name') initialVal = '';
-                else if (field === 'age') initialVal = '';
-                else if (field === 'sex') initialVal = 'M';
+                const dx = dicomInfoRef.current;
+                if (field === 'name') initialVal = dx?.patientName ?? '';
+                else if (field === 'age') initialVal = dx?.age ? String(dx.age) : '';
+                else if (field === 'sex') initialVal = dx?.sex ?? 'M';
+                else if (field === 'mrn') initialVal = dx?.patientId ?? '';
                 else initialVal = '';
             }
             startEdit(field, initialVal || '');
@@ -966,6 +889,22 @@ function CaseSummary({ isOpen, onOpenChange }: { isOpen: boolean; onOpenChange: 
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
                         <span style={{ fontSize: 11, color: 'var(--text-3)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.05em' }}>Study Notes ⓘ</span>
                     </div>
+                    <div style={{
+                        border: '1px solid var(--border-2)', borderRadius: 6, background: 'var(--surface-2)',
+                        opacity: (activePatientId && visit) ? 1 : 0.6,
+                    }}>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px', borderBottom: '1px solid var(--border-2)' }}>
+                            <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-3)', flexShrink: 0 }}>Diagnosis</span>
+                            <input
+                                value={activePatientId ? diagnosis : ''}
+                                onChange={(e) => setDiagnosis(e.target.value)}
+                                onBlur={saveDiagnosis}
+                                onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
+                                disabled={!activePatientId || !visit}
+                                placeholder="e.g. Adolescent idiopathic scoliosis"
+                                style={{ flex: 1, minWidth: 0, background: 'transparent', border: 'none', outline: 'none', fontSize: 12, fontWeight: 600, color: 'var(--text)' }}
+                            />
+                        </label>
                     <textarea
                         value={activePatientId ? notes : ''}
                         onChange={(e) => setNotes(e.target.value)}
@@ -973,19 +912,19 @@ function CaseSummary({ isOpen, onOpenChange }: { isOpen: boolean; onOpenChange: 
                         placeholder={activePatientId ? (visit ? "Add notes..." : "No active visit to add notes") : ""}
                         disabled={!activePatientId || !visit}
                         style={{
+                            display: 'block',
                             width: '100%',
                             minHeight: 60,
-                            background: 'var(--surface-2)',
-                            border: '1px solid var(--border-2)',
-                            borderRadius: 6,
+                            background: 'transparent',
+                            border: 'none',
                             padding: '6px 10px',
                             fontSize: 12,
                             color: 'var(--text)',
                             resize: 'vertical',
                             outline: 'none',
-                            opacity: (activePatientId && visit) ? 1 : 0.6,
                         }}
                     />
+                    </div>
                 </div>
             </div>
         </CollapseSection>
@@ -1065,10 +1004,11 @@ const RightSidebar = () => {
         removeThreeDImplant,
         setSelectedDicomImplant,
         setDicom3DMode,
-    } = useAppStore();
+    } = useAppStore(useShallow((s) => ({ isRightSidebarOpen: s.isRightSidebarOpen, toggleRightSidebar: s.toggleRightSidebar, setActiveDialog: s.setActiveDialog, deleteMeasurement: s.deleteMeasurement, deleteImplant: s.deleteImplant, toggleMeasurementSelection: s.toggleMeasurementSelection, setMeasurements: s.setMeasurements, setCalibration: s.setCalibration, applyCalibrationToExistingMeasurements: s.applyCalibrationToExistingMeasurements, canvas: s.canvas, isComparisonMode: s.isComparisonMode, activeCanvasSide: s.activeCanvasSide, comparison: s.comparison, measurements: s.measurements, implants: s.implants, activeDialog: s.activeDialog, dicom3D: s.dicom3D, isDicomMode: s.isDicomMode, activePatientId: s.activePatientId, activeContextId: s.activeContextId, contextStates: s.contextStates, patients: s.patients, addPatient: s.addPatient, addVisit: s.addVisit, addStudy: s.addStudy, addContext: s.addContext, setActivePatient: s.setActivePatient, updateContextState: s.updateContextState, threeDImplants: s.threeDImplants, removeThreeDImplant: s.removeThreeDImplant, setSelectedDicomImplant: s.setSelectedDicomImplant, setDicom3DMode: s.setDicom3DMode })));
 
     const location = useLocation();
     const isReportTab = new URLSearchParams(location.search).get('tab') === 'report';
+    const isPlanningTab = location.pathname === '/workspace' && new URLSearchParams(location.search).get('tab') === 'planning';
 
     const isRightSidebarOpen = storeIsRightSidebarOpen;
 
@@ -1112,6 +1052,16 @@ const RightSidebar = () => {
     const activeCalibrationApplied = !!activeCanvas?.calibrationApplied && !!activePixelToMm;
     const activeCalibrationEnabledAt = activeCanvas?.calibrationEnabledAt ?? null;
 
+    // Context for clinical colour coding: age, PI, facing direction (UI8-05)
+    const rangeCtx = useMemo(() => {
+        const patientAge = patients.find((p) => p.id === activePatientId)?.age;
+        return {
+            age: patientAge && patientAge > 0 ? patientAge : null,
+            pi: latestPI(measurements),
+            anterior: inferAnterior(measurements),
+        };
+    }, [patients, activePatientId, measurements]);
+
     const shouldConvert = (m: any) => {
         if (!activeCalibrationApplied) return false;
         if (m?.measurement?.calibrateAllConverted) return true;
@@ -1129,11 +1079,13 @@ const RightSidebar = () => {
             properties: imp.properties, timestamp: imp.timestamp,
             selected: true, isImplant: true,
         }));
+        // Assessment / Compare list the preop measurements; Planning lists the plan items (UI9-05).
         const visibleMeasurements = measurements.filter((m: any) =>
             !m?.measurement?.isCalibration && !REF_LINE_KEYS.has(m.toolKey)
+            && (isPlanningTab ? isPlanMeasurement(m) : !isPlanMeasurement(m))
         );
-        return [...visibleMeasurements, ...implantItems].sort((a: any, b: any) => b.timestamp - a.timestamp);
-    }, [measurements, implants]);
+        return [...visibleMeasurements, ...(isPlanningTab ? implantItems : [])].sort((a: any, b: any) => b.timestamp - a.timestamp);
+    }, [measurements, implants, isPlanningTab]);
 
     // Reference lines as a separate collection
     const refLineMeasurements = useMemo(() => {
@@ -1193,6 +1145,16 @@ const RightSidebar = () => {
 
     const [bannerDismissed, setBannerDismissed] = useState(false);
     const [caseSummaryOpen, setCaseSummaryOpen] = useState(true);
+    // Each time a case is opened: collapsed when its details are complete,
+    // open when something is missing. Never auto-closes while editing.
+    const summaryDecidedFor = useRef<string | null>(null);
+    useEffect(() => {
+        const key = activePatientId ?? '__untitled__';
+        if (summaryDecidedFor.current === key) return;
+        if (activePatientId && !patient) return; // wait for the patient record
+        summaryDecidedFor.current = key;
+        setCaseSummaryOpen(hasMissingPatientInfo);
+    }, [activePatientId, patient, hasMissingPatientInfo]);
 
     useEffect(() => {
         if (!activePatientId) {
@@ -1312,6 +1274,13 @@ const RightSidebar = () => {
                                 </CollapseSection>
                             )}
 
+                            {/* Planning: plans, targets and preop-vs-plan tables (UI9-05) */}
+                            {isPlanningTab && !isDicomMode && (
+                                <CollapseSection title="Plan" defaultOpen>
+                                    <PlanSummary names={TOOL_DISPLAY_NAMES} />
+                                </CollapseSection>
+                            )}
+
                             {isDicomMode ? (
                                 <DicomCurrentPlan />
                             ) : (
@@ -1319,7 +1288,7 @@ const RightSidebar = () => {
                                     {/* Measurements of the active image (Image A or B in Compare) */}
                                     {(
                                         <CollapseSection
-                                            title={isComparisonMode ? (activeCanvasSide === 'right' ? 'Image B Measurements' : 'Image A Measurements') : 'Current Measurements'}
+                                            title={isComparisonMode ? (activeCanvasSide === 'right' ? 'Image B Measurements' : 'Image A Measurements') : isPlanningTab ? 'Plan Items' : 'Current Measurements'}
                                             badge={filteredMeasurements.length || undefined}
                                             defaultOpen>
                                             {filteredMeasurements.length === 0 ? (
@@ -1351,6 +1320,7 @@ const RightSidebar = () => {
                                                                         m={m}
                                                                         pixelToMm={activePixelToMm}
                                                                         shouldConvert={shouldConvert(m)}
+                                                                        ctx={{ ...rangeCtx, mmPerPx: shouldConvert(m) ? activePixelToMm : null }}
                                                                     />
                                                                 );
                                                             })}

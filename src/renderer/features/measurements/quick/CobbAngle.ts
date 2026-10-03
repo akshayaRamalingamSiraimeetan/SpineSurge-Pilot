@@ -1,6 +1,6 @@
 import { Point, getMidpoint, getLineLinesIntersection, endplateAngleDeg } from "@/lib/canvas/GeometryUtils";
 import { Measurement } from "@/lib/canvas/CanvasManager";
-import { drawMeasurementLabel } from "@/lib/canvas/CanvasUtils";
+import { drawLabel, drawPoints, strokeLine, toolColor } from "@/lib/canvas/annotationStyle";
 
 export interface CobbAngleData {
     angle: number;
@@ -43,63 +43,27 @@ export function calculateCobbAngle(points: Point[]): CobbAngleData {
 export function drawCobbAngle(ctx: CanvasRenderingContext2D, m: Measurement, k: number) {
     const points = m.points;
     if (points.length < 2) return;
+    const color = toolColor(m.toolKey);
 
-    ctx.strokeStyle = '#3b82f6';
-    ctx.lineWidth = 2 / k;
-    ctx.fillStyle = '#3b82f6';
+    strokeLine(ctx, points[0], points[1], k, color);
+    if (points.length >= 4) strokeLine(ctx, points[2], points[3], k, color);
 
-    // Line 1
-    ctx.beginPath();
-    ctx.moveTo(points[0].x, points[0].y);
-    ctx.lineTo(points[1].x, points[1].y);
-    ctx.stroke();
+    if (points.length >= 4) {
+        const { angle, intersection } = calculateCobbAngle(points);
+        const prefix = m.toolKey === 'cobb' ? 'Cobb' : '4 pt angle';
+        m.result = `${prefix}: ${angle.toFixed(1)}°`;
 
-    points.slice(0, 2).forEach(p => {
-        ctx.beginPath();
-        ctx.arc(p.x, p.y, 4 / k, 0, Math.PI * 2);
-        ctx.fill();
-    });
-
-    if (points.length < 4) return;
-
-    // Line 2
-    ctx.beginPath();
-    ctx.moveTo(points[2].x, points[2].y);
-    ctx.lineTo(points[3].x, points[3].y);
-    ctx.stroke();
-
-    points.slice(2, 4).forEach(p => {
-        ctx.beginPath();
-        ctx.arc(p.x, p.y, 4 / k, 0, Math.PI * 2);
-        ctx.fill();
-    });
-
-    const { angle, intersection } = calculateCobbAngle(points);
-    const prefix = m.toolKey === 'cobb' ? 'Cobb' : '4 pt angle';
-    m.result = `${prefix}: ${angle.toFixed(1)}°`;
-
-    if (intersection) {
-        const mid1 = getMidpoint(points[0], points[1]);
-        const mid2 = getMidpoint(points[2], points[3]);
-
-        ctx.setLineDash([5 / k, 5 / k]);
-        ctx.beginPath();
-        ctx.moveTo(mid1.x, mid1.y);
-        ctx.lineTo(intersection.x, intersection.y);
-        ctx.moveTo(mid2.x, mid2.y);
-        ctx.lineTo(intersection.x, intersection.y);
-        ctx.stroke();
-        ctx.setLineDash([]);
-
-        // Label
-        const labelPos = m.measurement?.labelPos || {
-            x: intersection.x + 20 / k,
-            y: intersection.y + 20 / k
-        };
-
-        const levelText = m.measurement?.level ? `\n${m.measurement.level}` : '';
-        const finalText = m.result + levelText;
-
-        drawMeasurementLabel(ctx, finalText, labelPos, k, '#3b82f6');
+        if (intersection) {
+            const mid1 = getMidpoint(points[0], points[1]);
+            const mid2 = getMidpoint(points[2], points[3]);
+            strokeLine(ctx, mid1, intersection, k, color, true);
+            strokeLine(ctx, mid2, intersection, k, color, true);
+        }
+        const anchor = intersection ?? getMidpoint(getMidpoint(points[0], points[1]), getMidpoint(points[2], points[3]));
+        const labelPos = m.measurement?.labelPos || { x: anchor.x + 20 / k, y: anchor.y + 20 / k };
+        const levelText = m.measurement?.level ? `
+${m.measurement.level}` : '';
+        drawLabel(ctx, m.result + levelText, labelPos, k, color);
     }
+    drawPoints(ctx, points.slice(0, 4), k, color);
 }

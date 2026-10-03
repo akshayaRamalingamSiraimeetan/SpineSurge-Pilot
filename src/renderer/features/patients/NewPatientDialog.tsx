@@ -9,100 +9,79 @@ import {
     DialogTitle,
     DialogTrigger,
 } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Plus, Edit2 } from "lucide-react";
-import {
-    Select,
-    SelectContent,
-    SelectItem,
-    SelectTrigger,
-    SelectValue,
-} from "@/components/ui/select";
 import { useAppStore, Patient } from "@/lib/store/index";
 import { format } from "date-fns";
+import { cn } from "@/lib/utils";
 
 interface NewPatientDialogProps {
     patient?: Patient;
 }
 
-export function NewPatientDialog({ patient }: NewPatientDialogProps) {
-    const { addPatient, updatePatient, setActiveDialog } = useAppStore();
-    const [open, setOpen] = useState(false);
+type Sex = 'M' | 'F' | 'O';
+const EMPTY = { name: '', id: '', age: '', gender: 'M' as Sex, dob: '', contact: '' };
 
-    const [formData, setFormData] = useState({
-        name: '',
-        id: '',
-        age: '',
-        gender: 'M',
-        dob: '',
-        sex: '',
-        contact: ''
-    });
+/** Filled field without an outline (UI7-03); focus shows as a slightly stronger fill. */
+const fieldCls = 'w-full h-9 rounded-lg bg-[var(--surface-2)] px-3 text-sm text-[var(--text)] placeholder:text-[var(--text-3)] border-0 outline-none focus:bg-[var(--surface-3)] transition-colors disabled:opacity-60';
+
+const Field = ({ label, className, children }: { label: string; className?: string; children: React.ReactNode }) => (
+    <label className={cn('flex flex-col gap-1.5', className)}>
+        <span className="text-xs font-medium text-[var(--text-2)]">{label}</span>
+        {children}
+    </label>
+);
+
+/** Patient record: name, ID, age, sex, date of birth, contact. */
+export function NewPatientDialog({ patient }: NewPatientDialogProps) {
+    const addPatient = useAppStore((s) => s.addPatient);
+    const updatePatient = useAppStore((s) => s.updatePatient);
+    const setActiveDialog = useAppStore((s) => s.setActiveDialog);
+    const [open, setOpen] = useState(false);
+    const [formData, setFormData] = useState(EMPTY);
 
     useEffect(() => {
-        if (patient) {
+        if (patient && open) {
             setFormData({
                 name: patient.name || '',
                 id: patient.id || '',
-                age: patient.age == null ? '' : String(patient.age),
-                gender: (patient.gender || 'M') as 'M' | 'F' | 'O',
+                age: patient.age ? String(patient.age) : '',
+                gender: (patient.gender || 'M') as Sex,
                 dob: patient.dob || '',
-                sex: patient.sex || '',
-                contact: patient.contact || ''
+                contact: patient.contact || '',
             });
         }
     }, [patient, open]);
 
+    // Age and DOB stay consistent: either one fills the other.
     const handleAgeChange = (age: string) => {
-        setFormData(prev => {
-            const updates: any = { ...prev, age };
-            if (age && !isNaN(parseInt(age))) {
-                const birthYear = new Date().getFullYear() - parseInt(age);
-                updates.dob = `${birthYear}-01-01`; // Approximation
-            }
-            return updates;
-        });
+        const n = parseInt(age);
+        setFormData((prev) => ({ ...prev, age, dob: Number.isFinite(n) ? `${new Date().getFullYear() - n}-01-01` : prev.dob }));
     };
-
     const handleDOBChange = (dob: string) => {
-        setFormData(prev => {
-            const updates: any = { ...prev, dob };
-            if (dob) {
-                const birthDate = new Date(dob);
-                const age = new Date().getFullYear() - birthDate.getFullYear();
-                updates.age = age.toString();
-            }
-            return updates;
-        });
+        const d = dob ? new Date(dob) : null;
+        setFormData((prev) => ({ ...prev, dob, age: d && !isNaN(d.getTime()) ? String(new Date().getFullYear() - d.getFullYear()) : prev.age }));
     };
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
+        const common = {
+            name: formData.name.trim(),
+            age: parseInt(formData.age) || 0,
+            gender: formData.gender,
+            dob: formData.dob,
+            contact: formData.contact.trim(),
+        };
 
         if (patient) {
-            const updatedPatient: Patient = {
-                ...patient,
-                name: formData.name,
-                age: parseInt(formData.age) || 0,
-                gender: formData.gender as 'M' | 'F' | 'O',
-                dob: formData.dob,
-                sex: formData.sex,
-                contact: formData.contact
-            };
-            await updatePatient(updatedPatient);
+            await updatePatient({ ...patient, ...common });
         } else {
             const newPatient: Patient = {
                 id: formData.id.trim() || `PAT-${crypto.randomUUID().slice(0, 8).toUpperCase()}`,
-                name: formData.name,
-                age: parseInt(formData.age) || 0,
-                gender: formData.gender as 'M' | 'F' | 'O',
-                dob: formData.dob,
+                ...common,
                 lastVisit: format(new Date(), 'MMM dd, yyyy'),
                 visits: [],
                 studies: [],
-                sex: formData.sex,
-                contact: formData.contact
+                sex: '',
             };
             // POST /api/patients is an upsert — never let a typed ID overwrite
             // an existing patient (BUGS WS-31).
@@ -119,116 +98,72 @@ export function NewPatientDialog({ patient }: NewPatientDialogProps) {
         }
 
         setOpen(false);
-        if (!patient) {
-            setFormData({ name: '', id: '', age: '', gender: 'M', dob: '', sex: '', contact: '' });
-        }
+        setActiveDialog(null);
+        if (!patient) setFormData(EMPTY);
     };
 
     return (
         <Dialog open={open} onOpenChange={(val) => { setOpen(val); setActiveDialog(val ? 'patient' : null); }}>
             <DialogTrigger asChild>
                 {patient ? (
-                    <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground hover:bg-muted transition-colors">
+                    <Button variant="ghost" size="icon" title="Edit patient" className="h-8 w-8 text-[var(--text-2)] hover:text-[var(--text)] hover:bg-[var(--surface-3)] transition-colors">
                         <Edit2 className="h-4 w-4" />
                     </Button>
                 ) : (
-                    <Button className="w-full bg-secondary hover:bg-muted text-foreground border border-border font-bold rounded-xl transition-all active:scale-95">
-                        <Plus className="mr-2 h-4 w-4 text-primary" /> New Patient
+                    <Button className="w-full h-9 gap-2 rounded-lg border border-[var(--accent)]/30 bg-[var(--accent-soft)] text-xs font-semibold text-[var(--accent)] hover:bg-[var(--accent-soft-2)] transition-colors">
+                        <Plus className="h-4 w-4" /> New Patient
                     </Button>
                 )}
             </DialogTrigger>
-            <DialogContent className="sm:max-w-[425px]">
+            <DialogContent className="sm:max-w-[440px]">
                 <DialogHeader>
-                    <DialogTitle>{patient ? 'Edit Patient Details' : 'Add New Patient'}</DialogTitle>
-                    <DialogDescription className="text-muted-foreground">
-                        {patient ? 'Update the details for this patient record.' : 'Enter patient details to create a new record and start a visit.'}
+                    <DialogTitle>{patient ? 'Edit patient' : 'New patient'}</DialogTitle>
+                    <DialogDescription>
+                        {patient ? 'Update the details for this patient.' : 'Create the patient record. Studies are added from the patient page.'}
                     </DialogDescription>
                 </DialogHeader>
                 <form onSubmit={handleSubmit}>
-                    <div className="grid gap-4 py-4">
-                        <div className="grid grid-cols-4 items-center gap-4">
-                            <Label htmlFor="name" className="text-right text-muted-foreground">Name</Label>
-                            <Input
-                                id="name"
-                                value={formData.name}
-                                onChange={e => setFormData({ ...formData, name: e.target.value })}
-                                className="col-span-3 bg-background border-border text-foreground focus:ring-primary/20"
-                                required
-                            />
-                        </div>
-                        <div className="grid grid-cols-4 items-center gap-4">
-                            <Label htmlFor="id" className="text-right text-muted-foreground">ID</Label>
-                            <Input
-                                id="id"
-                                value={formData.id}
-                                onChange={e => setFormData({ ...formData, id: e.target.value })}
-                                placeholder="Auto-generated if empty"
-                                className="col-span-3 bg-background border-border text-foreground focus:ring-primary/20"
-                                disabled={!!patient}
-                            />
-                        </div>
-                        <div className="grid grid-cols-4 items-center gap-4">
-                            <Label htmlFor="age" className="text-right text-muted-foreground">Age</Label>
-                            <Input
-                                id="age"
-                                type="number"
-                                value={formData.age}
-                                onChange={e => handleAgeChange(e.target.value)}
-                                className="col-span-3 bg-background border-border text-foreground focus:ring-primary/20"
-                                required
-                            />
-                        </div>
-                        <div className="grid grid-cols-4 items-center gap-4">
-                            <Label htmlFor="gender" className="text-right text-muted-foreground">Sex</Label>
-                            <Select
-                                value={formData.gender}
-                                onValueChange={(val) => setFormData({ ...formData, gender: val as any })}
-                            >
-                                <SelectTrigger id="gender" className="col-span-3 bg-background border-border text-foreground transition-all">
-                                    <SelectValue placeholder="Select sex" />
-                                </SelectTrigger>
-                                <SelectContent className="z-[150] rounded-xl font-['Outfit'] shadow-2xl">
-                                    <SelectItem value="M" className="font-bold cursor-pointer">Male</SelectItem>
-                                    <SelectItem value="F" className="font-bold cursor-pointer">Female</SelectItem>
-                                    <SelectItem value="O" className="font-bold cursor-pointer">Other</SelectItem>
-                                </SelectContent>
-                            </Select>
-                        </div>
-                        <div className="grid grid-cols-4 items-center gap-4">
-                            <Label htmlFor="dob" className="text-right text-muted-foreground">DOB</Label>
-                            <Input
-                                id="dob"
-                                type="date"
-                                value={formData.dob}
-                                onChange={e => handleDOBChange(e.target.value)}
-                                className="col-span-3 bg-background border-border text-foreground focus:ring-primary/20"
-                                required
-                            />
-                        </div>
-                        <div className="grid grid-cols-4 items-center gap-4">
-                            <Label htmlFor="sex_detail" className="text-right text-muted-foreground">Sex (Other)</Label>
-                            <Input
-                                id="sex_detail"
-                                value={formData.sex}
-                                onChange={e => setFormData({ ...formData, sex: e.target.value })}
-                                placeholder="Optional"
-                                className="col-span-3 bg-background border-border text-foreground focus:ring-primary/20"
-                            />
-                        </div>
-                        <div className="grid grid-cols-4 items-center gap-4">
-                            <Label htmlFor="contact" className="text-right text-muted-foreground">Contact</Label>
-                            <Input
-                                id="contact"
-                                value={formData.contact}
-                                onChange={e => setFormData({ ...formData, contact: e.target.value })}
-                                placeholder="Phone / Email"
-                                className="col-span-3 bg-background border-border text-foreground focus:ring-primary/20"
-                            />
+                    <div className="grid grid-cols-2 gap-x-3 gap-y-4 py-2">
+                        <Field label="Name" className="col-span-2">
+                            <input className={fieldCls} value={formData.name} required autoFocus
+                                onChange={(e) => setFormData({ ...formData, name: e.target.value })} />
+                        </Field>
+                        <Field label="Patient ID">
+                            <input className={fieldCls} value={formData.id} placeholder="Auto if empty" disabled={!!patient}
+                                onChange={(e) => setFormData({ ...formData, id: e.target.value })} />
+                        </Field>
+                        <Field label="Contact">
+                            <input className={fieldCls} value={formData.contact} placeholder="Phone / email"
+                                onChange={(e) => setFormData({ ...formData, contact: e.target.value })} />
+                        </Field>
+                        <Field label="Age">
+                            <input className={fieldCls} type="number" min={0} max={130} value={formData.age}
+                                onChange={(e) => handleAgeChange(e.target.value)} />
+                        </Field>
+                        <Field label="Date of birth">
+                            <input className={fieldCls} type="date" value={formData.dob}
+                                onChange={(e) => handleDOBChange(e.target.value)} />
+                        </Field>
+                        <div className="col-span-2 flex flex-col gap-1.5">
+                            <span className="text-xs font-medium text-[var(--text-2)]">Sex</span>
+                            <div className="flex gap-1 p-1 rounded-lg bg-[var(--surface-2)]">
+                                {([['M', 'Male'], ['F', 'Female'], ['O', 'Other']] as const).map(([v, label]) => (
+                                    <button key={v} type="button" onClick={() => setFormData({ ...formData, gender: v })}
+                                        className={cn('flex-1 h-7 rounded-md text-xs font-medium transition-colors',
+                                            formData.gender === v ? 'bg-[var(--surface)] text-[var(--text)] shadow-sm' : 'text-[var(--text-3)] hover:text-[var(--text-2)]')}>
+                                        {label}
+                                    </button>
+                                ))}
+                            </div>
                         </div>
                     </div>
-                    <DialogFooter>
-                        <Button type="submit" className="bg-primary hover:bg-primary/90 text-primary-foreground font-bold rounded-xl shadow-lg shadow-primary/20 transition-all active:scale-95">
-                            {patient ? 'Save Changes' : 'Create Patient'}
+                    <DialogFooter className="mt-4 gap-2">
+                        <Button type="button" variant="ghost" onClick={() => { setOpen(false); setActiveDialog(null); }}
+                            className="text-[var(--text-2)] hover:text-[var(--text)] hover:bg-[var(--surface-3)]">
+                            Cancel
+                        </Button>
+                        <Button type="submit" className="bg-[var(--accent)] hover:opacity-90 text-white font-semibold rounded-lg">
+                            {patient ? 'Save changes' : 'Create patient'}
                         </Button>
                     </DialogFooter>
                 </form>

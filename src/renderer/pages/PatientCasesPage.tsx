@@ -6,78 +6,37 @@ import {
     Calendar,
     User,
     Search,
-    Filter,
-    ImageIcon,
     Archive,
     ArchiveRestore,
     Plus,
     Share2,
-    ExternalLink,
-    FileText,
     MoreVertical,
-    Pencil,
-    Check,
     Trash2,
 } from "lucide-react";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
-import { ImportDialog } from "@/features/import-export/ImportDialog";
 import { format, parse } from "date-fns";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { useShallow } from "zustand/react/shallow";
-import { useAppStore, Study, getStudyDisplayName, STUDY_STATUSES, StudyStatus } from "@/lib/store/index";
+import { useAppStore, Study } from "@/lib/store/index";
 import { useState, useMemo, useEffect } from "react";
 import { NewPatientDialog } from "@/features/patients/NewPatientDialog";
-import {
-    Dialog,
-    DialogContent,
-    DialogDescription,
-    DialogFooter,
-    DialogHeader,
-    DialogTitle,
-} from "@/components/ui/dialog";
-import { ReportsListDialog } from "@/features/patients/ReportsListDialog";
-import { ImagingImportDialog } from "@/features/patients/ImagingImportDialog";
+import { StudyCard } from "@/components/StudyCard";
 import {
     DropdownMenu,
     DropdownMenuContent,
     DropdownMenuItem,
-    DropdownMenuLabel,
     DropdownMenuSeparator,
-    DropdownMenuSub,
-    DropdownMenuSubContent,
-    DropdownMenuSubTrigger,
     DropdownMenuTrigger,
-    DropdownMenuCheckboxItem,
 } from "@/components/ui/dropdown-menu";
-import { Label } from "@/components/ui/label";
 import { useNavigate } from "react-router-dom";
 import { cn } from "@/lib/utils";
-import { History } from "lucide-react";
 import { destroyCornerstone } from "@/lib/cornerstone/initCornerstone";
+import { isQuickAnalysisPatient } from "@/lib/studies";
 
-const isQuickAnalysisPatient = (id?: string) => (id || '').startsWith('quick-');
 
 function patientInitials(name?: string) {
     const safe = (name || 'Unknown').toString();
     return safe.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase() || 'UP';
-}
-
-function statusBadgeClass(status?: string | null) {
-    switch (status) {
-        case 'Completed':   return 'text-emerald-400 bg-emerald-400/10';
-        case 'In Progress': return 'text-[#FF453A] bg-[#FF453A]/10';
-        case 'Archived':    return 'text-[var(--text-3)] bg-[#6B7280]/10';
-        default:            return 'text-[var(--text-2)] bg-[var(--surface-3)]';
-    }
-}
-
-function statusDotClass(status?: string | null) {
-    switch (status) {
-        case 'Completed':   return 'bg-emerald-400';
-        case 'In Progress': return 'bg-[#FF453A]';
-        case 'Archived':    return 'bg-[#6B7280]';
-        default:            return 'bg-[#9CA3AF]';
-    }
 }
 
 function parseVisitDate(dateStr?: string): Date | null {
@@ -91,151 +50,6 @@ function parseVisitDate(dateStr?: string): Date | null {
     return isNaN(fallback.getTime()) ? null : fallback;
 }
 
-function StudyCard({
-    study,
-    patientId,
-    onOpenWorkspace,
-}: {
-    study: Study;
-    patientId: string;
-    onOpenWorkspace: (study: Study) => void;
-}) {
-    const updateStudy = useAppStore(s => s.updateStudy);
-    const generateShareLink = useAppStore(s => s.generateShareLink);
-    const deleteStudy = useAppStore(s => s.deleteStudy);
-    const [confirmDelete, setConfirmDelete] = useState(false);
-    const [renaming, setRenaming] = useState(false);
-    // Card reads: patient name → "Study #N · <custom name>" · date (once) → modality / status / images.
-    const patient = useAppStore(s => s.patients.find(p => p.id === patientId));
-    const studyNumber = useMemo(() => {
-        if (!patient) return 1;
-        const all = [...patient.studies, ...patient.visits.flatMap(v => v.studies || [])];
-        const unique = Array.from(new Map(all.map(x => [x.id, x])).values())
-            .sort((a, b) => (Date.parse(a.acquisitionDate) || 0) - (Date.parse(b.acquisitionDate) || 0) || a.id.localeCompare(b.id));
-        return Math.max(1, unique.findIndex(x => x.id === study.id) + 1);
-    }, [patient, study.id]);
-    // Auto-generated names ("Pre-op · 2 Oct 2026") repeat the date — only show names the user typed.
-    const customName = study.name && !/ · \d{1,2} \w{3,} \d{4}$/.test(study.name) ? study.name.trim() : '';
-    const dateLabel = (() => {
-        const d = study.acquisitionDate ? new Date(study.acquisitionDate) : null;
-        return d && !isNaN(d.getTime()) ? d.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }) : (study.acquisitionDate || '');
-    })();
-    const title = customName || getStudyDisplayName(study);
-    const [nameDraft, setNameDraft] = useState(customName);
-    const status = (study.status as StudyStatus) || 'Draft';
-    const thumb = study.scans?.[0]?.imageUrl;
-    const scanLabel = study.scans?.length
-        ? `${study.scans.length} image${study.scans.length === 1 ? '' : 's'}`
-        : study.source || '—';
-
-    const saveName = async () => {
-        const trimmed = nameDraft.trim();
-        await updateStudy(patientId, study.id, { name: trimmed || null });
-        setRenaming(false);
-    };
-
-    const setStatus = async (next: StudyStatus) => {
-        await updateStudy(patientId, study.id, { status: next });
-    };
-
-    return (
-        <div className="flex items-center gap-4 rounded-xl border border-[var(--border)] bg-[var(--surface)] p-3 hover:border-[var(--border-strong)] transition-colors" title={title}>
-            <div className="h-14 w-20 flex-shrink-0 overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--bg)]">
-                {thumb ? (
-                    <img src={thumb} alt="" className="h-full w-full object-cover" />
-                ) : (
-                    <div className="flex h-full w-full items-center justify-center text-[var(--text-3)]">
-                        <ImageIcon className="h-5 w-5" />
-                    </div>
-                )}
-            </div>
-
-            <div className="min-w-0 flex-1">
-                <div className="truncate text-sm font-semibold text-[var(--text)]">{patient?.name || 'Unnamed patient'}</div>
-                {renaming ? (
-                    <Input
-                        value={nameDraft}
-                        placeholder={`Study #${studyNumber} name`}
-                        onChange={(e) => setNameDraft(e.target.value)}
-                        onBlur={saveName}
-                        onKeyDown={(e) => e.key === 'Enter' && saveName()}
-                        autoFocus
-                        className="mt-1 h-7 bg-[var(--bg)] border-[var(--border)] text-xs text-[var(--text)]"
-                    />
-                ) : (
-                    <button
-                        className="mt-0.5 block max-w-full truncate text-left text-xs text-[var(--text-2)] hover:underline decoration-dotted underline-offset-4"
-                        title="Click to name this study"
-                        onClick={() => { setNameDraft(customName); setRenaming(true); }}
-                    >
-                        <span className="font-semibold text-[var(--text)]">Study #{studyNumber}</span>
-                        {customName ? ` · ${customName}` : ''}
-                        {dateLabel ? ` · ${dateLabel}` : ''}
-                    </button>
-                )}
-                <div className="mt-2 flex flex-wrap items-center gap-2">
-                    <span className="rounded-md bg-[var(--surface-3)] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-[var(--text-2)]">
-                        {study.modality || 'Study'}
-                    </span>
-                    <span className={cn('inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[10px] font-semibold', statusBadgeClass(status))}>
-                        <span className={cn('h-1.5 w-1.5 rounded-full', statusDotClass(status))} />
-                        {status}
-                    </span>
-                    <span className="text-[10px] text-[var(--text-3)]">{scanLabel}</span>
-                </div>
-            </div>
-
-            <div className="flex flex-shrink-0 items-center gap-1">
-                <Button
-                    variant="ghost"
-                    size="icon"
-                    title="Open in workspace"
-                    className="h-8 w-8 text-[var(--text-2)] hover:text-[var(--text)] hover:bg-[var(--surface-3)]"
-                    onClick={() => onOpenWorkspace(study)}
-                >
-                    <ExternalLink className="h-4 w-4" />
-                </Button>
-                <ReportsListDialog studyId={study.id} />
-                <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="icon" title="More" className="h-8 w-8 text-[var(--text-2)] hover:text-[var(--text)] hover:bg-[var(--surface-3)]">
-                            <MoreVertical className="h-4 w-4" />
-                        </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end" className="w-48">
-                        <DropdownMenuItem onClick={() => { setNameDraft(getStudyDisplayName(study)); setRenaming(true); }}>
-                            <Pencil className="mr-2 h-3.5 w-3.5 text-[var(--text-3)]" /> Rename
-                        </DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => generateShareLink({ patientId })}>
-                            <Share2 className="mr-2 h-3.5 w-3.5 text-[var(--text-3)]" /> Share
-                        </DropdownMenuItem>
-                        <DropdownMenuSeparator />
-                        <DropdownMenuLabel className="px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-3)]">Status</DropdownMenuLabel>
-                        {STUDY_STATUSES.map(st => (
-                            <DropdownMenuItem key={st} onClick={() => setStatus(st)}>
-                                <span className={cn('mr-2.5 h-2 w-2 rounded-full', statusDotClass(st))} />
-                                <span className="flex-1">{st}</span>
-                                {status === st && <Check className="h-3.5 w-3.5 text-[var(--accent)]" />}
-                            </DropdownMenuItem>
-                        ))}
-                        <DropdownMenuSeparator />
-                        <DropdownMenuItem onClick={() => setConfirmDelete(true)} className="text-[var(--val-bad)] focus:text-[var(--val-bad)]">
-                            <Trash2 className="mr-2 h-3.5 w-3.5" /> Delete study
-                        </DropdownMenuItem>
-                    </DropdownMenuContent>
-                </DropdownMenu>
-            </div>
-            <ConfirmDialog
-                open={confirmDelete}
-                onOpenChange={setConfirmDelete}
-                title="Delete this study?"
-                description={`"${title}" and its images, sessions and reports will be permanently deleted.`}
-                onConfirm={() => deleteStudy(patientId, study.id)}
-            />
-        </div>
-    );
-}
-
 const PatientCasesPage = () => {
     const navigate = useNavigate();
     const {
@@ -243,9 +57,7 @@ const PatientCasesPage = () => {
         activePatientId,
         setActivePatient,
         archivePatient,
-        contexts,
         addContext,
-        setActiveDialog,
         generateShareLink,
         addVisit,
         addStudy,
@@ -254,9 +66,7 @@ const PatientCasesPage = () => {
         activePatientId: s.activePatientId,
         setActivePatient: s.setActivePatient,
         archivePatient: s.archivePatient,
-        contexts: s.contexts,
         addContext: s.addContext,
-        setActiveDialog: s.setActiveDialog,
         generateShareLink: s.generateShareLink,
         addVisit: s.addVisit,
         addStudy: s.addStudy,
@@ -282,9 +92,6 @@ const PatientCasesPage = () => {
     const [patientToDelete, setPatientToDelete] = useState<{ id: string; name: string } | null>(null);
     const deletePatient = useAppStore(s => s.deletePatient);
     const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
-    const [studyActionDialogOpen, setStudyActionDialogOpen] = useState(false);
-    const [selectedStudyForAction, setSelectedStudyForAction] = useState<Study | null>(null);
-    const [timelineVisitId, setTimelineVisitId] = useState<string | undefined>(undefined);
 
     const activePatient = useMemo(
         () => patients.find(p => p.id === activePatientId),
@@ -453,7 +260,8 @@ const PatientCasesPage = () => {
         };
         await addContext(newContext);
 
-        navigate('/workspace');
+        // Straight into the workspace with the import dialog open, like Home (UI10-03)
+        navigate('/workspace?import=1');
     });
 
     const handleArchiveToggle = async (patientId: string, currentArchived: boolean) => {
@@ -465,39 +273,11 @@ const PatientCasesPage = () => {
         }
     };
 
-    const handleStudyClick = (study: Study) => {
-        setSelectedStudyForAction(study);
-        setStudyActionDialogOpen(true);
-    };
-
-    const handleContinueContext = (context: { id: string; patientId: string }) => runExclusive(async () => {
-        // Tear down the Cornerstone runtime before opening a normal workspace.
-        // This prevents stale RenderingEngine / ToolGroup / cache state from
-        // the previous DICOM session from influencing CanvasWorkspace.
-        if (useAppStore.getState().isDicomMode) {
-            destroyCornerstone();
-        }
-        await setActivePatient(context.patientId, context.id);
-        navigate('/workspace');
-    });
-
-    const handleStartNewFromStudy = (study: Study) => runExclusive(async () => {
-        // Tear down the Cornerstone runtime before opening a normal workspace.
-        if (useAppStore.getState().isDicomMode) {
-            destroyCornerstone();
-        }
-        const newContext = {
-            id: `ctx-${crypto.randomUUID()}`,
-            patientId: study.patientId,
-            visitId: study.visitId,
-            studyIds: [study.id],
-            mode: 'plan' as const,
-            name: `${getStudyDisplayName(study)} - ${format(new Date(), 'MMM dd')}`,
-            lastModified: format(new Date(), 'yyyy-MM-dd HH:mm'),
-        };
-        // Load the patient (clears any previous case) then create the session.
-        await setActivePatient(study.patientId);
-        await addContext(newContext);
+    // "Open in workspace" always continues the study's latest session; a new
+    // study is made with "Add New Study" (UI9-02).
+    const handleStudyClick = (study: Study) => runExclusive(async () => {
+        if (useAppStore.getState().isDicomMode) destroyCornerstone();
+        await useAppStore.getState().openStudy(study.patientId || activePatientId!, study.id);
         navigate('/workspace');
     });
 
@@ -703,14 +483,13 @@ const PatientCasesPage = () => {
                                         <span className="absolute -left-[41px] top-4 h-3 w-3 rounded-full border-2 border-[var(--border)] bg-[var(--bg)]" />
                                         <div className="rounded-xl border border-dashed border-[#FF453A]/30 bg-[#FF453A]/5 p-4">
                                             <div className="mb-3 flex flex-wrap items-center gap-2">
-                                                <ImportDialog presetPatientId={activePatient.id} navigateOnImport>
-                                                    <Button className="h-8 gap-2 border border-[#FF453A]/30 bg-[#FF453A]/10 text-xs font-semibold text-[#FF453A] hover:bg-[#FF453A]/20">
-                                                        <Plus className="h-4 w-4" /> Add New Study
-                                                    </Button>
-                                                </ImportDialog>
+                                                {/* Straight into the workspace with a new empty study; the image is imported there (UI7-02) */}
+                                                <Button onClick={handleAddStudy} className="h-8 gap-2 border border-[#FF453A]/30 bg-[#FF453A]/10 text-xs font-semibold text-[#FF453A] hover:bg-[#FF453A]/20">
+                                                    <Plus className="h-4 w-4" /> Add New Study
+                                                </Button>
                                             </div>
                                             <p className="text-xs text-[var(--text-3)]">
-                                                Add new studies and imaging to this patient's timeline.
+                                                Opens a new study in the workspace — import the image there.
                                             </p>
                                         </div>
                                     </div>
@@ -736,60 +515,6 @@ const PatientCasesPage = () => {
                 onConfirm={() => deletePatient(patientToDelete!.id)}
             />
 
-            {/* Session manager — existing workspace entry flow */}
-            <Dialog open={studyActionDialogOpen} onOpenChange={(o) => {
-                setStudyActionDialogOpen(o);
-                setActiveDialog(o ? 'study-manager' : null);
-            }}>
-                <DialogContent className="sm:max-w-[420px]">
-                    <DialogHeader>
-                        <DialogTitle className="flex items-center gap-3">
-                            <History className="h-5 w-5 text-[#FF453A]" />
-                            Session Manager
-                        </DialogTitle>
-                        <DialogDescription className="">
-                            Continue an existing session or start a new planning session for{' '}
-                            {selectedStudyForAction ? getStudyDisplayName(selectedStudyForAction) : 'this study'}.
-                        </DialogDescription>
-                    </DialogHeader>
-                    <div className="space-y-3 py-2">
-                        {selectedStudyForAction && contexts.filter(c => c.studyIds.includes(selectedStudyForAction.id)).length > 0 ? (
-                            contexts
-                                .filter(c => c.studyIds.includes(selectedStudyForAction.id))
-                                .map(session => (
-                                    <Button
-                                        key={session.id}
-                                        variant="outline"
-                                        className="h-auto w-full justify-between border-[var(--border)] bg-[var(--bg)] px-4 py-3 text-[var(--text)] hover:border-[#FF453A]/40"
-                                        onClick={() => handleContinueContext(session)}
-                                    >
-                                        <div className="text-left">
-                                            <div className="text-sm font-semibold">{session.name}</div>
-                                            <div className="text-[10px] text-[var(--text-3)]">{session.lastModified}</div>
-                                        </div>
-                                        <ChevronRight className="h-4 w-4" />
-                                    </Button>
-                                ))
-                        ) : (
-                            <div className="rounded-xl border border-dashed border-[var(--border)] py-6 text-center text-xs text-[var(--text-3)]">
-                                No existing sessions found.
-                            </div>
-                        )}
-                        {selectedStudyForAction && (
-                            <Button
-                                className="w-full bg-[#FF453A] hover:bg-[#FF453A]/90 text-white"
-                                onClick={() => handleStartNewFromStudy(selectedStudyForAction)}
-                            >
-                                <Plus className="mr-2 h-4 w-4" />
-                                Start New Planning Session
-                            </Button>
-                        )}
-                    </div>
-                    <DialogFooter>
-                        <Button variant="ghost" onClick={() => setStudyActionDialogOpen(false)}>Close</Button>
-                    </DialogFooter>
-                </DialogContent>
-            </Dialog>
         </div>
     );
 };

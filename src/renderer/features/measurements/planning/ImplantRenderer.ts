@@ -1,4 +1,5 @@
-import { Point } from "@/lib/canvas/CanvasManager";
+import { Point, type Implant } from "@/lib/canvas/CanvasManager";
+import { drawLabel, FAMILY_COLORS } from "@/lib/canvas/annotationStyle";
 
 /**
  * 2D implant rendering — clean white silhouettes (docs/2D_INSTRUMENTATION.md).
@@ -15,8 +16,8 @@ import { Point } from "@/lib/canvas/CanvasManager";
  */
 
 const FILL = 'rgba(255, 255, 255, 0.95)';
-/** Implant annotations (selection, handles, size labels) — distinct from the white body. */
-export const IMPLANT_ANNOTATION = '#22d3ee';
+/** Implant annotations (selection, handles, size labels) — planning family colour (UI5-07). */
+export const IMPLANT_ANNOTATION = FAMILY_COLORS.planning;
 const SELECTED = IMPLANT_ANNOTATION;
 const PREVIEW_FILL = 'rgba(255, 255, 255, 0.45)';
 
@@ -276,55 +277,108 @@ export function hitTestImplant(imp: any, pt: Point, k: number): boolean {
 
 // ── Handles ───────────────────────────────────────────────────────────────
 
+export type HandleKind = 'move' | 'tip' | 'diameter' | 'height' | 'width' | 'lordosis' | 'vertex';
+
 /**
- * Control points in world coordinates. Index semantics are relied on by the
- * canvas drag code: screw [head(move), tip(length+angle)]; cage [centre(move),
- * top(height), bottom(height), front(width+angle)]; plate [centre, ends];
- * rod = its points.
+ * Control points in world coordinates, with what each one edits (UI5-05):
+ * screw  [head move, tip = length + angle, shank side = diameter];
+ * cage   [centre move, top/bottom = height, front = length + angle,
+ *         anterior-top corner = lordosis];
+ * plate  [centre move, ends = length]; rod = its vertices.
  */
-export function getImplantHandles(implant: any): Point[] {
+export function getImplantHandleSpecs(implant: Implant): { p: Point; kind: HandleKind }[] {
     const { position: pos, angle, properties } = implant;
-    if (implant.type === 'rod') return properties?.points || [];
+    if (implant.type === 'rod') return (properties?.points || []).map((p: Point) => ({ p, kind: 'vertex' as const }));
     if (!pos || angle === undefined || !properties) return [];
 
     const rad = (angle * Math.PI) / 180;
     const cos = Math.cos(rad), sin = Math.sin(rad);
+    const at = (along: number, across: number) => ({ x: pos.x + cos * along - sin * across, y: pos.y + sin * along + cos * across });
 
     if (implant.type === 'screw') {
-        return [pos, { x: pos.x + cos * properties.length, y: pos.y + sin * properties.length }];
+        const L = properties.length, d = properties.diameter || 6;
+        return [
+            { p: pos, kind: 'move' },
+            { p: at(L, 0), kind: 'tip' },
+            { p: at(L * 0.5, -d / 2), kind: 'diameter' },
+        ];
     }
     if (implant.type === 'cage') {
         const { width, height } = properties;
+        const hAnt = height + width * Math.tan(((properties.wedgeAngle ?? 0) * Math.PI) / 180);
         return [
-            pos,
-            { x: pos.x - sin * (height / 2), y: pos.y + cos * (height / 2) },
-            { x: pos.x + sin * (height / 2), y: pos.y - cos * (height / 2) },
-            { x: pos.x + cos * (width / 2), y: pos.y + sin * (width / 2) },
+            { p: pos, kind: 'move' },
+            { p: at(0, height / 2), kind: 'height' },
+            { p: at(0, -height / 2), kind: 'height' },
+            { p: at(width / 2, 0), kind: 'width' },
+            { p: at(width / 2, -hAnt / 2), kind: 'lordosis' },
         ];
     }
     if (implant.type === 'plate') {
         const { height } = properties;
         return [
-            pos,
-            { x: pos.x - sin * (height / 2), y: pos.y + cos * (height / 2) },
-            { x: pos.x + sin * (height / 2), y: pos.y - cos * (height / 2) },
+            { p: pos, kind: 'move' },
+            { p: { x: pos.x - sin * (height / 2), y: pos.y + cos * (height / 2) }, kind: 'height' },
+            { p: { x: pos.x + sin * (height / 2), y: pos.y - cos * (height / 2) }, kind: 'height' },
         ];
     }
-    return [pos];
+    return [{ p: pos, kind: 'move' }];
 }
 
-export function drawImplantHandles(ctx: CanvasRenderingContext2D, implant: any, k: number) {
-    const handles = getImplantHandles(implant);
-    if (handles.length === 0) return;
+/** Handle positions only (index order matches getImplantHandleSpecs). */
+export function getImplantHandles(implant: Implant): Point[] {
+    return getImplantHandleSpecs(implant).map((h) => h.p);
+}
+
+export function drawImplantHandles(ctx: CanvasRenderingContext2D, implant: Implant, k: number) {
+    const specs = getImplantHandleSpecs(implant);
+    if (specs.length === 0) return;
     ctx.save();
-    handles.forEach((h, i) => {
+    ctx.lineWidth = 1.5 / k;
+    ctx.strokeStyle = 'rgba(0, 0, 0, 0.75)';
+    specs.forEach(({ p, kind }) => {
         ctx.beginPath();
-        ctx.arc(h.x, h.y, (i === 0 && implant.type !== 'rod' ? 6 : 5) / k, 0, Math.PI * 2);
-        ctx.fillStyle = i === 0 && implant.type !== 'rod' ? '#0e7490' : IMPLANT_ANNOTATION;
+        if (kind === 'diameter' || kind === 'lordosis') {
+            // Diamond = size handle across the implant
+            const r = 5.5 / k;
+            ctx.moveTo(p.x, p.y - r); ctx.lineTo(p.x + r, p.y); ctx.lineTo(p.x, p.y + r); ctx.lineTo(p.x - r, p.y); ctx.closePath();
+            ctx.fillStyle = '#ffffff';
+        } else {
+            ctx.arc(p.x, p.y, (kind === 'move' ? 6 : 5) / k, 0, Math.PI * 2);
+            ctx.fillStyle = kind === 'move' ? '#a16207' : IMPLANT_ANNOTATION;
+        }
         ctx.fill();
-        ctx.lineWidth = 1.5 / k;
-        ctx.strokeStyle = '#ffffff';
         ctx.stroke();
     });
     ctx.restore();
+}
+
+/** Live size label next to the selected implant (mm when calibrated). */
+export function drawImplantDimensions(ctx: CanvasRenderingContext2D, implant: Implant, k: number, mmPerPx: number | null) {
+    const p = implant.properties ?? {};
+    const f = (px: number) => (mmPerPx ? (px * mmPerPx).toFixed(1) : px.toFixed(0));
+    const unit = mmPerPx ? 'mm' : 'px';
+    const a = ((((implant.angle ?? 0) % 180) + 270) % 180) - 90; // −90…90 vs horizontal
+    let text = '';
+    let anchor: Point | null = null;
+    if (implant.type === 'screw' && implant.position) {
+        text = `${f(p.length)} × Ø${f(p.diameter || 6)} ${unit}
+${Math.abs(a).toFixed(1)}°`;
+        const rad = (implant.angle * Math.PI) / 180;
+        anchor = { x: implant.position.x + Math.cos(rad) * p.length * 0.5 + 18 / k, y: implant.position.y + Math.sin(rad) * p.length * 0.5 + 18 / k };
+    } else if (implant.type === 'cage' && implant.position) {
+        text = `${f(p.width)} × ${f(p.height)} ${unit}
+Lordosis ${(p.wedgeAngle ?? 0).toFixed(0)}°`;
+        anchor = { x: implant.position.x + p.width / 2 + 20 / k, y: implant.position.y };
+    } else if (implant.type === 'rod' && p.points?.length) {
+        let len = 0;
+        for (let i = 1; i < p.points.length; i++) len += Math.hypot(p.points[i].x - p.points[i - 1].x, p.points[i].y - p.points[i - 1].y);
+        text = `Rod ${f(len)} ${unit} · Ø${f(p.diameter || 6)}`;
+        const last = p.points[p.points.length - 1];
+        anchor = { x: last.x + 16 / k, y: last.y };
+    } else if (implant.type === 'plate' && implant.position) {
+        text = `Plate ${f(p.height)} ${unit}`;
+        anchor = { x: implant.position.x + 20 / k, y: implant.position.y };
+    }
+    if (text && anchor) drawLabel(ctx, text, anchor, k, IMPLANT_ANNOTATION);
 }

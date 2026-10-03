@@ -15,8 +15,10 @@ export interface CaseImageInput {
         brightness: number; contrast: number; sharpness: number; flipX: boolean;
         pixelToMm: number | null; calibrationApplied: boolean; calibrationEnabledAt: number | null;
     };
-    /** Live manager for this image (keeps osteotomy fragments); optional. */
+    /** Live manager for this image (keeps the crop); optional. */
     manager?: CanvasManager | null;
+    /** 'assessment' = preop image; 'planning' = a plan (cuts, registered measurements, implants). */
+    view?: 'assessment' | 'planning';
 }
 
 export interface RenderedImage {
@@ -51,7 +53,8 @@ export async function renderCaseImage(input: CaseImageInput): Promise<RenderedIm
     let data: CanvasData;
     const mgr = input.manager as any;
     if (mgr?.current && mgr._baseImage === input.image) {
-        data = mgr.current.data;
+        // Crop from the live canvas; content always from the input (preop or a saved plan)
+        data = { ...mgr.current.data, measurements: input.measurements, implants: input.implants };
     } else {
         const fresh = new CanvasManager();
         const state = await fresh.initialize(input.image, input.measurements);
@@ -92,6 +95,7 @@ export async function renderCaseImage(input: CaseImageInput): Promise<RenderedIm
         displayRatio: input.canvas.calibrationApplied ? input.canvas.pixelToMm : null,
         calibrationEnabledAt: input.canvas.calibrationEnabledAt,
         measurementFilter: (m) => selectedIds.has(m.id),
+        view: input.view ?? 'assessment',
     });
     ctx.restore();
 
