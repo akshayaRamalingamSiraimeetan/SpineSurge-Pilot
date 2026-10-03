@@ -1,0 +1,43 @@
+{
+  "expo": {
+    "name": "SpineSurge Measure",
+    "slug": "spinesurge-measure",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "automatic",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.inovacex.spinesurge.measure"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#E6F4FE",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": false,
+      "package": "com.inovacex.spinesurge.measure"
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-status-bar",
+      "expo-sharing",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "SpineSurge Measure needs your photos to import X-ray images for measurement.",
+          "cameraPermission": "SpineSurge Measure uses the camera to photograph X-ray films for measurement."
+        }
+      ]
+    ],
+    "scheme": "spinesurge-measure",
+    "experiments": {
+      "typedRoutes": true
+    }
+  }
+}

@@ -6,7 +6,8 @@ import tseslint from 'typescript-eslint'
 import { defineConfig, globalIgnores } from 'eslint/config'
 
 export default defineConfig([
-  globalIgnores(['dist']),
+  // "Mobile App" is an independent Expo project with its own lint config.
+  globalIgnores(['dist', 'Mobile App', 'SpineSurge-Rebuild']),
   {
     files: ['**/*.{ts,tsx}'],
     extends: [
