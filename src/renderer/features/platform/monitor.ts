@@ -167,11 +167,12 @@ export async function setBlocked(token: string | null, userId: string, blocked: 
 export type LiveStatus = 'connecting' | 'live' | 'offline';
 
 /** Live events + presence; reconnects by itself (the free host restarts/sleeps). */
-export function useLiveMonitor(token: string | null, onEvent: (e: FeedEvent) => void) {
+export function useLiveMonitor(token: string | null, onEvent: (e: FeedEvent) => void, onSupport?: (m: { userId: string; fromAdmin: boolean }) => void) {
     const [status, setStatus] = useState<LiveStatus>('connecting');
     const [online, setOnline] = useState<Presence[]>([]);
     const handler = useRef(onEvent);
-    useEffect(() => { handler.current = onEvent; });
+    const supportHandler = useRef(onSupport);
+    useEffect(() => { handler.current = onEvent; supportHandler.current = onSupport; });
 
     useEffect(() => {
         if (!token) return;
@@ -204,6 +205,7 @@ export function useLiveMonitor(token: string | null, onEvent: (e: FeedEvent) => 
                             try {
                                 const msg = JSON.parse(data);
                                 if (type === 'event') handler.current(msg);
+                                else if (type === 'support') supportHandler.current?.(msg);
                                 else if (type === 'presence') setOnline(msg.online ?? []);
                             } catch { /* ignore a bad message */ }
                         }

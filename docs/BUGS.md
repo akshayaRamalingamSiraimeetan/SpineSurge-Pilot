@@ -566,3 +566,22 @@ global theme-token fix for shadcn classes. Deferred: signed T1SPi/T9SPi/ODHA.
         (isActiveUser, 30 s cache cleared on change), dropped from "online now", sign-in says "This account has been
         blocked" (only after a correct password). Data kept; unblock restores it. Admins can't be blocked. Audit:
         PLATFORM_BLOCK_USER / PLATFORM_UNBLOCK_USER. Verified 17/17 + purge check on a fresh DB (spare port).
+
+## Pilot batch 2 (2026-10-04)
+- HELP-01 [x] Help & feedback chat: "?" (sidebar above the theme switch, and workspace header) opens a corner chat;
+        topics question/stuck/bug/like/dislike/idea; page, case and tool attached automatically. Migration 016
+        support_messages; server/routes/support.ts. Each message is emailed to PLATFORM_ADMIN_EMAILS (Brevo, one mail
+        per admin) and pushed live (SSE 'support'). Monitor → Feedback tab: counts per topic (click = filter),
+        conversations, reply box; also on each user's monitor page. Replies are emailed to the user (link opens the
+        chat: /#/dashboard?help=1). Bell = unread replies (users, opens the chat) / unread feedback (admins → Feedback).
+- AUTH-01 [x] Forgot password: /forgot-password → emailed 6-digit code (10 min, max 5/hour, generic answer so it
+        never reveals accounts) → new password. Lockout shared with email verification; code single-use; older
+        sessions rejected via users.password_changed_at (authenticate). Rate limit covers both routes.
+- UI13-01 [x] App opens in light mode for new visitors (ThemeProvider default); a chosen theme is remembered.
+- CAL-01 [x] Calibration kept: (a) calibrating an untitled image before the study existed was dropped by the first
+        save (addContext wrote toolState without it) — now saved; (b) a session without its own calibration reuses
+        the calibration of the same image from another session or Compare Image B (caseState.calibrationFor, tests).
+- CMP-01 [x] Compare: Image A has no import/existing-study button any more (always the case image; version dropdown
+        only). Image B: existing study or import, plus a version dropdown (No plan / Plan N / working plan) for an
+        image from a study; switching warns before replacing measurements added on B.
+        Verified: 26/26 API checks (chat + reset) on a fresh DB, 123 unit tests, build. Not checked on screen.

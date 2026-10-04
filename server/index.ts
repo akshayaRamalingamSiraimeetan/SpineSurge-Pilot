@@ -20,6 +20,7 @@ import { guardUploads } from './media';
 import { persistUpload, removeStored, serveStored } from './storage';
 import { platformRouter } from './routes/platform';
 import * as activity from './activity';
+import { supportRouter } from './routes/support';
 import { type Access, adminOrgIds, canWrite, contextAccess, contextsAccess, isActiveUser, isPlatformAdmin, patientAccess, studyAccess } from './access';
 import jwt from 'jsonwebtoken';
 
@@ -1026,6 +1027,7 @@ app.post('/api/pacs/import', async (req, res) => {
 });
 
 app.use('/api/platform', platformRouter); // live usage monitor (DEPLOY-06, MON-01)
+app.use('/api/support', supportRouter);    // help & feedback chat (HELP-01)
 
 // UI actions reported by the client (tool picked, page opened, report preview…)
 // and the presence heartbeat — both feed the live monitor (MON-01).
@@ -1133,7 +1135,7 @@ app.get('/api/share-candidates', async (req, res) => {
 // Public sign-in/sign-up: at most 20 attempts per IP per 15 minutes (SRV-18 / DEPLOY-02)
 const authHits = new Map<string, { n: number; reset: number }>();
 app.use('/auth', (req, res, next) => {
-    if (req.method !== 'POST' || !/^\/(login|register|verify-email|resend-verification)$/.test(req.path)) return next();
+    if (req.method !== 'POST' || !/^\/(login|register|verify-email|resend-verification|forgot-password|reset-password)$/.test(req.path)) return next();
     const now = Date.now();
     const key = `${req.ip}:${req.path}`;
     const hit = authHits.get(key);

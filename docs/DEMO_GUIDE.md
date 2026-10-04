@@ -39,6 +39,11 @@ colours → **Preview PDF** / **Export PDF**.
 During the pilot the SpineSurge team can see how the app is used (tools, uploaded images, plans, comparisons,
 reports) and can open studies read-only, to improve the product. See USER_MANUAL.md §13.
 
+## Help, feedback and passwords
+- **? button** (sidebar / workspace top bar): chat with the SpineSurge team — questions, where you got stuck, what
+  you like or don't. Replies appear there and by email; the bell shows new replies.
+- **Forgot your password?** on the sign-in page emails a 6-digit code to set a new one.
+
 ## Feedback
 Please note what you tried, what you expected and what happened (screenshots help) and send it to the
 SpineSurge team.

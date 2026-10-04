@@ -44,7 +44,7 @@ export async function authenticate(
   const token = authHeader.slice(7); // remove "Bearer "
 
   // 2. Verify JWT
-  let payload: { id: string; orgId: string | null; email: string; role: string };
+  let payload: { id: string; orgId: string | null; email: string; role: string; iat?: number };
   try {
     payload = jwt.verify(token, process.env.JWT_SECRET!) as typeof payload;
   } catch {
@@ -60,6 +60,11 @@ export async function authenticate(
     .limit(1);
 
   if (!user || !user.isActive) {
+    res.status(401).json({ error: 'Unauthorized' });
+    return;
+  }
+  // Signed in before the password was reset → sign in again (AUTH-01)
+  if (user.passwordChangedAt && (payload.iat ?? 0) < Math.floor(user.passwordChangedAt.getTime() / 1000)) {
     res.status(401).json({ error: 'Unauthorized' });
     return;
   }

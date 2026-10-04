@@ -6,6 +6,7 @@ import WorkspaceSwitcher from './WorkspaceSwitcher';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import { resolveAssetUrl } from '@/lib/api';
 import { SettingsDialog } from '@/components/SettingsDialog';
+import { HelpButton, NotificationBell } from '@/features/support/HelpChat';
 
 // Only routes that exist (Studies/Resources/Settings had no pages — BUGS NAV-14).
 const NAV_ITEMS = [
@@ -82,8 +83,10 @@ const DashboardSidebar = ({ collapsible = false }: DashboardSidebarProps) => {
             ))}
           </nav>
 
-          {/* Light / dark mode */}
-          <ThemeToggle className="mt-auto mb-2" />
+          {/* Notifications · help & feedback · light/dark mode (HELP-01) */}
+          <NotificationBell className="mt-auto mb-2" />
+          <HelpButton className="mb-2" />
+          <ThemeToggle className="mb-2" />
 
           {/* Settings — above the profile */}
           <div className="group relative mb-2">

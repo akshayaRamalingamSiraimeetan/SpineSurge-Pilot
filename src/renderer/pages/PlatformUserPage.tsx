@@ -9,6 +9,7 @@ import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { type FeedEvent, getJson, pageName, resultText, setBlocked, timeAgo, toolName, useLiveMonitor } from '@/features/platform/monitor';
 import { EventRow, LiveBadge } from '@/features/platform/MonitorParts';
+import { ConversationThread } from '@/features/platform/FeedbackPanel';
 
 /**
  * Platform monitor — one user (MON-01). Route: /platform/users/:userId
@@ -63,6 +64,7 @@ const PlatformUserPage = () => {
     const [zoom, setZoom] = useState<{ url: string; label: string } | null>(null);
     const [opening, setOpening] = useState<string | null>(null);
     const [confirmBlock, setConfirmBlock] = useState(false);
+    const [feedbackKey, setFeedbackKey] = useState(0);
 
     const load = useCallback(async () => {
         if (!userId) return;
@@ -84,7 +86,7 @@ const PlatformUserPage = () => {
     const { status, online } = useLiveMonitor(isAdmin ? token : null, (e) => {
         if (e.userId !== userId || e.kind === 'auth.PLATFORM_VIEW_USER') return;
         setEvents((f) => [e, ...f.filter((x) => x.id !== e.id)].slice(0, 500));
-    });
+    }, (m) => { if (m.userId === userId) setFeedbackKey((k) => k + 1); });
     const me = online.find((o) => o.userId === userId) ?? null;
 
     /** Open the study in the workspace, view-only (server grants platform admins view access). */
@@ -281,6 +283,10 @@ const PlatformUserPage = () => {
                         </div>
 
                         <div className="space-y-4">
+                            <div className={card}>
+                                <div className="border-b border-[var(--border)] px-4 py-3"><span className={heading}>Help & feedback</span></div>
+                                <ConversationThread token={token} userId={userId!} refreshKey={feedbackKey} className="h-[380px]" />
+                            </div>
                             <div className={card}>
                                 <div className="flex items-center justify-between border-b border-[var(--border)] px-4 py-3">
                                     <span className={heading}>Timeline</span>

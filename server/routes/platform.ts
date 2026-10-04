@@ -4,6 +4,8 @@ import { db } from '../db';
 import { forgetUser, isPlatformAdmin, platformAdminEmails } from '../access';
 import * as activity from '../activity';
 import * as auditLogger from '../services/auditLogger';
+import { sendEmail } from '../services/email';
+import { MESSAGE_COLUMNS, type SupportMessage, appUrl } from './support';
 
 /**
  * Platform owner's live monitor (DEPLOY-06, MON-01). PLATFORM_ADMIN_EMAILS
@@ -272,6 +274,90 @@ platformRouter.post('/users/:id/block', async (req, res) => {
     }
 });
 
+// ── Help & feedback conversations (HELP-01) ────────────────────────────────
+platformRouter.get('/support', async (_req, res) => {
+    try {
+        const list = await rows(sql`
+            select m.user_id as "userId", coalesce(u.full_name, u.email) as who, u.email, u.is_active as active,
+                   count(*)::int as messages,
+                   count(*) filter (where not m.from_admin and m.read_at is null)::int as unread,
+                   max(m.created_at) as "lastAt",
+                   (array_agg(m.body order by m.created_at desc))[1] as "lastBody",
+                   (array_agg(m.from_admin order by m.created_at desc))[1] as "lastFromAdmin",
+                   (select coalesce(jsonb_object_agg(kind, n), '{}'::jsonb) from (
+                       select kind, count(*)::int as n from support_messages x
+                        where x.user_id = m.user_id and not x.from_admin and kind is not null group by kind) k) as kinds
+              from support_messages m
+              join users u on u.id = m.user_id
+             group by m.user_id, u.full_name, u.email, u.is_active
+             order by max(m.created_at) desc`);
+        const [t] = await rows<Record<string, number>>(sql`
+            select count(*) filter (where not from_admin and read_at is null)::int as unread,
+                   count(*) filter (where not from_admin)::int as received,
+                   count(*) filter (where not from_admin and kind = 'stuck')::int as stuck,
+                   count(*) filter (where not from_admin and kind = 'bug')::int as bug,
+                   count(*) filter (where not from_admin and kind = 'like')::int as "like",
+                   count(*) filter (where not from_admin and kind = 'dislike')::int as dislike,
+                   count(*) filter (where not from_admin and kind = 'idea')::int as idea,
+                   count(*) filter (where not from_admin and kind = 'question')::int as question
+              from support_messages`);
+        res.json({ conversations: list, totals: t });
+    } catch (e) {
+        console.error('[platform/support]', e);
+        res.status(500).json({ error: 'Failed to load feedback' });
+    }
+});
+
+platformRouter.get('/support/unread', async (_req, res) => {
+    try {
+        const [r] = await rows<{ n: number }>(sql`select count(*)::int as n from support_messages where not from_admin and read_at is null`);
+        res.json({ unread: r?.n ?? 0 });
+    } catch {
+        res.json({ unread: 0 });
+    }
+});
+
+platformRouter.get('/support/:userId', async (req, res) => {
+    try {
+        const messages = await rows<SupportMessage>(sql`select ${MESSAGE_COLUMNS} from support_messages where user_id = ${req.params.userId} order by created_at`);
+        await db.execute(sql`update support_messages set read_at = now() where user_id = ${req.params.userId} and not from_admin and read_at is null`);
+        res.json(messages);
+    } catch (e) {
+        console.error('[platform/support/thread]', e);
+        res.status(500).json({ error: 'Failed to load the conversation' });
+    }
+});
+
+platformRouter.post('/support/:userId', async (req, res) => {
+    const body = String(req.body?.body ?? '').trim().slice(0, 4000);
+    if (!body) { res.status(400).json({ error: 'Write a reply first' }); return; }
+    try {
+        const [u] = await rows<{ id: string; email: string; fullName: string | null }>(sql`select id, email, full_name as "fullName" from users where id = ${req.params.userId}`);
+        if (!u) { res.status(404).json({ error: 'User not found' }); return; }
+        const [msg] = await rows<SupportMessage>(sql`
+            insert into support_messages (user_id, from_admin, author_id, body)
+            values (${u.id}, true, ${req.user!.id}, ${body}) returning ${MESSAGE_COLUMNS}`);
+        res.json(msg);
+        activity.pushSupport({ ...msg, who: 'SpineSurge team' });
+        // The user may not be online: tell them by email too
+        const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]!));
+        const link = `${appUrl(req)}/#/dashboard?help=1`;
+        await sendEmail({
+            to: u.email,
+            subject: 'The SpineSurge team replied to your message',
+            text: `Hi ${u.fullName || ''},\n\nThe SpineSurge team replied:\n\n${body}\n\nOpen SpineSurge and click the ? (Help) button to continue the conversation: ${link}`,
+            html: `<div style="font-family:system-ui,sans-serif;max-width:560px">
+                <p>Hi ${esc(u.fullName || '')},</p><p>The SpineSurge team replied:</p>
+                <p style="white-space:pre-wrap;background:#f4f4f5;border-radius:8px;padding:12px">${esc(body)}</p>
+                <p><a href="${link}">Open SpineSurge</a> and click the <b>?</b> (Help) button to continue the conversation.</p>
+            </div>`,
+        });
+    } catch (e) {
+        console.error('[platform/support/reply]', e);
+        if (!res.headersSent) res.status(500).json({ error: 'Failed to send the reply' });
+    }
+});
+
 // ── Uploaded images, newest first (all users) ───────────────────────────────
 platformRouter.get('/uploads', async (_req, res) => {
     try {
@@ -324,7 +410,8 @@ platformRouter.get('/stream', (req, res) => {
     });
     const send = (type: string, data: unknown) => res.write(`event: ${type}\ndata: ${JSON.stringify(data)}\n\n`);
     send('presence', { online: activity.onlineNow() });
-    const off = activity.subscribe((m) => (m.type === 'event' ? send('event', m.event) : send('presence', { online: m.online })));
+    const off = activity.subscribe((m) => (m.type === 'event' ? send('event', m.event)
+        : m.type === 'support' ? send('support', m.message) : send('presence', { online: m.online })));
     const ping = setInterval(() => res.write(': ping\n\n'), 20_000); // keeps hosting proxies from closing it
     req.on('close', () => { clearInterval(ping); off(); });
 });

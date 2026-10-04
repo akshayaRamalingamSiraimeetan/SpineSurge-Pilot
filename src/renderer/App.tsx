@@ -20,7 +20,9 @@ import OrgMembersPage from "@/pages/OrgMembersPage"
 import MemberWorkspacePage from "@/pages/MemberWorkspacePage"
 import PlatformStatsPage from "@/pages/PlatformStatsPage"
 import PlatformUserPage from "@/pages/PlatformUserPage"
+import ForgotPasswordPage from "@/pages/ForgotPasswordPage"
 import { startActivityTracking, trackPage } from "@/lib/activity"
+import { HelpChat } from "@/features/support/HelpChat"
 import { RouteErrorBoundary } from "@/components/RouteErrorBoundary"
 import { RequireAuth, RequireVerified, RequireProfile, RedirectIfComplete } from "@/components/guards"
 
@@ -51,10 +53,11 @@ const App = () => {
   }, []);
 
   return (
-    <ThemeProvider defaultTheme="dark" storageKey="vite-ui-theme">
+    <ThemeProvider defaultTheme="light" storageKey="vite-ui-theme">
       <Router>
         <RouteErrorBoundary routeName="app">
         <ActivityTracker />
+        <HelpChat />
         <Routes>
           {/* ── Public routes — redirect fully-onboarded users away ── */}
           <Route path="/login" element={
@@ -69,6 +72,14 @@ const App = () => {
             <RedirectIfComplete>
               <RouteErrorBoundary routeName="/register">
                 <RegisterPage />
+              </RouteErrorBoundary>
+            </RedirectIfComplete>
+          } />
+
+          <Route path="/forgot-password" element={
+            <RedirectIfComplete>
+              <RouteErrorBoundary routeName="/forgot-password">
+                <ForgotPasswordPage />
               </RouteErrorBoundary>
             </RedirectIfComplete>
           } />

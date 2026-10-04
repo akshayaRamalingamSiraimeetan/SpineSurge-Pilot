@@ -37,6 +37,31 @@ export interface StoredCalibration {
     calibrationEnabledAt: number | null;
 }
 
+/** Same picture? Stored and live URLs differ in host, so compare the uploaded file name. */
+const sameImage = (a?: string | null, b?: string | null) => {
+    if (!a || !b) return false;
+    const file = (u: string) => u.match(/\/uploads\/([^/?#]+)/)?.[1] ?? u;
+    return file(a) === file(b);
+};
+
+/**
+ * Calibration of a session: its own, else the calibration already made for the
+ * SAME image in another session of this patient (or when that image was used as
+ * Compare Image B) — an image is calibrated once, not once per session (CAL-01).
+ */
+export function calibrationFor(state: Pick<AppState, 'contextStates'>, ctx: ContextState): StoredCalibration | undefined {
+    const own: StoredCalibration | undefined = ctx.toolState?.calibration;
+    if (own?.calibrationApplied || !ctx.currentImage) return own;
+    for (const other of state.contextStates) {
+        if (other.contextId === ctx.contextId) continue;
+        const cal: StoredCalibration | undefined = other.toolState?.calibration;
+        if (cal?.calibrationApplied && cal.pixelToMm && sameImage(other.currentImage, ctx.currentImage)) return cal;
+        const b = other.toolState?.comparisonB;
+        if (b?.calibration?.calibrationApplied && b.calibration.pixelToMm && sameImage(b.image, ctx.currentImage)) return b.calibration;
+    }
+    return own;
+}
+
 /** Fields that must be cleared whenever the loaded case changes. */
 export function emptyCaseState(state: AppState): Partial<AppState> {
     return {
@@ -89,7 +114,7 @@ function comparisonFromContext(ctx: ContextState) {
 
 /** Full per-case state for a loaded context (every field set, never inherited). */
 export function caseStateFromContext(state: AppState, ctx: ContextState): Partial<AppState> {
-    const cal: StoredCalibration | undefined = ctx.toolState?.calibration;
+    const cal = calibrationFor(state, ctx);
     return {
         ...emptyCaseState(state),
         currentImage: ctx.currentImage ?? null,

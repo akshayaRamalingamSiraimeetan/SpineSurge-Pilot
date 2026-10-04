@@ -192,6 +192,8 @@ export const users = pgTable('users', {
   designation:      text('designation'),
   country:          text('country'),
   avatarUrl:        text('avatar_url'),
+  // Set by "Forgot your password?" (migration 016): older sessions stop working
+  passwordChangedAt: timestamp('password_changed_at', { withTimezone: true }),
 });
 
 export const auditLog = pgTable('audit_log', {

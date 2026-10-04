@@ -9,6 +9,8 @@ import {
     CATEGORIES, type FeedEvent, getJson, inCategory, pageName, setBlocked, timeAgo, toolName, useLiveMonitor,
 } from '@/features/platform/monitor';
 import { EventRow, LiveBadge } from '@/features/platform/MonitorParts';
+import { FeedbackPanel } from '@/features/platform/FeedbackPanel';
+import { useSupport } from '@/features/support/supportStore';
 
 /**
  * Platform owner's live monitor (DEPLOY-06, MON-01). Route: /platform
@@ -45,8 +47,8 @@ const TILES: [string, string][] = [
     ['images', 'X-ray images'], ['series', 'CT/MR studies'], ['measurements', 'Measurements'], ['plans', 'Saved plans'],
     ['comparisons', 'Comparisons'], ['reports', 'Reports'], ['shares', 'Shares'], ['eventsToday', 'Actions today'],
 ];
-type Tab = 'overview' | 'users' | 'tools' | 'images' | 'reports';
-const TABS: [Tab, string][] = [['overview', 'Live overview'], ['users', 'Users'], ['tools', 'Tools'], ['images', 'Images'], ['reports', 'Reports']];
+type Tab = 'overview' | 'feedback' | 'users' | 'tools' | 'images' | 'reports';
+const TABS: [Tab, string][] = [['overview', 'Live overview'], ['feedback', 'Feedback'], ['users', 'Users'], ['tools', 'Tools'], ['images', 'Images'], ['reports', 'Reports']];
 
 const card = 'rounded-xl border border-[var(--border)] bg-[var(--surface)]';
 const heading = 'text-xs font-semibold uppercase tracking-wide text-[var(--text-2)]';
@@ -91,6 +93,8 @@ const PlatformStatsPage = () => {
     const [, setTick] = useState(0);
     const [moreBusy, setMoreBusy] = useState(false);
     const [blockTarget, setBlockTarget] = useState<UserRow | null>(null);
+    const [feedbackKey, setFeedbackKey] = useState(0);
+    const unreadFeedback = useSupport((s) => s.unread);
 
     const openUser = useCallback((id: string) => navigate(`/platform/users/${id}`), [navigate]);
     const fail = useCallback((e: unknown) => {
@@ -126,6 +130,10 @@ const PlatformStatsPage = () => {
         if (e.kind.includes('upload')) setUploads(null);
         if (e.kind === 'report.export') setReports(null);
         statsDirty.current = true;
+    }, () => {
+        // a help & feedback message (either side) → refresh the Feedback tab and the bell
+        setFeedbackKey((k) => k + 1);
+        void useSupport.getState().refreshUnread();
     });
     useEffect(() => {
         const t = setInterval(() => {
@@ -160,6 +168,7 @@ const PlatformStatsPage = () => {
     if (!isAdmin) return <div className="py-20 text-center text-sm text-[var(--text-3)]">Platform admins only.</div>;
 
     const setTab = (t: Tab) => setParams(t === 'overview' ? {} : { view: t }, { replace: true });
+    const feedbackUser = params.get('user');
 
     return (
         <div className="mx-auto max-w-7xl space-y-5">
@@ -208,9 +217,17 @@ const PlatformStatsPage = () => {
                     <button key={k} onClick={() => setTab(k)}
                         className={`-mb-px border-b-2 px-4 py-2 text-sm font-medium transition-colors ${tab === k ? 'border-[var(--accent)] text-[var(--accent)]' : 'border-transparent text-[var(--text-3)] hover:text-[var(--text)]'}`}>
                         {label}
+                        {k === 'feedback' && unreadFeedback > 0 && (
+                            <span className="ml-1.5 rounded-full bg-[#FF453A] px-1.5 py-0.5 text-[10px] font-bold text-white">{unreadFeedback}</span>
+                        )}
                     </button>
                 ))}
             </div>
+
+            {tab === 'feedback' && (
+                <FeedbackPanel token={token} refreshKey={feedbackKey} selected={feedbackUser} onOpenUser={openUser}
+                    onSelect={(id) => setParams({ view: 'feedback', user: id }, { replace: true })} />
+            )}
 
             {tab === 'overview' && (
                 <div className="grid gap-4 lg:grid-cols-3">

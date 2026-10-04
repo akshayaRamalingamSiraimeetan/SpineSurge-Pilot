@@ -317,8 +317,48 @@ const ComparePage = () => {
     // A saved plan that was deleted falls back to No plan
     const planAName          = versionsA.find((v) => v.planId === planA)?.name ?? "No plan";
     const keyB               = selectionKey(sourceB?.studyId, imageB, sourceB?.planId ?? null);
+    const keyA               = selectionKey(activeStudyId, currentImage, planA);
     const [confirmReplace, setConfirmReplace] = useState(false);
     const [pickerSide, setPickerSide] = useState<"left" | "right" | null>(null);
+
+    // Image B's session (the study it came from) → its versions: No plan, Plan 1, 2… (CMP-01).
+    // In the store when it's this patient; otherwise fetched once.
+    const localSourceB = useAppStore((s) => (sourceB?.contextId ? s.contextStates.find((c) => c.contextId === sourceB.contextId) ?? null : null));
+    const [fetchedSourceB, setFetchedSourceB] = useState<{ id: string; state: ContextState | null } | null>(null);
+    useEffect(() => {
+        const id = sourceB?.contextId;
+        if (!id || localSourceB || fetchedSourceB?.id === id) return;
+        let alive = true;
+        const st = useAppStore.getState();
+        api.getContexts(sourceB.patientId, st.token)
+            .then((raw) => mapContexts(raw).contextStates.find((c) => c.contextId === id) ?? null)
+            .catch(() => null)
+            .then((state) => { if (alive) setFetchedSourceB({ id, state }); });
+        return () => { alive = false; };
+    }, [sourceB?.contextId, sourceB?.patientId, localSourceB, fetchedSourceB?.id]);
+    const sessionB = localSourceB ?? (fetchedSourceB && fetchedSourceB.id === sourceB?.contextId ? fetchedSourceB.state : null);
+    const versionsB = useMemo(() => (sourceB ? versionsOf(sessionB) : []), [sourceB, sessionB]);
+
+    /** Show another version of Image B's study image (a fresh copy of that version's measurements). */
+    const switchVersionB = (planId: string | null) => {
+        if (!sourceB || !imageB) return;
+        const v = versionsB.find((x) => x.planId === planId);
+        if (!v) return;
+        if (selectionKey(sourceB.studyId, imageB, planId) === keyA) {
+            alert("Image A already shows this version — choose another one.");
+            return;
+        }
+        const st = useAppStore.getState();
+        const current = snapshotFor(sessionB, sourceB.planId ?? null);
+        if (st.comparison.right.measurements.length > current.measurements.length
+            && !window.confirm("Measurements you added on Image B will be replaced by this version's measurements. Continue?")) return;
+        st.setComparisonB({
+            image: imageB,
+            ...snapshotFor(sessionB, planId),
+            calibration: sessionB?.toolState?.calibration,
+            source: { ...sourceB, planId, label: sourceB.label.replace(/ · [^·]*$/, "") + ` · ${v.name}` },
+        });
+    };
 
     // Deep link (?patientId=&contextId=): load the case, then strip the params.
     useEffect(() => {
@@ -379,7 +419,6 @@ const ComparePage = () => {
         <div className="flex h-full bg-background relative p-2">
             <div className="flex-1 min-w-0 flex flex-col relative rounded-xl overflow-hidden border border-[var(--border)]">
                 {paneLabel("Image A", currentImage ? planAName : "case image")}
-                {importButton("left", currentImage ? "Change Image A" : "Load the case image")}
                 {currentImage && versionsA.length > 1 && (
                     // Quick version switch for the case image (UI12-02)
                     <select
@@ -393,7 +432,7 @@ const ComparePage = () => {
                             }
                             useAppStore.getState().setComparisonPlanA(v);
                         }}
-                        className="absolute top-2 right-12 z-20 h-8 rounded-lg bg-black/60 hover:bg-black/80 text-white/90 text-[11px] font-semibold px-2 backdrop-blur-sm border-0 outline-none cursor-pointer"
+                        className="absolute top-2 right-2 z-20 h-8 rounded-lg bg-black/60 hover:bg-black/80 text-white/90 text-[11px] font-semibold px-2 backdrop-blur-sm border-0 outline-none cursor-pointer"
                     >
                         {versionsA.map((v) => (
                             <option key={v.planId ?? "none"} value={v.planId ?? ""} className="text-black">{v.name}</option>
@@ -403,7 +442,7 @@ const ComparePage = () => {
                 {currentImage ? (
                     <CanvasWorkspace side="left" />
                 ) : (
-                    emptyHint("No case image yet — use the import button in the top-right corner.")
+                    emptyHint("No case image yet — import the image in Assessment first. Image A is always the case image.")
                 )}
             </div>
 
@@ -415,12 +454,24 @@ const ComparePage = () => {
             <div className="flex-1 min-w-0 flex flex-col relative rounded-xl overflow-hidden border border-[var(--border)]">
                 {paneLabel("Image B", imageB ? (sourceB?.label ?? "imported image") : "choose an image")}
                 {importButton("right", imageB ? "Replace Image B" : "Load Image B")}
+                {imageB && sourceB && versionsB.length > 1 && (
+                    // Version of Image B's study image: No plan, a saved plan or the working plan (CMP-01)
+                    <select
+                        value={sourceB.planId ?? ""}
+                        title="Version of Image B"
+                        onChange={(e) => switchVersionB(e.target.value || null)}
+                        className="absolute top-2 right-12 z-20 h-8 rounded-lg bg-black/60 hover:bg-black/80 text-white/90 text-[11px] font-semibold px-2 backdrop-blur-sm border-0 outline-none cursor-pointer"
+                    >
+                        {versionsB.map((v) => (
+                            <option key={v.planId ?? "none"} value={v.planId ?? ""} className="text-black">{v.name}</option>
+                        ))}
+                    </select>
+                )}
                 <CanvasWorkspace side="right" />
                 {!imageB && emptyHint("Load an image to compare — use the import button in the top-right corner.")}
             </div>
 
             {/* Keyed by open state: every opening starts at the first step */}
-            <PickerDialog key={`a-${pickerSide === "left"}`} side="left" label="Image A" open={pickerSide === "left"} onOpenChange={(o) => setPickerSide(o ? "left" : null)} />
             <PickerDialog key={`b-${pickerSide === "right"}`} side="right" label="Image B" open={pickerSide === "right"} onOpenChange={(o) => setPickerSide(o ? "right" : null)} />
 
             <Dialog open={confirmReplace} onOpenChange={setConfirmReplace}>

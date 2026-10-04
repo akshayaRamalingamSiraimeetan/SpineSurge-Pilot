@@ -467,13 +467,21 @@ export const createPatientSlice: StateCreator<AppState, [], [], PatientSlice> = 
             set({ pendingImageFile: null });
         }
 
+        // A calibration made before the study existed belongs to this image too (CAL-01)
+        const { pixelToMm, calibrationApplied, calibrationEnabledAt } = state.canvas;
+        const toolState = {
+            threeDImplants,
+            pedicleSimulations,
+            ...(isFirstContextFromUntitled && calibrationApplied && pixelToMm ? { calibration: { pixelToMm, calibrationApplied, calibrationEnabledAt } } : {}),
+        };
+
         const payload = {
             ...context,
             state: {
                 measurements,
                 implants,
                 annotations: [],
-                toolState: { threeDImplants, pedicleSimulations },
+                toolState,
                 threeDImplants,
                 pedicleSimulations,
                 currentImage: persistedImage ?? null,
@@ -489,7 +497,7 @@ export const createPatientSlice: StateCreator<AppState, [], [], PatientSlice> = 
                 threeDImplants,
                 pedicleSimulations,
                 annotations:        [],
-                toolState:          { threeDImplants, pedicleSimulations },
+                toolState,
                 reportConfig:       undefined,
                 currentImage:       persistedImage,
             };

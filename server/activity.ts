@@ -32,7 +32,7 @@ export interface Presence {
     lastSeen: number;
 }
 
-type Message = { type: 'event'; event: FeedEvent } | { type: 'presence'; online: Presence[] };
+type Message = { type: 'event'; event: FeedEvent } | { type: 'presence'; online: Presence[] } | { type: 'support'; message: Record<string, unknown> };
 const listeners = new Set<(m: Message) => void>();
 
 export function subscribe(fn: (m: Message) => void) {
@@ -89,6 +89,9 @@ async function amend(id: string, userId: string | null, kind: string, refs: Refs
         console.error('[activity amend]', e);
     }
 }
+
+/** A help & feedback message (HELP-01) — to the Monitor's Feedback tab, live. */
+export const pushSupport = (message: Record<string, unknown>) => broadcast({ type: 'support', message });
 
 /** Audit rows (sign-in, sign-up, organization…) are already stored — only push them. */
 export async function pushAudit(id: string, action: string, userId: string | null, metadata: Record<string, unknown> | null) {

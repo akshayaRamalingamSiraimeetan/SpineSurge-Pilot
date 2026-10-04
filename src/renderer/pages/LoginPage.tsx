@@ -19,7 +19,7 @@ const LoginPage = () => {
     const loginWithCredentials = useAppStore((state) => state.loginWithCredentials);
     const navigate = useNavigate();
     const location = useLocation();
-    const navState = location.state as { email?: string; registered?: boolean } | null;
+    const navState = location.state as { email?: string; registered?: boolean; passwordReset?: boolean } | null;
     // Hosted demo: the build can pre-fill a shared demo login (VITE_DEMO_*).
     const [email, setEmail] = useState(navState?.email ?? import.meta.env.VITE_DEMO_EMAIL ?? "");
     const [password, setPassword] = useState(navState?.email ? "" : (import.meta.env.VITE_DEMO_PASSWORD ?? ""));
@@ -96,6 +96,9 @@ const LoginPage = () => {
                         {navState?.registered && !errorMessage && (
                             <div className="text-sm text-[var(--val-good)]">Account created — sign in to continue.</div>
                         )}
+                        {navState?.passwordReset && !errorMessage && (
+                            <div className="text-sm text-[var(--val-good)]">Password changed — sign in with your new password.</div>
+                        )}
 
                         {/* Error message */}
                         {errorMessage && (
@@ -147,10 +150,9 @@ const LoginPage = () => {
                 </form>
             </Card>
             <div className="flex flex-col items-center gap-2 text-sm text-[var(--text-2)]">
-                <button type="button" onClick={() => alert('Password reset is coming soon — please contact your administrator.')}
-                    className="underline hover:text-[#FF453A] transition-colors">
+                <Link to="/forgot-password" state={{ email }} className="underline hover:text-[#FF453A] transition-colors">
                     Forgot your password?
-                </button>
+                </Link>
                 <span>
                     Don't have an account?{" "}
                     <Link to="/register" className="text-[var(--text)] underline hover:text-[#FF453A] transition-colors">

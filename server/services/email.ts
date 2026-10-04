@@ -87,6 +87,20 @@ export async function sendEmail(options: SendEmailOptions): Promise<boolean> {
   }
 }
 
+/** "Forgot your password?" code (AUTH-01). */
+export function resetEmail(code: string): Pick<SendEmailOptions, 'subject' | 'text' | 'html'> {
+  return {
+    subject: `${code} is your SpineSurge password reset code`,
+    text: `Your SpineSurge password reset code is ${code}. It expires in 10 minutes.\n\nIf you didn't ask to reset your password, ignore this email — your password stays the same.`,
+    html: `<div style="font-family:system-ui,sans-serif;max-width:420px">
+      <h2 style="margin:0 0 12px">Reset your SpineSurge password</h2>
+      <p>Your reset code:</p>
+      <p style="font-size:28px;font-weight:700;letter-spacing:6px;margin:8px 0 16px">${code}</p>
+      <p style="color:#666;font-size:13px">It expires in 10 minutes. If you didn't ask to reset your password, ignore this email — your password stays the same.</p>
+    </div>`,
+  };
+}
+
 /** The sign-up / resend code email. */
 export function codeEmail(code: string): Pick<SendEmailOptions, 'subject' | 'text' | 'html'> {
   return {

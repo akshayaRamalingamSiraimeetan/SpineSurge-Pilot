@@ -16,7 +16,7 @@ import { generateOtp, hashOtp, verifyOtp } from '../services/otpService';
 /** Emails are case-insensitive: stored lower-case, matched with lower() (BUGS SRV-16). */
 const normEmail = (e: unknown) => (typeof e === 'string' ? e.trim().toLowerCase() : e);
 const emailEq = (e: string) => sql`lower(${users.email}) = ${e}`;
-import { codeEmail, emailEnabled, sendEmail } from '../services/email';
+import { codeEmail, emailEnabled, resetEmail, sendEmail } from '../services/email';
 import { clearMediaCookie, refreshMediaCookie } from '../media';
 import { persistUpload } from '../storage';
 import { isPlatformAdmin } from './platform';
@@ -462,6 +462,83 @@ authRouter.post('/resend-verification', async (req, res) => {
     res.status(200).json(GENERIC_SUCCESS);
   } catch (err) {
     console.error('[auth/resend-verification]', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ── Forgot / reset password (AUTH-01) ────────────────────────────────────────
+// 1. POST /auth/forgot-password {email} → a 6-digit code by email (10 min).
+//    Always the same answer, so it never reveals whether an account exists.
+// 2. POST /auth/reset-password {email, code, password, confirmPassword}
+//    → new password; every older session is signed out (password_changed_at).
+
+authRouter.post('/forgot-password', async (req, res) => {
+  const email = normEmail(req.body?.email) as string;
+  const GENERIC = { message: 'If an account exists for this email, we sent a 6-digit code to it.' };
+  if (!email || !EMAIL_REGEX.test(email)) {
+    res.status(400).json({ error: 'Enter a valid email address' });
+    return;
+  }
+  try {
+    const [user] = await db.select().from(users).where(emailEq(email)).limit(1);
+    if (user && user.isActive) {
+      const recent = (await db.execute(sql`select count(*)::int as n from password_resets where user_id = ${user.id} and created_at > now() - interval '1 hour'`)).rows[0] as { n: number };
+      if (recent.n >= 5) {
+        res.status(429).json({ error: 'Too many reset requests. Please try again in an hour.' });
+        return;
+      }
+      await db.execute(sql`update password_resets set used_at = now() where user_id = ${user.id} and used_at is null`);
+      const code = generateOtp();
+      await db.execute(sql`insert into password_resets (user_id, code_hash, expires_at) values (${user.id}, ${hashOtp(code)}, now() + interval '10 minutes')`);
+      const sent = await sendEmail({ to: user.email, ...resetEmail(code) });
+      if (!sent) console.error('[auth/forgot-password] email not sent to', user.email);
+      await auditLogger.log('PASSWORD_RESET_REQUESTED', 'user', user.id, null, user.id, null);
+    }
+    res.json(GENERIC);
+  } catch (err) {
+    console.error('[auth/forgot-password]', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+authRouter.post('/reset-password', async (req, res) => {
+  const email = normEmail(req.body?.email) as string;
+  const code = String(req.body?.code ?? '').trim();
+  const { password, confirmPassword } = req.body ?? {};
+  if (!email || !code || !password) { res.status(400).json({ error: 'Enter the code and a new password' }); return; }
+  if (typeof password !== 'string' || password.length < 8) { res.status(400).json({ error: 'Password must be at least 8 characters' }); return; }
+  if (password !== confirmPassword) { res.status(400).json({ error: 'Passwords do not match' }); return; }
+  const BAD = { error: 'The code is incorrect or has expired. Request a new one.' };
+  try {
+    const [user] = await db.select().from(users).where(emailEq(email)).limit(1);
+    if (!user || !user.isActive) { res.status(400).json(BAD); return; }
+
+    // Same brute-force lockout as email verification (SRV-17)
+    await db.insert(otpAttemptLog).values({ userId: user.id, succeeded: false });
+    const failures = await db.select().from(otpAttemptLog).where(and(
+      eq(otpAttemptLog.userId, user.id), eq(otpAttemptLog.succeeded, false),
+      gte(otpAttemptLog.attemptedAt, new Date(Date.now() - 15 * 60 * 1000)),
+    ));
+    if (failures.length > 5) { res.status(429).json({ error: 'Too many attempts. Please wait 15 minutes and try again.' }); return; }
+
+    const [reset] = (await db.execute(sql`
+        select id, code_hash from password_resets
+         where user_id = ${user.id} and used_at is null and expires_at > now()
+         order by created_at desc limit 1`)).rows as { id: string; code_hash: string }[];
+    if (!reset || !verifyOtp(code, reset.code_hash)) { res.status(400).json(BAD); return; }
+
+    const passwordHash = await bcrypt.hash(password, 12);
+    await db.transaction(async (tx) => {
+      await tx.execute(sql`update password_resets set used_at = now() where user_id = ${user.id} and used_at is null`);
+      // The emailed code proves the address, so an unverified account is verified too
+      await tx.execute(sql`update users set password_hash = ${passwordHash}, password_changed_at = now(), updated_at = now(),
+                             is_email_verified = true, email_verified_at = coalesce(email_verified_at, now()) where id = ${user.id}`);
+    });
+    await db.delete(otpAttemptLog).where(eq(otpAttemptLog.userId, user.id));
+    await auditLogger.log('PASSWORD_RESET', 'user', user.id, null, user.id, null);
+    res.json({ message: 'Your password has been changed. Sign in with your new password.' });
+  } catch (err) {
+    console.error('[auth/reset-password]', err);
     res.status(500).json({ error: 'Internal server error' });
   }
 });

@@ -23,7 +23,7 @@ export a PDF report — all in one place.
 12. [Keyboard and mouse shortcuts](#12-keyboard-and-mouse-shortcuts)
 13. [Privacy and pilot monitoring](#13-privacy-and-pilot-monitoring)
 14. [Troubleshooting](#14-troubleshooting)
-15. [Giving feedback](#15-giving-feedback)
+15. [Help and feedback](#15-help-and-feedback)
 
 ---
 
@@ -51,6 +51,12 @@ export a PDF report — all in one place.
 
 Next time, just sign in with your email and password.
 
+**Forgot your password?**
+1. On the sign-in page click **Forgot your password?** and enter your email.
+2. We email you a **6-digit code** (valid for 10 minutes).
+3. Enter the code and your new password twice → **Set new password**.
+4. Sign in with the new password. For your safety, you're signed out everywhere else.
+
 ---
 
 ## 3. Finding your way around
@@ -59,8 +65,10 @@ Next time, just sign in with your email and password.
 
 - **Home** — your recent studies and quick actions (*Add study*).
 - **Patients** — all your patients, their visits and studies, plus a *Shared with me* section.
+- **Bell** — notifications: a red number means the SpineSurge team has replied to you.
+- **? (Help & feedback)** — ask a question or tell us what you think (see [Help and feedback](#15-help-and-feedback)).
+- **Light / dark mode** — the sun/moon button. SpineSurge opens in light mode; switch to dark whenever you like (it's remembered).
 - **Settings** (gear icon, bottom-left) — your preferences (see [Settings](#11-settings)).
-- **Light / dark mode** — the sun/moon button.
 
 **The workspace** (opens when you open a study)
 
@@ -74,6 +82,7 @@ The bar at the top has four tabs, which follow a typical case:
 | **Report** | Build a PDF report from everything above |
 
 - **Left panel** = tools. **Right panel** = results and details. Use the small tabs on the panel edges to hide or show them.
+- The **bell** and **?** buttons are also in the workspace top bar.
 - The **save status** in the top bar shows *Saving…* / *Saved*. Work is saved automatically — there's no Save button to remember.
 - The **back arrow** at top-left takes you back to Home/Patients.
 
@@ -104,6 +113,9 @@ Measurements in **mm** need calibration. Follow the **Calibrate** prompt:
 2. Type its real length in mm and confirm.
 
 Without calibration, distances are shown in pixels; angles are always correct.
+
+You calibrate an image **once**. SpineSurge remembers it for that image — when you come back later, in other
+sessions of the same image, and when the image is used in Compare.
 
 ### Step 2: Pick a tool and click points
 Choose a tool from the left panel, then click the landmarks on the image. The tool tells you which point
@@ -173,10 +185,13 @@ When you open a CT or MR study, SpineSurge shows **axial, sagittal, coronal and 
 
 Open the **Compare** tab.
 
-- **Image A** is your case image. Pick which *version* it shows: **No plan** (your assessment), a saved
-  plan (**Plan 1, 2…**) or the current working plan. Plans are shown read-only here.
-- **Image B**: choose another study and version (for example the post-op X-ray), or import a new file.
-  **Replace image** swaps Image B.
+- **Image A** is always your case image (the one from Assessment and Planning). Use the dropdown in its
+  corner to choose the *version*: **No plan** (your assessment), a saved plan (**Plan 1, 2…**) or the
+  current working plan. Plans are shown read-only here.
+- **Image B**: click the image button in its corner and either **Choose existing study** (any patient's
+  study image, then its version) or **Import new image** from your computer. Once an existing study is
+  loaded, the dropdown next to the button switches Image B between **No plan / Plan 1 / Plan 2 / working plan**.
+  The image button again replaces Image B.
 - Measure on Image B with the toolbar in the middle. The right panel shows **A vs B** and the difference for each parameter.
 
 Typical uses: pre-op vs post-op, standing vs bending films, Plan 1 vs Plan 2.
@@ -268,18 +283,23 @@ If you have questions about your data, contact the SpineSurge team.
 | CT upload stops | Keep the tab open until the upload finishes; check your connection and try again. |
 | "View only" banner — tools are greyed out | The study was shared with you as View, or you're an admin viewing a member's study. Ask the owner for Edit. |
 | Something looks wrong after many edits | Refresh the page — your work is saved automatically. |
-| Signed out unexpectedly | Your session expired (after 7 days). Sign in again; nothing is lost. |
+| Signed out unexpectedly | Your session expired (after 7 days), or your password was reset. Sign in again; nothing is lost. |
+| Forgot your password | Sign-in page → **Forgot your password?** → code by email → new password. |
 | "This account has been blocked" | Access to the pilot was paused by the SpineSurge team. Contact them; your work is kept. |
 
 ---
 
-## 15. Giving feedback
+## 15. Help and feedback
 
-Your feedback shapes SpineSurge. When something doesn't work or could be better, please send the SpineSurge team:
+Click the **?** button (left sidebar, or top-right in the workspace). A chat window opens in the corner.
 
-1. **What you were trying to do**
-2. **What you expected**
-3. **What happened instead** — a screenshot helps a lot
-4. The study name (not the patient's real details)
+1. Pick a topic: **Question**, **I'm stuck**, **Something broke**, **I like**, **I don't like** or **Idea**.
+2. Write your message and press **Enter** (Shift+Enter for a new line). We automatically note which page and
+   tool you were on, so you don't have to describe it.
+3. The SpineSurge team reads every message and replies in the same window. You'll also get an email, and
+   the **bell** shows a red number until you've read the reply.
+
+Most helpful: what you were trying to do, what you expected, and what happened instead. Please don't include
+real patient details.
 
 Thank you for taking part in the pilot!
