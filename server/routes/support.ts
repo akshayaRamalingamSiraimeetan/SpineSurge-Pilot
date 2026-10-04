@@ -1,15 +1,14 @@
-import { Router, type Request } from 'express';
+import { Router } from 'express';
 import { sql } from 'drizzle-orm';
 import { db } from '../db';
-import { isPlatformAdmin, platformAdminEmails } from '../access';
-import { sendEmail } from '../services/email';
+import { isPlatformAdmin } from '../access';
 import * as activity from '../activity';
 
 /**
  * Help & feedback chat (HELP-01). Each user has one conversation with the
- * SpineSurge team. Users write from the "?" panel; every message is emailed to
- * PLATFORM_ADMIN_EMAILS and pushed live to the Monitor (Feedback tab), where
- * the team replies. Replies are emailed to the user and shown in their panel.
+ * SpineSurge team. Users write from the "?" panel; messages are pushed live to
+ * the Monitor (Feedback tab + bell), where the team replies; replies show in
+ * the user's panel and bell. In-app only — no emails (HELP-02).
  *   GET  /api/support          the caller's conversation (marks team replies read)
  *   GET  /api/support/unread   number of unread team replies
  *   POST /api/support          { body, kind?, page?, context? }
@@ -23,8 +22,6 @@ export const KIND_LABEL: Record<string, string> = {
 };
 
 const rows = async <T,>(q: ReturnType<typeof sql>) => (await db.execute(q)).rows as T[];
-export const appUrl = (req: Request) => (process.env.APP_URL || `${req.protocol}://${req.get('host')}`).replace(/\/$/, '');
-const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]!));
 
 export interface SupportMessage {
     id: string; userId: string; fromAdmin: boolean; kind: string | null; body: string;
@@ -70,26 +67,8 @@ supportRouter.post('/', async (req, res) => {
             values (${user.id}, false, ${user.id}, ${kind}, ${body}, ${page}, ${ctx ? JSON.stringify(ctx) : null}::jsonb)
             returning ${MESSAGE_COLUMNS}`);
         res.json(msg);
-
-        // Live in the Monitor + an email to the team (after answering the user)
-        const who = user.fullName || user.email;
-        activity.pushSupport({ ...msg, who, email: user.email });
-        const admins = platformAdminEmails();
-        if (admins.length) {
-            const link = `${appUrl(req)}/#/platform?view=feedback&user=${encodeURIComponent(user.id)}`;
-            const where = page ? `\nPage: ${page}` : '';
-            for (const to of admins) await sendEmail({
-                to,
-                subject: `[SpineSurge feedback] ${KIND_LABEL[kind]} — ${who}`,
-                text: `${who} (${user.email}) wrote:\n\n${body}\n\nType: ${KIND_LABEL[kind]}${where}\n\nReply in the Monitor: ${link}`,
-                html: `<div style="font-family:system-ui,sans-serif;max-width:560px">
-                    <p style="margin:0 0 4px;color:#666;font-size:13px">${esc(KIND_LABEL[kind])}${page ? ` · ${esc(page)}` : ''}</p>
-                    <h3 style="margin:0 0 12px">${esc(who)} <span style="font-weight:400;color:#666">(${esc(user.email)})</span></h3>
-                    <p style="white-space:pre-wrap;background:#f4f4f5;border-radius:8px;padding:12px">${esc(body)}</p>
-                    <p><a href="${link}">Reply in the SpineSurge Monitor →</a></p>
-                </div>`,
-            });
-        }
+        // In-app only: live in the Monitor (Feedback tab + bell) — no email (HELP-02)
+        activity.pushSupport({ ...msg, who: user.fullName || user.email, email: user.email });
     } catch (e) {
         console.error('[support/send]', e);
         if (!res.headersSent) res.status(500).json({ error: 'Could not send your message' });

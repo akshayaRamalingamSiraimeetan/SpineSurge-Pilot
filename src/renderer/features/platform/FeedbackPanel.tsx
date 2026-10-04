@@ -9,7 +9,7 @@ import { getJson, pageName, timeAgo } from './monitor';
 /**
  * Monitor → Feedback (HELP-01): every user's help & feedback conversation,
  * what they're stuck on / like / dislike, and a reply box. Replies reach the
- * user in their "?" panel and by email.
+ * user in their "?" panel and bell (in-app only, no email).
  */
 interface Conversation {
     userId: string; who: string; email: string; active: boolean; messages: number; unread: number;
@@ -79,7 +79,7 @@ export function ConversationThread({ token, userId, refreshKey, className }: { t
             </div>
             <div className="flex items-end gap-2 border-t border-[var(--border)] p-3">
                 <textarea value={text} onChange={(e) => setText(e.target.value)} rows={2} maxLength={4000}
-                    placeholder="Reply — the user sees it in their Help panel and gets an email"
+                    placeholder="Reply — the user sees it in their Help panel (bell)"
                     onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void reply(); } }}
                     className="max-h-32 min-h-[44px] flex-1 resize-y rounded-lg border border-[var(--border)] bg-[var(--surface-2)] px-3 py-2 text-[13px] text-[var(--text)] outline-none placeholder:text-[var(--text-3)] focus:border-[var(--accent)]" />
                 <button onClick={() => void reply()} disabled={busy || !text.trim()} aria-label="Send reply"

@@ -39,7 +39,6 @@ One container = web app + API on one port (same origin → no CORS / API URL con
 | `EMAIL_PROVIDER` | yes for real codes | `smtp` (or `resend`); `mock` = codes only in the server log. When set, sign-up always requires the emailed code (DEMO_MODE no longer skips it) |
 | `SMTP_HOST` / `SMTP_PORT` / `SMTP_USER` / `SMTP_PASS` / `EMAIL_FROM` | with smtp | Gmail: `smtp.gmail.com`, **587**, the Gmail address, a 16-char **app password** (Google account → Security → 2-Step Verification → App passwords). Startup log shows `[email] SMTP ready` or the login error. Render blocks SMTP only on free instances |
 | `EMAIL_API_KEY` | with resend | Resend key; `EMAIL_FROM` must be on a domain verified in Resend |
-| `APP_URL` | optional | public link used in feedback/reply emails (default: the request's host, e.g. https://spinesurge-demo.onrender.com) |
 | `PLATFORM_ADMIN_EMAILS` | optional | login emails that see the live **Monitor** (sidebar → /platform, MON-01): every user's activity, uploaded images, sessions, plans, comparisons, reports; view-only access to all studies; Block/Unblock accounts. Admins' own activity is not monitored |
 
 ## Option A — Render (blueprint in repo: `render.yaml`) — recommended

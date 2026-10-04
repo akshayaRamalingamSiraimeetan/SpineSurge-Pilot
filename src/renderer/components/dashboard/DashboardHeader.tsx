@@ -1,4 +1,5 @@
-import { Bell, Users } from 'lucide-react';
+import { Users } from 'lucide-react';
+import { NotificationBell } from '@/features/support/HelpChat';
 import { useNavigate } from 'react-router-dom';
 import { useAppStore } from '@/lib/store/index';
 import { Button } from '@/components/ui/button';
@@ -60,13 +61,8 @@ const DashboardHeader = () => {
           </Button>
         )}
 
-        {/* Notification bell */}
-        <button
-          className="relative flex h-9 w-9 items-center justify-center rounded-lg border border-[var(--border)] bg-[var(--surface)] text-[var(--text-2)] hover:bg-[var(--surface-3)] hover:text-[var(--text)] transition-colors"
-          aria-label="Notifications"
-        >
-          <Bell className="h-4 w-4" />
-        </button>
+        {/* Notification bell: replies from the team / new feedback (HELP-01) */}
+        <NotificationBell className="h-9 w-9 border-[var(--border)] bg-[var(--surface)]" />
 
       </div>
     </header>

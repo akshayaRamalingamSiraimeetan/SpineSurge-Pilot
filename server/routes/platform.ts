@@ -4,8 +4,7 @@ import { db } from '../db';
 import { forgetUser, isPlatformAdmin, platformAdminEmails } from '../access';
 import * as activity from '../activity';
 import * as auditLogger from '../services/auditLogger';
-import { sendEmail } from '../services/email';
-import { MESSAGE_COLUMNS, type SupportMessage, appUrl } from './support';
+import { MESSAGE_COLUMNS, type SupportMessage } from './support';
 
 /**
  * Platform owner's live monitor (DEPLOY-06, MON-01). PLATFORM_ADMIN_EMAILS
@@ -332,26 +331,13 @@ platformRouter.post('/support/:userId', async (req, res) => {
     const body = String(req.body?.body ?? '').trim().slice(0, 4000);
     if (!body) { res.status(400).json({ error: 'Write a reply first' }); return; }
     try {
-        const [u] = await rows<{ id: string; email: string; fullName: string | null }>(sql`select id, email, full_name as "fullName" from users where id = ${req.params.userId}`);
+        const [u] = await rows<{ id: string }>(sql`select id from users where id = ${req.params.userId}`);
         if (!u) { res.status(404).json({ error: 'User not found' }); return; }
         const [msg] = await rows<SupportMessage>(sql`
             insert into support_messages (user_id, from_admin, author_id, body)
             values (${u.id}, true, ${req.user!.id}, ${body}) returning ${MESSAGE_COLUMNS}`);
         res.json(msg);
         activity.pushSupport({ ...msg, who: 'SpineSurge team' });
-        // The user may not be online: tell them by email too
-        const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]!));
-        const link = `${appUrl(req)}/#/dashboard?help=1`;
-        await sendEmail({
-            to: u.email,
-            subject: 'The SpineSurge team replied to your message',
-            text: `Hi ${u.fullName || ''},\n\nThe SpineSurge team replied:\n\n${body}\n\nOpen SpineSurge and click the ? (Help) button to continue the conversation: ${link}`,
-            html: `<div style="font-family:system-ui,sans-serif;max-width:560px">
-                <p>Hi ${esc(u.fullName || '')},</p><p>The SpineSurge team replied:</p>
-                <p style="white-space:pre-wrap;background:#f4f4f5;border-radius:8px;padding:12px">${esc(body)}</p>
-                <p><a href="${link}">Open SpineSurge</a> and click the <b>?</b> (Help) button to continue the conversation.</p>
-            </div>`,
-        });
     } catch (e) {
         console.error('[platform/support/reply]', e);
         if (!res.headersSent) res.status(500).json({ error: 'Failed to send the reply' });

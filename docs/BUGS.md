@@ -585,3 +585,5 @@ global theme-token fix for shadcn classes. Deferred: signed T1SPi/T9SPi/ODHA.
         only). Image B: existing study or import, plus a version dropdown (No plan / Plan N / working plan) for an
         image from a study; switching warns before replacing measurements added on B.
         Verified: 26/26 API checks (chat + reset) on a fresh DB, 123 unit tests, build. Not checked on screen.
+- HELP-02 [x] Owner: feedback chat is in-app only — no email to the team for new messages and none to users for
+        replies (Monitor → Feedback + bell, user's ? panel + bell). Email is used only for sign-up and password codes.

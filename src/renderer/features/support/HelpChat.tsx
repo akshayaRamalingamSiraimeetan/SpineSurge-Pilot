@@ -22,10 +22,12 @@ export function HelpButton({ className }: { className?: string }) {
     const isAdmin = useAppStore((s) => !!s.user?.isPlatformAdmin);
     const setOpen = useSupport((s) => s.setOpen);
     const open = useSupport((s) => s.open);
+    const unread = useSupport((s) => s.unread);
     if (isAdmin) return null;
     return (
-        <button onClick={() => setOpen(!open)} title="Help & feedback" aria-label="Help & feedback" className={cn(btn, className)}>
+        <button onClick={() => setOpen(!open)} title={unread ? 'Help & feedback — new reply' : 'Help & feedback'} aria-label="Help & feedback" className={cn(btn, className)}>
             <HelpCircle className="h-4 w-4" />
+            {unread > 0 && <span className="absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full bg-[#FF453A]" />}
         </button>
     );
 }
@@ -85,7 +87,7 @@ export function HelpChat() {
         return () => clearInterval(t);
     }, [open, loadThread]);
 
-    // Link from the reply email: /#/dashboard?help=1
+    // Deep link that opens the chat: /#/dashboard?help=1
     useEffect(() => {
         const params = new URLSearchParams(location.search);
         if (!params.has('help') || !token) return;
@@ -130,7 +132,7 @@ export function HelpChat() {
             <div className="flex items-start justify-between gap-3 border-b border-[var(--border)] bg-[var(--surface-2)] px-4 py-3">
                 <div>
                     <div className="text-sm font-semibold text-[var(--text)]">Help & feedback</div>
-                    <div className="text-[11px] leading-snug text-[var(--text-3)]">Ask a question, or tell us where you got stuck and what you like or don't. The SpineSurge team replies here and by email.</div>
+                    <div className="text-[11px] leading-snug text-[var(--text-3)]">Ask a question, or tell us where you got stuck and what you like or don't. The SpineSurge team replies here — the bell shows new replies.</div>
                 </div>
                 <button onClick={() => setOpen(false)} aria-label="Close" className="rounded-md p-1 text-[var(--text-3)] hover:bg-[var(--surface-3)] hover:text-[var(--text)]">
                     <X className="h-4 w-4" />
