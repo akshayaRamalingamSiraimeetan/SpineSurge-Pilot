@@ -1,6 +1,6 @@
 # SpineSurge — Demo Guide (for testers)
 
-**Link:** _to be filled after deployment_  ·  **Login:** create your own account on the sign-in page
+**Link:** https://spinesurge-demo.onrender.com  ·  **Login:** create your own account on the sign-in page
 
 SpineSurge is a browser-based spine surgery planning tool. The demo server sleeps when unused —
 the first visit can take about a minute to load. Use a recent Chrome or Edge on a laptop

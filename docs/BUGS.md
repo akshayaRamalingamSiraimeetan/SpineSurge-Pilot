@@ -536,3 +536,8 @@ global theme-token fix for shadcn classes. Deferred: signed T1SPi/T9SPi/ODHA.
         Brevo HTTP email provider (free hosts block SMTP); render.yaml = free blueprint; docs/FREE_DEPLOY.md guide.
         Verified with a local S3 server: upload → bucket (no local copy) → served byte-identical → blocked
         without sign-in → removed on study delete.
+- DEPLOY-08 [x] LIVE 2026-10-04: https://spinesurge-demo.onrender.com (Render free + Supabase + Brevo). Fixed on the
+        way: runtime image skipped devDependencies (tsx/pg/drizzle) → npm ci --include=dev; Supabase direct URL is
+        IPv6-only → Session pooler URL (FREE_DEPLOY.md A3). External smoke test: app/assets served, /api,
+        /uploads, /api/platform refuse anonymous requests, auth validation OK. Email + storage confirmed by the
+        owner's first sign-up/upload.

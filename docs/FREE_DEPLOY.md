@@ -20,7 +20,10 @@ Keep a text file open while you go — you'll collect 8 values for step C.
    region **Mumbai** or **Singapore**, plan **Free** → *Create new project* (wait ~2 min).
 3. **Database address** — click **Connect** (top bar) → tab *Connection string* → choose
    **Session pooler** → copy the URI. Replace `[YOUR-PASSWORD]` with your database password.
-   → this is **`DATABASE_URL`**.
+   → this is **`DATABASE_URL`**. It must look like
+   `postgresql://postgres.<project-id>:<password>@aws-0-<region>.pooler.supabase.com:5432/postgres`.
+   **Not** the *Direct connection* (`db.<project>.supabase.co`) — that one is IPv6-only and Render
+   fails with `ENETUNREACH`. Use a password without `@ # / %` (or URL-encode it).
 4. **Bucket** — left menu **Storage** → *New bucket* → name **`uploads`**, leave *Public bucket*
    **off** → *Create*.
 5. **File access keys** — Storage → **Settings** (or *S3 Configuration*):
