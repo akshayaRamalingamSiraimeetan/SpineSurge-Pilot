@@ -41,7 +41,7 @@ reports) and can open studies read-only, to improve the product. See USER_MANUAL
 
 ## Help, feedback and passwords
 - **? button** (sidebar / workspace top bar): chat with the SpineSurge team — questions, where you got stuck, what
-  you like or don't. Replies appear there; the bell shows new replies.
+  you like or don't. Replies appear there; a red number on the ? shows new replies.
 - **Forgot your password?** on the sign-in page emails a 6-digit code to set a new one.
 
 ## Feedback

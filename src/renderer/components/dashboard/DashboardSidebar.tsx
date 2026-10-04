@@ -6,7 +6,8 @@ import WorkspaceSwitcher from './WorkspaceSwitcher';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import { resolveAssetUrl } from '@/lib/api';
 import { SettingsDialog } from '@/components/SettingsDialog';
-import { HelpButton } from '@/features/support/HelpChat';
+import { Badge, HelpButton } from '@/features/support/HelpChat';
+import { useSupport } from '@/features/support/supportStore';
 
 // Only routes that exist (Studies/Resources/Settings had no pages — BUGS NAV-14).
 const NAV_ITEMS = [
@@ -34,6 +35,7 @@ const DashboardSidebar = ({ collapsible = false }: DashboardSidebarProps) => {
   const activeWorkspace = useAppStore((state) => state.activeWorkspace);
   const joinedOrgs      = useAppStore((state) => state.joinedOrgs);
   const createdOrgs     = useAppStore((state) => state.createdOrgs);
+  const unreadFeedback  = useSupport((s) => s.unread); // platform admin: new user messages (HELP-03)
 
   const displayName = user?.name ?? user?.email ?? 'User';
   const avatarUrl   = user?.avatarUrl;
@@ -75,15 +77,16 @@ const DashboardSidebar = ({ collapsible = false }: DashboardSidebarProps) => {
                 aria-label={label}
               >
                 <Icon className="h-5 w-5" />
+                {to === '/platform' && <Badge n={unreadFeedback} />}
                 {/* Tooltip */}
                 <span className="pointer-events-none absolute left-14 z-50 hidden whitespace-nowrap rounded-md bg-[var(--surface-3)] px-2 py-1 text-xs text-[var(--text)] shadow-lg group-hover:block">
-                  {label}
+                  {to === '/platform' && unreadFeedback ? `${label} · ${unreadFeedback} new feedback` : label}
                 </span>
               </NavLink>
             ))}
           </nav>
 
-          {/* Help & feedback · light/dark mode (HELP-01); notifications = bell top right */}
+          {/* Help & feedback (unread replies = count on the ?) · light/dark mode (HELP-01/03) */}
           <HelpButton className="mt-auto mb-2" />
           <ThemeToggle className="mb-2" />
 

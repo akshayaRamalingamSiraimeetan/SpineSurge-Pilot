@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { Bell, HelpCircle, Send, X } from 'lucide-react';
+import { HelpCircle, Send, X } from 'lucide-react';
 import { useAppStore } from '@/lib/store/index';
 import { cn } from '@/lib/utils';
 import { type SupportKind, useSupport } from './supportStore';
@@ -9,11 +9,12 @@ import { KINDS, kindLabel } from './kinds';
 /**
  * Help & feedback (HELP-01): the "?" button opens a chat panel in the corner.
  * Users ask questions or tell the team where they're stuck and what they
- * like or don't; the team replies from Monitor → Feedback. The bell shows
- * unread replies (users) or unread user messages (platform admins).
+ * like or don't; the team replies from Monitor → Feedback. Unread replies
+ * show as a count on the "?" (users); unread feedback as a count on the
+ * Monitor icon in the sidebar (platform admins). No separate bell (HELP-03).
  */
 const btn = 'relative grid place-items-center h-8 w-8 rounded-lg border border-[var(--border-2)] text-[var(--text-2)] hover:text-[var(--text)] hover:bg-[var(--surface-3)] transition-colors';
-const Badge = ({ n }: { n: number }) => (n > 0 ? (
+export const Badge = ({ n }: { n: number }) => (n > 0 ? (
     <span className="absolute -right-1.5 -top-1.5 min-w-[16px] rounded-full bg-[#FF453A] px-1 text-center text-[10px] font-bold leading-4 text-white">{n > 9 ? '9+' : n}</span>
 ) : null);
 
@@ -25,26 +26,10 @@ export function HelpButton({ className }: { className?: string }) {
     const unread = useSupport((s) => s.unread);
     if (isAdmin) return null;
     return (
-        <button onClick={() => setOpen(!open)} title={unread ? 'Help & feedback — new reply' : 'Help & feedback'} aria-label="Help & feedback" className={cn(btn, className)}>
+        <button onClick={() => setOpen(!open)} aria-label="Help & feedback"
+            title={unread ? `Help & feedback — ${unread} new repl${unread === 1 ? 'y' : 'ies'} from the SpineSurge team` : 'Help & feedback'}
+            className={cn(btn, className)}>
             <HelpCircle className="h-4 w-4" />
-            {unread > 0 && <span className="absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full bg-[#FF453A]" />}
-        </button>
-    );
-}
-
-/** Bell — unread replies (users: opens the chat) or unread feedback (admins: Monitor → Feedback). */
-export function NotificationBell({ className }: { className?: string }) {
-    const navigate = useNavigate();
-    const isAdmin = useAppStore((s) => !!s.user?.isPlatformAdmin);
-    const unread = useSupport((s) => s.unread);
-    const setOpen = useSupport((s) => s.setOpen);
-    const title = isAdmin
-        ? (unread ? `${unread} new feedback message${unread === 1 ? '' : 's'}` : 'No new feedback')
-        : (unread ? `${unread} new repl${unread === 1 ? 'y' : 'ies'} from the SpineSurge team` : 'No new notifications');
-    return (
-        <button title={title} aria-label={title} className={cn(btn, className)}
-            onClick={() => (isAdmin ? navigate('/platform?view=feedback') : setOpen(true))}>
-            <Bell className="h-4 w-4" />
             <Badge n={unread} />
         </button>
     );
@@ -132,7 +117,7 @@ export function HelpChat() {
             <div className="flex items-start justify-between gap-3 border-b border-[var(--border)] bg-[var(--surface-2)] px-4 py-3">
                 <div>
                     <div className="text-sm font-semibold text-[var(--text)]">Help & feedback</div>
-                    <div className="text-[11px] leading-snug text-[var(--text-3)]">Ask a question, or tell us where you got stuck and what you like or don't. The SpineSurge team replies here — the bell shows new replies.</div>
+                    <div className="text-[11px] leading-snug text-[var(--text-3)]">Ask a question, or tell us where you got stuck and what you like or don't. The SpineSurge team replies here — a red number on the ? shows new replies.</div>
                 </div>
                 <button onClick={() => setOpen(false)} aria-label="Close" className="rounded-md p-1 text-[var(--text-3)] hover:bg-[var(--surface-3)] hover:text-[var(--text)]">
                     <X className="h-4 w-4" />

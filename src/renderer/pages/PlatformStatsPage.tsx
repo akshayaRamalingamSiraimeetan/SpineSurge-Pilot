@@ -131,7 +131,7 @@ const PlatformStatsPage = () => {
         if (e.kind === 'report.export') setReports(null);
         statsDirty.current = true;
     }, () => {
-        // a help & feedback message (either side) → refresh the Feedback tab and the bell
+        // a help & feedback message (either side) → refresh the Feedback tab and the Monitor icon count
         setFeedbackKey((k) => k + 1);
         void useSupport.getState().refreshUnread();
     });

@@ -18,7 +18,7 @@ import {
 } from "@/components/ui/dialog";
 import { useDicomUpload } from "@/features/dicom/dicomPersistence";
 import { ThemeToggle } from "@/components/ThemeToggle";
-import { HelpButton, NotificationBell } from "@/features/support/HelpChat";
+import { HelpButton } from "@/features/support/HelpChat";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useEffect, useMemo, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
@@ -240,7 +240,6 @@ const TopMenuBar = () => {
                         {status.icon} {status.text}
                     </div>
                 )}
-                <NotificationBell />
                 <HelpButton />
                 <ThemeToggle />
             </div>

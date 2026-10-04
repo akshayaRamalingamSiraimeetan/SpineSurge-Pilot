@@ -587,3 +587,6 @@ global theme-token fix for shadcn classes. Deferred: signed T1SPi/T9SPi/ODHA.
         Verified: 26/26 API checks (chat + reset) on a fresh DB, 123 unit tests, build. Not checked on screen.
 - HELP-02 [x] Owner: feedback chat is in-app only — no email to the team for new messages and none to users for
         replies (Monitor → Feedback + bell, user's ? panel + bell). Email is used only for sign-up and password codes.
+- HELP-03 [x] No notification bell anywhere (it showed twice). Users: unread replies = red count on the "?" (sidebar
+        and workspace header). Platform admin: unread feedback = red count on the Monitor icon in the sidebar and on
+        the Feedback tab.

@@ -65,8 +65,7 @@ Next time, just sign in with your email and password.
 
 - **Home** — your recent studies and quick actions (*Add study*).
 - **Patients** — all your patients, their visits and studies, plus a *Shared with me* section.
-- **Bell** (top right) — notifications: a red number means the SpineSurge team has replied to you.
-- **? (Help & feedback)** (sidebar) — ask a question or tell us what you think (see [Help and feedback](#15-help-and-feedback)).
+- **? (Help & feedback)** (sidebar) — ask a question or tell us what you think (see [Help and feedback](#15-help-and-feedback)). A red number on it means the SpineSurge team has replied to you.
 - **Light / dark mode** — the sun/moon button. SpineSurge opens in light mode; switch to dark whenever you like (it's remembered).
 - **Settings** (gear icon, bottom-left) — your preferences (see [Settings](#11-settings)).
 
@@ -82,7 +81,7 @@ The bar at the top has four tabs, which follow a typical case:
 | **Report** | Build a PDF report from everything above |
 
 - **Left panel** = tools. **Right panel** = results and details. Use the small tabs on the panel edges to hide or show them.
-- The **bell** and **?** buttons are also in the workspace top bar.
+- The **?** button is also in the workspace top bar.
 - The **save status** in the top bar shows *Saving…* / *Saved*. Work is saved automatically — there's no Save button to remember.
 - The **back arrow** at top-left takes you back to Home/Patients.
 
@@ -296,8 +295,8 @@ Click the **?** button (left sidebar, or top-right in the workspace). A chat win
 1. Pick a topic: **Question**, **I'm stuck**, **Something broke**, **I like**, **I don't like** or **Idea**.
 2. Write your message and press **Enter** (Shift+Enter for a new line). We automatically note which page and
    tool you were on, so you don't have to describe it.
-3. The SpineSurge team reads every message and replies in the same window. The **bell** shows a red number
-   until you've read the reply (no emails — check the bell when you next open SpineSurge).
+3. The SpineSurge team reads every message and replies in the same window. The **?** button shows a red
+   number until you've read the reply (no emails — look for it when you next open SpineSurge).
 
 Most helpful: what you were trying to do, what you expected, and what happened instead. Please don't include
 real patient details.
