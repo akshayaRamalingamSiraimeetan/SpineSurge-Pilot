@@ -1,6 +1,7 @@
 import type { AppState } from './index';
 import type { ContextState } from './types';
 import { migrateImplants } from '@/features/planning3d/implantModel';
+import type { CompareSource } from './comparisonSlice';
 
 /**
  * Shared defaults + helpers for "per-case" workspace state.
@@ -25,8 +26,8 @@ export const defaultCanvas = () => ({
 });
 
 export const defaultComparison = () => ({
-    left: { image: null, measurements: [], implants: [], canvas: defaultCanvas() },
-    right: { image: null, measurements: [], implants: [], canvas: defaultCanvas() },
+    left: { planId: null as string | null, image: null, measurements: [], implants: [], canvas: defaultCanvas() },
+    right: { source: null as CompareSource | null, image: null, measurements: [], implants: [], canvas: defaultCanvas() },
 });
 
 /** Calibration is stored per context in toolState.calibration. */
@@ -68,14 +69,16 @@ export function emptyCaseState(state: AppState): Partial<AppState> {
     };
 }
 
-/** Image B of the Compare tab, saved in toolState.comparisonB. */
+/** Compare tab: Image A version (toolState.comparisonA) and Image B (toolState.comparisonB). */
 function comparisonFromContext(ctx: ContextState) {
     const b = ctx.toolState?.comparisonB;
     const base = defaultComparison();
+    base.left.planId = ctx.toolState?.comparisonA?.planId ?? null;
     if (!b) return base;
     return {
         ...base,
         right: {
+            source: b.source ?? null,
             image: b.image ?? null,
             measurements: b.measurements ?? [],
             implants: b.implants ?? [],

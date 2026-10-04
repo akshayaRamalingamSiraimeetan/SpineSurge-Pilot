@@ -1,264 +1,91 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import {
-    ArrowLeft, FolderOpen, Calendar, User, ShieldAlert, ExternalLink, Loader2
-} from 'lucide-react';
-import { useAppStore } from '@/lib/store/index';
+import { ArrowLeft, FolderOpen, Eye, Users } from 'lucide-react';
+import { useAppStore, type Study } from '@/lib/store/index';
 import { API_BASE } from '@/lib/api';
+import { visibleStudies } from '@/lib/studies';
+import { StudyCard } from '@/components/StudyCard';
+import { destroyCornerstone } from '@/lib/cornerstone/initCornerstone';
 import type { InspectionMode } from '@/lib/store/canvasSlice';
 
-// ─── Types ────────────────────────────────────────────────────────────────────
-
-interface ScanRow {
-    id:       string;
-    studyId:  string;
-    filePath: string;
-    type:     string | null;
-    date:     string | null;
-}
-
-interface StudyRow {
-    id:              string;
-    patientId:       string;
-    visitId:         string | null;
-    modality:        string | null;
-    source:          string | null;
-    acquisitionDate: string | null;
-    organizationId:  string | null;
-    ownerUserId:     string | null;
-    scans:           ScanRow[];
-}
-
-interface MemberWorkspaceData {
-    userId:  string;
-    orgId:   string;
-    studies: StudyRow[];
-}
-
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-
-const toAbsoluteUrl = (filePath: string) =>
-    filePath.startsWith('http')
-        ? filePath
-        : `${API_BASE}/uploads/${filePath.split(/[\\/]/).pop()}`;
-
-const formatDate = (v: string | null) => {
-    if (!v) return '—';
-    try { return new Date(v).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }); }
-    catch { return v; }
-};
-
-// ─── Empty State ──────────────────────────────────────────────────────────────
-
-const EmptyStudies = ({ name }: { name: string }) => (
-    <div className="flex flex-col items-center justify-center py-20 text-center">
-        <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-[var(--surface-2)]">
-            <FolderOpen className="h-7 w-7 text-[var(--text-3)]" />
-        </div>
-        <p className="text-sm font-medium text-[var(--text-3)]">No studies yet</p>
-        <p className="mt-1 text-xs text-[var(--text-3)]">
-            {name} has not created any studies in this organization.
-        </p>
-    </div>
-);
-
-// ─── Study Card ───────────────────────────────────────────────────────────────
-
-interface StudyCardProps {
-    study:       StudyRow;
-    onOpen:      (study: StudyRow) => void;
-    isOpening:   boolean;
-}
-
-const StudyCard = ({ study, onOpen, isOpening }: StudyCardProps) => (
-    <div className="flex flex-col gap-3 rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4 transition-colors hover:border-[var(--border-strong)]">
-        {/* Header */}
-        <div className="flex items-start gap-3">
-            <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg bg-[var(--surface-3)]">
-                <FolderOpen className="h-4 w-4 text-[var(--text-2)]" />
-            </div>
-            <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-semibold text-[var(--text)]">
-                    {study.modality ?? 'Unknown Modality'}
-                </p>
-                <p className="text-xs text-[var(--text-3)]">{study.source ?? 'Import'}</p>
-            </div>
-            <span className="flex-shrink-0 rounded-md bg-[var(--surface-3)] px-2 py-0.5 font-mono text-[10px] text-[var(--text-3)]">
-                {study.id.slice(-6)}
-            </span>
-        </div>
-
-        {/* Meta */}
-        <div className="flex items-center gap-4 text-xs text-[var(--text-3)]">
-            <span className="flex items-center gap-1">
-                <Calendar className="h-3 w-3" />
-                {study.acquisitionDate ?? '—'}
-            </span>
-            <span className="flex items-center gap-1">
-                <FolderOpen className="h-3 w-3" />
-                {study.scans.length} scan{study.scans.length !== 1 ? 's' : ''}
-            </span>
-        </div>
-
-        {/* Thumbnails */}
-        {study.scans.length > 0 && (
-            <div className="flex gap-2 overflow-x-auto pb-1">
-                {study.scans.slice(0, 5).map(scan => (
-                    <div key={scan.id} className="h-14 w-14 flex-none overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--sidebar)]">
-                        <img
-                            src={toAbsoluteUrl(scan.filePath)}
-                            alt={scan.type ?? 'Scan'}
-                            className="h-full w-full object-cover opacity-80"
-                            onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
-                        />
-                    </div>
-                ))}
-                {study.scans.length > 5 && (
-                    <div className="flex h-14 w-14 flex-none items-center justify-center rounded-lg border border-[var(--border)] bg-[var(--sidebar)] text-xs font-semibold text-[var(--text-3)]">
-                        +{study.scans.length - 5}
-                    </div>
-                )}
-            </div>
-        )}
-
-        {/* Open button */}
-        <button
-            onClick={() => onOpen(study)}
-            disabled={isOpening || study.scans.length === 0}
-            className="flex w-full items-center justify-center gap-2 rounded-lg border border-[var(--border)] bg-[var(--surface-2)] py-2 text-xs font-medium text-[var(--text-2)] transition-colors hover:border-[#FF453A]/40 hover:bg-[#FF453A]/5 hover:text-[#FF453A] disabled:cursor-not-allowed disabled:opacity-40"
-        >
-            {isOpening ? (
-                <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Opening…</>
-            ) : (
-                <><ExternalLink className="h-3.5 w-3.5" /> Open in Workspace</>
-            )}
-        </button>
-    </div>
-);
-
-// ─── Page ─────────────────────────────────────────────────────────────────────
-
 /**
- * MemberWorkspacePage
+ * Admin / organization owner: one member's studies in this organization
+ * (UI12-10). Everything is view-only — opening a study shows its measurements
+ * and plan exactly as the member saved them, with the editing tools off.
  *
- * Admin-only. Lists a member's studies in the active org.
- * "Open in Workspace" sets up inspection mode and navigates to /workspace.
- *
+ * The studies come with the admin's own patient list (GET /api/patients in the
+ * organization workspace returns team studies marked via = 'team').
  * Route: /members/:userId/workspace
  */
 const MemberWorkspacePage = () => {
-    const navigate          = useNavigate();
-    const { userId }        = useParams<{ userId: string }>();
-    const activeWorkspace   = useAppStore(s => s.activeWorkspace);
-    const token             = useAppStore(s => s.token);
-    const setInspectionMode = useAppStore(s => s.setInspectionMode);
-    const setActivePatient  = useAppStore(s => s.setActivePatient);
-    const loadImage         = useAppStore(s => s.loadImage);
-    const clearImage        = useAppStore(s => s.clearImage);
+    const navigate        = useNavigate();
+    const { userId }      = useParams<{ userId: string }>();
+    const activeWorkspace = useAppStore(s => s.activeWorkspace);
+    const token           = useAppStore(s => s.token);
+    const patients        = useAppStore(s => s.patients);
+    const orgId = activeWorkspace.type === 'organization' ? activeWorkspace.orgId : null;
 
-    const orgId = activeWorkspace.type === 'organization'
-        ? (activeWorkspace as { type: 'organization'; orgId: string }).orgId
-        : null;
+    const [member, setMember]   = useState<{ fullName: string | null; email: string } | null>(null);
+    const [loading, setLoading] = useState(true);
+    const [error, setError]     = useState<string | null>(null);
 
-    const [data,        setData]        = useState<MemberWorkspaceData | null>(null);
-    const [memberInfo,  setMemberInfo]  = useState<{ fullName: string | null; email: string } | null>(null);
-    const [loading,     setLoading]     = useState(true);
-    const [error,       setError]       = useState<string | null>(null);
-    const [openingId,   setOpeningId]   = useState<string | null>(null);
-
-    // ── Guard ────────────────────────────────────────────────────────────────
     useEffect(() => {
         if (!orgId) navigate('/members', { replace: true });
     }, [orgId, navigate]);
 
-    // ── Fetch ────────────────────────────────────────────────────────────────
     useEffect(() => {
         if (!orgId || !userId || !token) return;
-        const load = async () => {
-            setLoading(true); setError(null);
+        let alive = true;
+        (async () => {
+            setLoading(true);
+            setError(null);
             try {
-                // Member info
-                const membersRes = await fetch(`${API_BASE}/orgs/${orgId}/members`, {
-                    headers: { Authorization: `Bearer ${token}` },
-                });
-                if (membersRes.status === 403) { navigate('/members', { replace: true }); return; }
-                if (membersRes.ok) {
-                    const d = await membersRes.json();
-                    const list = Array.isArray(d) ? d : (d.members ?? []);
-                    const found = list.find((m: any) => m.userId === userId);
-                    if (found) setMemberInfo({ fullName: found.fullName, email: found.email });
-                }
-
-                // Workspace data
-                const wsRes = await fetch(`${API_BASE}/orgs/${orgId}/members/${userId}/patients`, {
-                    headers: { Authorization: `Bearer ${token}` },
-                });
-                if (wsRes.status === 403) { navigate('/members', { replace: true }); return; }
-                if (wsRes.status === 404) { setError('Member not found in this organization.'); return; }
-                if (!wsRes.ok) { setError('Failed to load member workspace.'); return; }
-                setData(await wsRes.json());
+                const res = await fetch(`${API_BASE}/orgs/${orgId}/members`, { headers: { Authorization: `Bearer ${token}` } });
+                if (!res.ok) throw new Error();
+                const d = await res.json();
+                if (!d.isAdmin) { navigate('/members', { replace: true }); return; } // members never see others' studies
+                const found = (d.members ?? []).find((m: { userId: string }) => m.userId === userId);
+                if (alive) setMember(found ? { fullName: found.fullName, email: found.email } : null);
+                await useAppStore.getState().refreshPatients(); // fresh team studies
             } catch {
-                setError('Network error — please try again.');
+                if (alive) setError('Could not load this member. Please try again.');
             } finally {
-                setLoading(false);
+                if (alive) setLoading(false);
             }
-        };
-        load();
+        })();
+        return () => { alive = false; };
     }, [orgId, userId, token, navigate]);
 
-    // ── Open study in workspace ───────────────────────────────────────────────
-    const handleOpenStudy = useCallback(async (study: StudyRow) => {
-        if (!orgId || !userId) return;
-        if (study.scans.length === 0) return;
-        setOpeningId(study.id);
+    const studies = useMemo(
+        () => visibleStudies(patients, 'team').filter(({ study }) => study.ownerUserId === userId),
+        [patients, userId],
+    );
+    const displayName = member?.fullName ?? member?.email ?? 'Member';
 
-        const ownerName = memberInfo?.fullName ?? memberInfo?.email ?? userId;
-        const firstScan = study.scans[0];
-        const imageUrl  = toAbsoluteUrl(firstScan.filePath);
-
-        // Build a minimal synthetic context — measurements will come from
-        // the existing contextStates if the backend has saved any for this patient.
-        // We use the real patientId and studyId so the existing API data is picked up.
-        const syntheticContextId = `inspect-${study.id}-${Date.now()}`;
-
-        // Load the patient data so contexts/measurements are available.
-        // setActivePatient fetches contexts for this patient from the backend.
-        // The member's patient/study data is already in the DB — we just need to load it.
-        // Load the case first (clears previous case state), THEN enter
-        // inspection mode so nothing resets it (BUGS NAV-01).
-        clearImage();
-        await setActivePatient(study.patientId);
-
-        // Set inspection mode BEFORE navigating so MainLayout renders the banner
-        setInspectionMode({
-            active:      true,
-            ownerName,
-            ownerUserId: userId,
-            orgId,
-            studyId:     study.id,
-            patientId:   study.patientId,
-            contextId:   syntheticContextId,
-        } satisfies InspectionMode);
-
-
-        // Load the first scan image into the canvas
-        loadImage(imageUrl);
-
-        setOpeningId(null);
-        navigate('/workspace');
-    }, [orgId, userId, memberInfo, setInspectionMode, setActivePatient, loadImage, clearImage, navigate]);
+    const open = async (patientId: string, study: Study) => {
+        const st = useAppStore.getState();
+        if (st.isDicomMode) destroyCornerstone();
+        try {
+            await st.openStudy(patientId, study.id);
+            useAppStore.getState().setInspectionMode({
+                active: true,
+                ownerName: displayName,
+                ownerUserId: userId!,
+                orgId: orgId!,
+                studyId: study.id,
+                patientId,
+                contextId: useAppStore.getState().activeContextId ?? '',
+            } satisfies InspectionMode);
+            navigate('/workspace');
+        } catch (e) {
+            alert(e instanceof Error ? e.message : 'Could not open this study.');
+        }
+    };
 
     if (!orgId) return null;
 
-    const displayName = memberInfo?.fullName ?? memberInfo?.email ?? userId ?? 'Member';
-    const studies     = data?.studies ?? [];
-    const totalScans  = studies.reduce((a, s) => a + s.scans.length, 0);
-    const modalities  = [...new Set(studies.map(s => s.modality).filter(Boolean))] as string[];
-
     return (
-        <div className="mx-auto max-w-5xl space-y-6">
-
-            {/* ── Header ──────────────────────────────────────────── */}
+        <div className="mx-auto max-w-4xl space-y-6">
             <div className="flex items-center gap-3">
                 <button
                     onClick={() => navigate('/members')}
@@ -270,87 +97,47 @@ const MemberWorkspacePage = () => {
                 <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
                         <h1 className="truncate text-xl font-semibold text-[var(--text)]">{displayName}</h1>
-                        <span className="flex-shrink-0 rounded-full border border-[var(--border)] bg-[var(--surface-2)] px-2 py-0.5 text-[10px] font-medium text-[var(--text-3)]">
-                            Read-only inspection
+                        <span className="inline-flex flex-shrink-0 items-center gap-1 rounded-full bg-[var(--accent-soft)] px-2 py-0.5 text-[10px] font-semibold text-[var(--accent)]">
+                            <Eye className="h-3 w-3" /> View only
                         </span>
                     </div>
-                    <p className="mt-0.5 text-sm text-[var(--text-3)]">
-                        {memberInfo?.email ?? ''} · Organization member workspace
-                    </p>
+                    <p className="mt-0.5 text-sm text-[var(--text-3)]">{member?.email ?? ''} · Studies in this organization</p>
                 </div>
             </div>
 
-            {/* ── Admin notice ─────────────────────────────────────── */}
-            <div className="flex items-center gap-3 rounded-xl border border-[#FF453A]/20 bg-[#FF453A]/5 px-4 py-3">
-                <ShieldAlert className="h-4 w-4 flex-shrink-0 text-[#FF453A]" />
-                <p className="text-xs text-[#FF453A]">
-                    <span className="font-semibold">Admin view.</span>{' '}
-                    Clicking "Open in Workspace" loads this member's study in read-only inspection mode.
-                    Use "Create Review Copy" in the workspace to make your own editable copy.
+            <div className="flex items-start gap-3 rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3">
+                <Users className="mt-0.5 h-4 w-4 flex-shrink-0 text-[var(--accent)]" />
+                <p className="text-xs leading-relaxed text-[var(--text-2)]">
+                    As the organization's admin you can open every member's study to see its measurements, plan and report.
+                    Studies stay the member's own — nothing can be changed from here. To work on a study together, the member
+                    shares it with you with edit rights.
                 </p>
             </div>
 
-            {/* ── Loading / Error ──────────────────────────────────── */}
-            {loading && <div className="py-20 text-center text-sm text-[var(--text-3)]">Loading workspace…</div>}
+            {loading && <div className="py-16 text-center text-sm text-[var(--text-3)]">Loading…</div>}
             {error && !loading && (
-                <div className="flex items-center gap-3 rounded-xl border border-[#FF453A]/30 bg-[#FF453A]/5 px-4 py-3 text-sm text-[#FF453A]">{error}</div>
+                <div className="rounded-xl border border-[#FF453A]/30 bg-[#FF453A]/5 px-4 py-3 text-sm text-[#FF453A]">{error}</div>
             )}
 
-            {/* ── Stats ────────────────────────────────────────────── */}
             {!loading && !error && (
-                <div className="grid grid-cols-3 gap-4">
-                    {[
-                        { label: 'Studies',    value: studies.length, icon: FolderOpen },
-                        { label: 'Scans',      value: totalScans,     icon: Calendar   },
-                        { label: 'Modalities', value: modalities.length, icon: User    },
-                    ].map(({ label, value, icon: Icon }) => (
-                        <div key={label} className="flex items-center gap-3 rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3">
-                            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[var(--surface-3)]">
-                                <Icon className="h-4 w-4 text-[var(--text-2)]" />
+                <>
+                    <h2 className="text-sm font-semibold uppercase tracking-wide text-[var(--text)]">Studies ({studies.length})</h2>
+                    {studies.length === 0 ? (
+                        <div className="flex flex-col items-center justify-center py-16 text-center">
+                            <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-[var(--surface-2)]">
+                                <FolderOpen className="h-7 w-7 text-[var(--text-3)]" />
                             </div>
-                            <div>
-                                <p className="text-lg font-bold text-[var(--text)]">{value}</p>
-                                <p className="text-xs text-[var(--text-3)]">{label}</p>
-                            </div>
+                            <p className="text-sm font-medium text-[var(--text-3)]">No studies yet</p>
+                            <p className="mt-1 text-xs text-[var(--text-3)]">{displayName} has not created any studies in this organization.</p>
                         </div>
-                    ))}
-                </div>
-            )}
-
-            {/* ── Modality chips ───────────────────────────────────── */}
-            {!loading && !error && modalities.length > 0 && (
-                <div className="flex flex-wrap gap-2">
-                    {modalities.map(m => (
-                        <span key={m} className="rounded-full border border-[var(--border)] bg-[var(--surface-2)] px-3 py-1 text-xs font-medium text-[var(--text-2)]">
-                            {m}
-                        </span>
-                    ))}
-                </div>
-            )}
-
-            {/* ── Studies list ─────────────────────────────────────── */}
-            {!loading && !error && (
-                <h2 className="text-sm font-semibold uppercase tracking-wide text-[var(--text)]">
-                    Studies ({studies.length})
-                </h2>
-            )}
-
-            {!loading && !error && studies.length === 0 && <EmptyStudies name={displayName} />}
-
-            {!loading && !error && studies.length > 0 && (
-                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                    {studies
-                        .slice()
-                        .sort((a, b) => (b.acquisitionDate ?? '').localeCompare(a.acquisitionDate ?? ''))
-                        .map(study => (
-                            <StudyCard
-                                key={study.id}
-                                study={study}
-                                onOpen={handleOpenStudy}
-                                isOpening={openingId === study.id}
-                            />
-                        ))}
-                </div>
+                    ) : (
+                        <div className="space-y-3">
+                            {studies.map(({ patient, study }) => (
+                                <StudyCard key={study.id} study={study} patientId={patient.id} onOpenWorkspace={(s) => open(patient.id, s)} />
+                            ))}
+                        </div>
+                    )}
+                </>
             )}
         </div>
     );

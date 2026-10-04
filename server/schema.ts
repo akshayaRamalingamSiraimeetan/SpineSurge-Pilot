@@ -11,6 +11,10 @@ export const patients = pgTable('patients', {
     lastVisit: text('last_visit'),
     hasAlert: boolean('has_alert').default(false),
     isArchived: boolean('is_archived').default(false),
+    // Creator (migration 013). NULL = legacy, visible to no one.
+    ownerUserId: text('owner_user_id').references((): any => users.id, { onDelete: 'set null' }),
+    // Workspace (migration 014): NULL = personal, set = organization
+    organizationId: text('organization_id').references((): any => orgs.id, { onDelete: 'set null' }),
 });
 
 export const visits = pgTable('visits', {
@@ -285,3 +289,15 @@ export const organizationMembershipsRelations = relations(organizationMembership
   user: one(users, { fields: [organizationMemberships.userId], references: [users.id] }),
   org:  one(orgs,  { fields: [organizationMemberships.orgId],  references: [orgs.id]  }),
 }));
+
+// ─── Study sharing (migration 013) ───────────────────────────────────────────
+// A study shared with another user. Deleting a share never touches the study.
+
+export const studyShares = pgTable('study_shares', {
+  id:         uuid('id').primaryKey().defaultRandom(),
+  studyId:    text('study_id').notNull().references(() => studies.id, { onDelete: 'cascade' }),
+  sharedBy:   text('shared_by').references(() => users.id, { onDelete: 'set null' }),
+  sharedWith: text('shared_with').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  permission: text('permission').notNull().default('view'), // 'view' | 'edit'
+  createdAt:  timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+});

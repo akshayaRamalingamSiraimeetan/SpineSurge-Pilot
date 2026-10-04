@@ -2,6 +2,7 @@ import { useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { Enums, type Types } from '@cornerstonejs/core';
 import type { PlanCage, PlanImplant, PlanRod, PlanScrew } from '@/lib/store/types';
 import { add, clipSegmentToSlab, cross, dot, lerp, norm, scale, sub, type Vec3 } from './vec3';
+import { shortcutsBlocked } from '@/lib/keyboard';
 import { cageAxisZ, rodLength, screwDir, screwLength, smoothRod, translateImplant } from './implantModel';
 
 /**
@@ -19,6 +20,8 @@ interface Props {
     implants: PlanImplant[];
     selectedId: string | null;
     mode: PlaceMode;
+    /** View-only case: implants can be selected/seen but not dragged (UI12-10) */
+    readOnly?: boolean;
     onSelect: (id: string | null) => void;
     /** final=false while dragging (no save), true on release. */
     onChange: (implant: PlanImplant, final: boolean) => void;
@@ -87,7 +90,7 @@ export function Overlay2D(p: Props) {
 
     // ── Drag handling ─────────────────────────────────────────────────────
     const beginDrag = (e: React.PointerEvent, imp: PlanImplant, handle: Drag['handle'], insertAfter?: number) => {
-        if (p.mode !== 'view' || e.button !== 0) return;
+        if (p.mode !== 'view' || e.button !== 0 || p.readOnly) return;
         e.stopPropagation();
         e.preventDefault();
         svgRef.current?.setPointerCapture(e.pointerId);
@@ -172,6 +175,7 @@ export function Overlay2D(p: Props) {
     useEffect(() => {
         if (p.mode === 'view') return;
         const onKey = (e: KeyboardEvent) => {
+            if (shortcutsBlocked(e)) return;
             if (e.key === 'Escape') { setRodDraft([]); p.onCancelPlacement(); }
             if (e.key === 'Enter' && p.mode === 'place_rod' && rodDraft.length >= 2) { p.onPlaceRod(rodDraft); setRodDraft([]); }
         };

@@ -240,20 +240,20 @@ const toLocal = (pt: Point, pos: Point, angleDeg: number) => {
     return { x: dx * Math.cos(a) - dy * Math.sin(a), y: dx * Math.sin(a) + dy * Math.cos(a) };
 };
 
-const segDist = (p: Point, a: Point, b: Point) => {
-    const vx = b.x - a.x, vy = b.y - a.y;
-    const t = Math.max(0, Math.min(1, ((p.x - a.x) * vx + (p.y - a.y) * vy) / (vx * vx + vy * vy || 1)));
-    return Math.hypot(p.x - (a.x + vx * t), p.y - (a.y + vy * t));
-};
 
 /** True when world point `pt` is on the implant's body (with a small screen tolerance). */
 export function hitTestImplant(imp: any, pt: Point, k: number): boolean {
     const tol = 4 / k;
     const props = imp.properties ?? {};
     if (imp.type === 'rod') {
+        // Test the drawn (smoothed) curve, not the straight chords (UI11-35)
         const pts: Point[] = props.points ?? [];
-        for (let i = 1; i < pts.length; i++) if (segDist(pt, pts[i - 1], pts[i]) <= (props.diameter ?? 6) / 2 + tol) return true;
-        return false;
+        if (pts.length < 2) return false;
+        const hc = getHitCtx();
+        hc.lineWidth = (props.diameter ?? 6) + 2 * tol;
+        hc.lineCap = 'round';
+        hc.lineJoin = 'round';
+        return hc.isPointInStroke(rodPath(pts), pt.x, pt.y);
     }
     if (!imp.position) return false;
     const ctx = getHitCtx();

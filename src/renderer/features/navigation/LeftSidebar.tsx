@@ -31,6 +31,7 @@ import { cn } from '@/lib/utils';
 import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea/dnd';
 import { GripVertical, Eye, EyeOff, LayoutTemplate } from 'lucide-react';
 import { useReportConfig } from '@/lib/report/useReportConfig';
+import { isReadOnlyCase } from '@/lib/access';
 import { useTheme } from '@/components/theme-provider';
 
 /* ── Planning sub-tab ──────────────────────────────────────── */
@@ -999,12 +1000,29 @@ const ReportLeftSidebar = () => {
   );
 };
 
+/* ── View-only case: no tools (UI12-10) ──────────────────────── */
+function ViewOnlyPanel() {
+  return (
+    <div className="flex flex-col items-center justify-center gap-3 h-full px-6 text-center">
+      <div className="h-11 w-11 rounded-full flex items-center justify-center bg-[var(--surface-2)] text-[var(--text-2)]">
+        <Eye className="h-5 w-5" />
+      </div>
+      <div className="text-sm font-semibold text-[var(--text)]">View only</div>
+      <p className="text-xs leading-relaxed text-[var(--text-3)]">
+        The measurements and the plan are shown as saved. Editing tools are available to the study's owner
+        and to people it is shared with for editing.
+      </p>
+    </div>
+  );
+}
+
 /* ── Main LeftSidebar ────────────────────────────────────────── */
 const LeftSidebar = () => {
   const isDicomMode = useAppStore(s => s.isDicomMode);
   const isLeftSidebarOpen = useAppStore(s => s.isLeftSidebarOpen);
   const location = useLocation();
   const isReportTab = new URLSearchParams(location.search).get('tab') === 'report';
+  const readOnly = useAppStore((s) => isReadOnlyCase(s) || !!s.inspectionMode?.active);
 
   return (
     <div
@@ -1025,7 +1043,7 @@ const LeftSidebar = () => {
       {isLeftSidebarOpen && (
         <>
           <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', height: '100%', width: '100%' }}>
-            {isReportTab ? <ReportLeftSidebar /> : isDicomMode ? <DicomLeftSidebar /> : <NormalLeftSidebarContent />}
+            {isReportTab ? <ReportLeftSidebar /> : readOnly ? <ViewOnlyPanel /> : isDicomMode ? <DicomLeftSidebar /> : <NormalLeftSidebarContent />}
           </div>
         </>
       )}

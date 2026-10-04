@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { UPLOADS_DIR } from '../config';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import multer from 'multer';
@@ -30,7 +31,7 @@ const DEMO_MODE = process.env.DEMO_MODE === 'true';
 
 // ── Avatar upload (multer) ────────────────────────────────────────────────────
 
-const UPLOADS_DIR = path.resolve(process.env.UPLOADS_DIR || path.join(__dirname, '..', 'uploads'));
+// Same folder as the API (config.ts)
 if (!fs.existsSync(UPLOADS_DIR)) {
   fs.mkdirSync(UPLOADS_DIR, { recursive: true });
 }

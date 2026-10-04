@@ -5,7 +5,7 @@ import { randomUUID } from 'crypto';
 import { db } from './db';
 import * as schema from './schema';
 
-const UPLOADS_DIR = path.resolve(__dirname, 'uploads');
+import { UPLOADS_DIR } from './config';
 
 export interface PACSServerConfig {
     url: string;
@@ -95,7 +95,7 @@ export async function searchPACS(config: PACSServerConfig, query: any): Promise<
     }
 }
 
-export async function importPACSStudy(config: PACSServerConfig, studyInstanceUID: string, targetPatientId: string, visitId?: string) {
+export async function importPACSStudy(config: PACSServerConfig, studyInstanceUID: string, targetPatientId: string, visitId?: string, ownerUserId?: string | null) {
     const { url } = config;
 
     // --- Mock Support ---
@@ -108,6 +108,7 @@ export async function importPACSStudy(config: PACSServerConfig, studyInstanceUID
             visitId: visitId || null,
             modality: studyInstanceUID === 'mock-study-2' ? 'MR' : 'CT',
             source: 'PACS',
+            ownerUserId: ownerUserId ?? null, // visible only to the importer (UI11-14)
             acquisitionDate: new Date().toISOString().split('T')[0]
         });
 
@@ -150,7 +151,8 @@ export async function importPACSStudy(config: PACSServerConfig, studyInstanceUID
             visitId: visitId || null,
             modality: getValue(firstInstance, '00080060') || 'CT',
             source: 'PACS',
-            acquisitionDate: getValue(firstInstance, '00080020') || new Date().toISOString().split('T')[0]
+            acquisitionDate: getValue(firstInstance, '00080020') || new Date().toISOString().split('T')[0],
+            ownerUserId: ownerUserId ?? null,
         };
 
         await db.insert(schema.studies).values(studyData);

@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react';
-import { ImagePlus, Moon, Sun, Monitor, ChevronDown } from 'lucide-react';
-import { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { ImagePlus, Moon, Sun, Monitor, ChevronDown, Check } from 'lucide-react';
+import { DropdownMenu, DropdownMenuItem, DropdownMenuContent, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { METRICS } from '@/features/planning2d/metrics';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { useTheme } from '@/components/theme-provider';
@@ -118,16 +118,28 @@ export function SettingsDialog({ open, onOpenChange }: { open: boolean; onOpenCh
                                     <div key={tab}>
                                         {ti > 0 && <DropdownMenuSeparator />}
                                         <DropdownMenuLabel className="text-[10px] uppercase tracking-wider text-[var(--text-3)]">{tab === 'alignment' ? 'Alignment' : 'Extended'}</DropdownMenuLabel>
-                                        {METRICS.filter((m) => m.tab === tab).map((m) => (
-                                            <DropdownMenuCheckboxItem
-                                                key={m.key}
-                                                checked={s.targetKeys.includes(m.key)}
-                                                onSelect={(e) => e.preventDefault()}
-                                                onCheckedChange={(on) => s.set({ targetKeys: on ? [...s.targetKeys, m.key] : s.targetKeys.filter((k) => k !== m.key) })}
-                                            >
-                                                {m.label}
-                                            </DropdownMenuCheckboxItem>
-                                        ))}
+                                        {METRICS.filter((m) => m.tab === tab).map((m) => {
+                                            const on = s.targetKeys.includes(m.key);
+                                            // Round red indicator — clearly visible in both themes (UI12-01)
+                                            return (
+                                                <DropdownMenuItem
+                                                    key={m.key}
+                                                    role="menuitemcheckbox"
+                                                    aria-checked={on}
+                                                    onSelect={(e) => {
+                                                        e.preventDefault();
+                                                        s.set({ targetKeys: on ? s.targetKeys.filter((k) => k !== m.key) : [...s.targetKeys, m.key] });
+                                                    }}
+                                                    className="gap-2.5 cursor-pointer"
+                                                >
+                                                    <span className={cn('flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-full border-2 transition-colors',
+                                                        on ? 'bg-[var(--accent)] border-[var(--accent)]' : 'bg-transparent border-[var(--text-3)]')}>
+                                                        {on && <Check className="h-3 w-3 text-white" strokeWidth={3.5} />}
+                                                    </span>
+                                                    <span className={on ? 'font-medium text-[var(--text)]' : 'text-[var(--text-2)]'}>{m.label}</span>
+                                                </DropdownMenuItem>
+                                            );
+                                        })}
                                     </div>
                                 ))}
                             </DropdownMenuContent>

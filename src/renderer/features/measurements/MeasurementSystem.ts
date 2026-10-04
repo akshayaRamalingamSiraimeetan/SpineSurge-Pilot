@@ -119,10 +119,10 @@ export const MeasurementSystem = {
                 drawCSVL(ctx, displayMeasurement, k, bounds);
                 break;
             case 'ts':
-                drawTS(ctx, displayMeasurement, k, ratio, bounds);
+                drawTS(ctx, displayMeasurement, k, shouldConvert ? ratio : null, bounds); // same units as the panel (UI11-33)
                 break;
             case 'avt':
-                drawAVT(ctx, displayMeasurement, k, ratio, bounds);
+                drawAVT(ctx, displayMeasurement, k, shouldConvert ? ratio : null, bounds);
                 break;
             case 'slope':
                 drawSlope(ctx, displayMeasurement, k);

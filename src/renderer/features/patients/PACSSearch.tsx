@@ -7,6 +7,7 @@ import { Search, Server, Download, AlertCircle, Loader2, Settings, Check } from 
 import { usePACSStore, PACSStudy } from "@/lib/store/pacsStore";
 import { useAppStore } from "@/lib/store/index";
 import { cn } from "@/lib/utils";
+import { workspaceRole } from "@/lib/access";
 
 interface PACSSearchProps {
     patientId: string;
@@ -34,6 +35,7 @@ export function PACSSearch({ patientId, visitId, onImportSuccess }: PACSSearchPr
 
     const [importingUID, setImportingUID] = useState<string | null>(null);
     const [showConfig, setShowConfig] = useState(false);
+    const canConfigure = useAppStore((s) => workspaceRole(s) !== 'member');
     const [tempUrl, setTempUrl] = useState("");
     const [tempName, setTempName] = useState("");
 
@@ -133,9 +135,12 @@ export function PACSSearch({ patientId, visitId, onImportSuccess }: PACSSearchPr
                             <span className="text-[10px] text-muted-foreground font-mono truncate max-w-[200px] font-medium">{activeConfig?.url === 'MOCK' ? '🚀 Running in Mock Mode' : activeConfig?.url}</span>
                         </div>
                     </div>
-                    <Button variant="ghost" size="sm" className="h-8 text-[11px] font-bold text-muted-foreground hover:text-foreground hover:bg-muted" onClick={handleOpenConfig}>
-                        Configure
-                    </Button>
+                    {/* Organization members use the PACS their admin set up (UI12-10) */}
+                    {canConfigure && (
+                        <Button variant="ghost" size="sm" className="h-8 text-[11px] font-bold text-muted-foreground hover:text-foreground hover:bg-muted" onClick={handleOpenConfig}>
+                            Configure
+                        </Button>
+                    )}
                 </div>
             )}
 

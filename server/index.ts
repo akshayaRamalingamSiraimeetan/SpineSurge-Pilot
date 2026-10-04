@@ -1,4 +1,5 @@
 import express from 'express';
+import { UPLOADS_DIR } from './config';
 import 'dotenv/config';
 import cors from 'cors';
 import multer from 'multer';
@@ -6,7 +7,7 @@ import path from 'path';
 import fs from 'fs-extra';
 import { db } from './db';
 import * as schema from './schema';
-import { eq, and, isNull, or, sql } from 'drizzle-orm';
+import { eq, and, inArray, sql } from 'drizzle-orm';
 import * as pacsService from './pacsService';
 import http from 'http';
 import { WebSocketServer } from 'ws';
@@ -15,6 +16,7 @@ import { authRouter } from './routes/auth';
 import { orgsRouter } from './routes/orgs';
 import { invitationsRouter } from './routes/invitations';
 import { authenticate } from './middleware/authenticate';
+import { type Access, adminOrgIds, canWrite, contextAccess, contextsAccess, patientAccess, studyAccess } from './access';
 import jwt from 'jsonwebtoken';
 
 
@@ -28,15 +30,28 @@ wss.on('connection', (ws, req) => {
 });
 
 // Live-share rooms require a valid session token (?token=…) — BUGS SRV-09.
-server.on('upgrade', (request, socket, head) => {
+// A room is one session (spinesurge-pro-<contextId>): only users with access to
+// it may join, and view-only users receive but can't send edits (UI12-10).
+server.on('upgrade', async (request, socket, head) => {
+    const reject = (code: string) => { socket.write(`HTTP/1.1 ${code}\r\n\r\n`); socket.destroy(); };
+    let userId: string;
     try {
         const url = new URL(request.url ?? '/', 'http://localhost');
         const token = url.searchParams.get('token');
         if (!token) throw new Error('missing token');
-        jwt.verify(token, process.env.JWT_SECRET!);
+        userId = (jwt.verify(token, process.env.JWT_SECRET!) as { id: string }).id;
     } catch {
-        socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
-        socket.destroy();
+        reject('401 Unauthorized');
+        return;
+    }
+    try {
+        const room = decodeURIComponent((request.url ?? '/').slice(1).split('?')[0]).replace(/^spinesurge-pro-/, '');
+        // quick-analysis rooms aren't saved sessions; everything else must be accessible
+        const access = room.startsWith('quick-') ? 'owner' : await contextAccess(userId, room);
+        if (!access) { reject('403 Forbidden'); return; }
+        (request as http.IncomingMessage & { ssReadOnly?: boolean }).ssReadOnly = !canWrite(access);
+    } catch {
+        reject('500 Internal Server Error');
         return;
     }
     wss.handleUpgrade(request, socket, head, (ws) => {
@@ -69,7 +84,7 @@ app.use((req, res, next) => {
 
 // Setup uploads directory
 // UPLOADS_DIR env = persistent disk mount in hosting (e.g. /data/uploads).
-const UPLOADS_DIR = path.resolve(process.env.UPLOADS_DIR || path.join(__dirname, 'uploads'));
+// (shared with routes / PACS / scripts — config.ts)
 fs.ensureDirSync(UPLOADS_DIR);
 // Only inert media types are ever served inline; anything else downloads.
 // nosniff stops the browser treating an upload as HTML/JS (BUGS SRV-07).
@@ -156,24 +171,13 @@ const toClientImageUrl = (ref: string | null, baseUrl: string) =>
 
 // --- API Routes ---
 
-// Get all patients (authenticated — workspace-scoped study filtering)
-//
-// Workspace rules:
-//   ?workspace=personal
-//     → studies WHERE organization_id IS NULL
-//               AND (owner_user_id = caller OR owner_user_id IS NULL)
-//
-//   ?workspace=organization&orgId=xxx
-//     → studies WHERE organization_id = orgId
-//               AND (
-//                     owner_user_id = caller   (member: only own studies)
-//                     OR owner_user_id IS NULL  (legacy)
-//                     OR caller is admin of orgId  (admin sees all)
-//                   )
-//
-// No workspace param → backward compat: return all studies unfiltered
-//   (used by canvas/workspace routes that don't yet pass workspace context)
-//
+// Get all patients the caller may see (UI12-10):
+//   own    — patients they created / studies they own; studies filtered by the
+//            active workspace (personal: no org; organization: that org)
+//   share  — studies another user shared with them (any workspace) → "Shared studies"
+//   team   — org admin/creator in that org's workspace: every member's studies in
+//            the org, view-only → reached through Members → View workspace
+// Each study carries { access: owner|edit|view, via: own|share|team, ownerName }.
 app.get('/api/patients', authenticate, async (req, res) => {
     try {
         const baseUrl      = `${req.protocol}://${req.get('host')}`;
@@ -227,7 +231,17 @@ app.get('/api/patients', authenticate, async (req, res) => {
             }
         });
 
+        const [shares, adminOrgs, userRows] = await Promise.all([
+            db.select().from(schema.studyShares).where(eq(schema.studyShares.sharedWith, callerId)),
+            adminOrgIds(callerId),
+            db.select({ id: schema.users.id, fullName: schema.users.fullName, email: schema.users.email }).from(schema.users),
+        ]);
+        const shareOf = new Map(shares.map((sh) => [sh.studyId, sh.permission === 'edit' ? 'edit' as const : 'view' as const]));
+        const nameOf = new Map(userRows.map((u) => [u.id, u.fullName || u.email]));
+        const teamOrg = workspaceParam === 'organization' && orgIdParam && adminOrgs.has(orgIdParam) ? orgIdParam : null;
+
         const formattedPatients = patientsData.map(p => {
+            const ownsPatient = p.ownerUserId === callerId;
             let studies = p.studies.map(s => ({
                 ...s,
                 patientId:       s.patientId,
@@ -239,6 +253,9 @@ app.get('/api/patients', authenticate, async (req, res) => {
                 status:          s.status          || 'Draft',
                 organizationId:  s.organizationId  ?? null,
                 ownerUserId:     s.ownerUserId      ?? null,
+                access:          'owner' as Access,
+                via:             'own' as 'own' | 'share' | 'team',
+                ownerName:       null as string | null,
                 scans: s.scans.map(sc => ({
                     id:       sc.id,
                     studyId:  sc.studyId,
@@ -248,22 +265,24 @@ app.get('/api/patients', authenticate, async (req, res) => {
                 }))
             }));
 
-            // ── Workspace-scoped study filter ──────────────────────────────
-            if (workspaceParam === 'personal') {
-                // Personal workspace: caller's own studies only (organization_id IS NULL)
-                studies = studies.filter(s =>
-                    s.organizationId === null &&
-                    (s.ownerUserId === callerId || s.ownerUserId === null)
-                );
-            } else if (workspaceParam === 'organization' && orgIdParam) {
-                // Organization workspace: EVERYONE (including admins) sees only their own studies.
-                // Admins access other members' data only through the member-inspection endpoint.
-                studies = studies.filter(s =>
-                    s.organizationId === orgIdParam &&
-                    (s.ownerUserId === callerId || s.ownerUserId === null)
-                );
-            }
-            // No workspace param: no filter (backward compat for canvas workspace)
+            // ── Who sees which study (UI12-10) ─────────────────────────────
+            const inWorkspace = (orgId: string | null) =>
+                workspaceParam === 'organization' ? orgId === orgIdParam : orgId === null;
+            studies = studies.flatMap((s): typeof studies => {
+                const isOwner = s.ownerUserId === callerId || (s.ownerUserId === null && ownsPatient);
+                if (isOwner) return inWorkspace(s.organizationId) ? [{ ...s, access: 'owner' as const, via: 'own' as const, ownerName: null }] : [];
+                const shared = shareOf.get(s.id);
+                const ownerName = s.ownerUserId ? nameOf.get(s.ownerUserId) ?? null : null;
+                if (shared) return [{ ...s, access: shared, via: 'share' as const, ownerName }];
+                if (teamOrg && s.organizationId === teamOrg) return [{ ...s, access: 'view' as const, via: 'team' as const, ownerName }];
+                return [];
+            });
+            // Own patients live in one workspace — personal and organization never mix (UI12-21).
+            // (A legacy patient with own studies in this workspace still shows.)
+            const ownHere = ownsPatient && (inWorkspace(p.organizationId ?? null) || studies.some((s) => s.via === 'own'));
+            if (!ownHere && studies.length === 0) return null;
+            const access = ownHere || studies.some((s) => s.via === 'own') ? 'owner'
+                : studies.some((s) => s.via === 'share') ? 'shared' : 'team';
 
             const visits = p.visits.map((v, idx) => {
                 const isLatestVisit = idx === 0;
@@ -292,10 +311,14 @@ app.get('/api/patients', authenticate, async (req, res) => {
                 lastVisit: p.lastVisit || '',
                 hasAlert:  !!p.hasAlert,
                 isArchived: !!p.isArchived,
-                visits,
+                ownerUserId: p.ownerUserId ?? null,
+                ownerName:   p.ownerUserId ? nameOf.get(p.ownerUserId) ?? null : null,
+                access,
+                // someone else's patient: only the visits holding studies they can see
+                visits: ownHere ? visits : visits.filter((v) => v.studies.length > 0),
                 studies
             };
-        });
+        }).filter(Boolean);
 
         res.json(formattedPatients);
     } catch (err: any) {
@@ -308,7 +331,26 @@ app.get('/api/patients', authenticate, async (req, res) => {
 app.post('/api/patients', async (req, res) => {
     const { id, name, age, gender, dob, sex, contact, lastVisit, hasAlert, isArchived } = req.body;
     try {
+        if (!id) return res.status(400).json({ error: 'Missing patient id' });
+        // POST is an upsert: never let it overwrite someone else's patient (UI12-10).
+        const [existing] = await db.select().from(schema.patients).where(eq(schema.patients.id, id)).limit(1);
+        if (existing && existing.ownerUserId !== req.user!.id) {
+            const a = await patientAccess(req.user!.id, id);
+            if (!canWrite(a)) return res.status(existing.ownerUserId ? 409 : 403).json({ error: 'A patient with this ID already exists' });
+        }
+        // Workspace is fixed at creation; only an org the caller actively belongs to (UI12-21)
+        let organizationId: string | null = null;
+        if (!existing && req.body.organizationId) {
+            const [m] = await db.select().from(schema.organizationMemberships).where(and(
+                eq(schema.organizationMemberships.userId, req.user!.id),
+                eq(schema.organizationMemberships.orgId, String(req.body.organizationId)),
+                eq(schema.organizationMemberships.status, 'active'),
+            )).limit(1);
+            if (m) organizationId = m.orgId;
+        }
         await db.insert(schema.patients).values({
+            ownerUserId: req.user!.id,
+            organizationId,
             id,
             name,
             age: age ? parseInt(age) : null,
@@ -321,6 +363,7 @@ app.post('/api/patients', async (req, res) => {
         }).onConflictDoUpdate({
             target: schema.patients.id,
             set: {
+                ownerUserId: sql`coalesce(${schema.patients.ownerUserId}, ${req.user!.id})`,
                 name,
                 age: age ? parseInt(age) : null,
                 gender: gender || sex,
@@ -342,6 +385,7 @@ app.post('/api/patients/:id/archive', async (req, res) => {
     const { archived } = req.body;
     const patientId = req.params.id;
     try {
+        if (await patientAccess(req.user!.id, patientId) !== 'owner') return res.status(403).json({ error: 'Only the owner can archive this patient' });
         const result = await db.update(schema.patients)
             .set({ isArchived: !!archived })
             .where(eq(schema.patients.id, patientId))
@@ -360,6 +404,7 @@ app.post('/api/patients/:id/archive', async (req, res) => {
 app.post('/api/visits', async (req, res) => {
     const { id, patientId, visitNumber, date, time, diagnosis, comments, height, weight, consultants, surgeryDate } = req.body;
     try {
+        if (!canWrite(await patientAccess(req.user!.id, patientId))) return res.status(403).json({ error: 'You can only view this patient' });
         await db.insert(schema.visits).values({
             id, patientId, visitNumber, date, time, diagnosis, comments, height, weight, consultants, surgeryDate
         }).onConflictDoUpdate({
@@ -377,6 +422,8 @@ app.post('/api/visits', async (req, res) => {
 // Delete Visit
 app.delete('/api/visits/:id', async (req, res) => {
     try {
+        const [visit] = await db.select().from(schema.visits).where(eq(schema.visits.id, req.params.id)).limit(1);
+        if (visit && await patientAccess(req.user!.id, visit.patientId) !== 'owner') return res.status(403).json({ error: 'Only the owner can delete a visit' });
         const result = await db.delete(schema.visits)
             .where(eq(schema.visits.id, req.params.id))
             .returning({ id: schema.visits.id });
@@ -396,6 +443,18 @@ app.post('/api/studies', authenticate, async (req, res) => {
     const { id, patientId, visitId, modality, source, acquisitionDate, organizationId, name, status } = req.body;
     const ownerUserId = req.user!.id;
     try {
+        // Existing study: owner or edit share only, and its workspace/owner never change.
+        // New study: only on a patient the caller owns (UI12-10).
+        const [existing] = id ? await db.select().from(schema.studies).where(eq(schema.studies.id, id)).limit(1) : [];
+        if (existing) {
+            if (!canWrite(await studyAccess(ownerUserId, id))) return res.status(403).json({ error: 'You can only view this study' });
+            await db.update(schema.studies).set({
+                visitId: visitId || null, modality: modality || 'X-Ray', source: source || existing.source,
+                acquisitionDate: acquisitionDate || '', name: name ?? null, status: status || 'Draft',
+            }).where(eq(schema.studies.id, id));
+            return res.json({ success: true });
+        }
+        if (await patientAccess(ownerUserId, patientId) !== 'owner') return res.status(403).json({ error: 'Studies can only be added to your own patients' });
         console.log(`Saving study: ${id} for patient: ${patientId}, owner: ${ownerUserId}, org: ${organizationId ?? 'personal'}`);
         await db.insert(schema.studies).values({
             id,
@@ -444,7 +503,7 @@ app.delete('/api/studies/:id', async (req, res) => {
     try {
         const [study] = await db.select().from(schema.studies).where(eq(schema.studies.id, studyId)).limit(1);
         if (!study) return res.status(404).json({ error: 'Study not found' });
-        if (study.ownerUserId && study.ownerUserId !== req.user!.id) {
+        if (await studyAccess(req.user!.id, studyId) !== 'owner') {
             return res.status(403).json({ error: 'Only the owner of this study can delete it' });
         }
         const files: string[] = [];
@@ -474,6 +533,8 @@ app.delete('/api/patients/:id', async (req, res) => {
     const patientId = req.params.id;
     try {
         const studies = await db.select().from(schema.studies).where(eq(schema.studies.patientId, patientId));
+        const [pRow] = await db.select().from(schema.patients).where(eq(schema.patients.id, patientId)).limit(1);
+        if (pRow && pRow.ownerUserId !== req.user!.id) return res.status(403).json({ error: 'Only the owner can delete this patient' });
         if (studies.some((s) => s.ownerUserId && s.ownerUserId !== req.user!.id)) {
             return res.status(403).json({ error: 'This patient has studies owned by other users and cannot be deleted' });
         }
@@ -506,6 +567,10 @@ app.post('/api/scans', authenticate, upload.single('file'), async (req, res) => 
     if (!file) {
         console.error("Upload scan failed: No file provided");
         return res.status(400).json({ error: 'No file uploaded' });
+    }
+    if (!canWrite(await studyAccess(req.user!.id, studyId))) {
+        await fs.remove(file.path).catch(() => {});
+        return res.status(403).json({ error: 'You can only view this study' });
     }
 
     try {
@@ -553,8 +618,11 @@ app.get('/api/contexts/:patientId', async (req, res) => {
             }
         });
 
-        const hydrated = dbContexts.map(c => ({
+        // Only sessions of studies the caller can see; each says how (UI12-10)
+        const access = await contextsAccess(req.user!.id, dbContexts.map((c) => c.id));
+        const hydrated = dbContexts.filter((c) => access.has(c.id)).map(c => ({
             id: c.id,
+            access: access.get(c.id),
             patientId: c.patientId,
             visitId: c.visitId,
             studyIds: c.studies.map(s => s.studyId),
@@ -592,6 +660,22 @@ app.post('/api/contexts', async (req, res) => {
         if (!id || !patientId) {
             console.error('[POST /api/contexts] Missing id or patientId — rejecting');
             res.status(400).json({ error: 'Missing id or patientId' });
+            return;
+        }
+
+        // Writes: owner or edit share, on the existing session AND every study it links to (UI12-10)
+        const callerId = req.user!.id;
+        const [existingCtx] = await db.select({ id: schema.contexts.id, patientId: schema.contexts.patientId }).from(schema.contexts).where(eq(schema.contexts.id, id)).limit(1);
+        if (existingCtx && (existingCtx.patientId !== patientId || !canWrite(await contextAccess(callerId, id)))) {
+            res.status(403).json({ error: 'You can only view this session' });
+            return;
+        }
+        const linkIds: string[] = (studyIds || []).filter((sid: string) => sid);
+        for (const sid of linkIds) {
+            if (!canWrite(await studyAccess(callerId, sid))) { res.status(403).json({ error: 'You can only view this study' }); return; }
+        }
+        if (!existingCtx && linkIds.length === 0 && await patientAccess(callerId, patientId) !== 'owner') {
+            res.status(403).json({ error: 'You can only view this patient' });
             return;
         }
 
@@ -695,6 +779,15 @@ app.post('/api/reports', upload.single('file'), async (req, res) => {
         await fs.remove(file.path).catch(() => {});
         return res.status(400).json({ error: 'visitId is required' });
     }
+    {
+        const [visit] = await db.select().from(schema.visits).where(eq(schema.visits.id, visitId)).limit(1);
+        const allowed = studyId ? canWrite(await studyAccess(req.user!.id, studyId))
+            : !!visit && canWrite(await patientAccess(req.user!.id, visit.patientId));
+        if (!allowed) {
+            await fs.remove(file.path).catch(() => {});
+            return res.status(403).json({ error: 'You can only view this study' });
+        }
+    }
 
     try {
         // Version = max+1 computed under a per-study lock so concurrent exports
@@ -730,6 +823,8 @@ app.post('/api/reports', upload.single('file'), async (req, res) => {
 
 app.get('/api/reports/:visitId', async (req, res) => {
     try {
+        const [visit] = await db.select().from(schema.visits).where(eq(schema.visits.id, req.params.visitId)).limit(1);
+        if (!visit || !(await patientAccess(req.user!.id, visit.patientId))) return res.json([]);
         const reports = await db.query.reports.findMany({
             where: eq(schema.reports.visitId, req.params.visitId)
         });
@@ -746,6 +841,7 @@ app.get('/api/reports/:visitId', async (req, res) => {
 
 app.get('/api/reports/study/:studyId', async (req, res) => {
     try {
+        if (!(await studyAccess(req.user!.id, req.params.studyId))) return res.json([]);
         const reports = await db.query.reports.findMany({
             where: eq(schema.reports.studyId, req.params.studyId),
             orderBy: (reports, { desc }) => [desc(reports.version)]
@@ -909,10 +1005,94 @@ app.post('/api/pacs/search', async (req, res) => {
 app.post('/api/pacs/import', async (req, res) => {
     const { config, studyInstanceUID, patientId, visitId } = req.body;
     try {
-        const result = await pacsService.importPACSStudy(config, studyInstanceUID, patientId, visitId);
+        const result = await pacsService.importPACSStudy(config, studyInstanceUID, patientId, visitId, req.user!.id);
         res.json(result);
     } catch (err: any) {
         res.status(500).json({ error: err.message });
+    }
+});
+
+// --- Study sharing (UI12-10) ---
+// The owner shares a study with another user by their login email, with view
+// or edit rights. The recipient sees it under "Shared studies"; removing it
+// there only deletes the share — the owner's study is untouched.
+
+const shareView = async (studyId: string) => {
+    const rows = await db.select({
+        id: schema.studyShares.id, permission: schema.studyShares.permission, createdAt: schema.studyShares.createdAt,
+        userId: schema.users.id, email: schema.users.email, fullName: schema.users.fullName,
+    }).from(schema.studyShares)
+        .innerJoin(schema.users, eq(schema.studyShares.sharedWith, schema.users.id))
+        .where(eq(schema.studyShares.studyId, studyId));
+    return rows;
+};
+
+app.get('/api/studies/:id/shares', async (req, res) => {
+    try {
+        if (await studyAccess(req.user!.id, req.params.id) !== 'owner') return res.status(403).json({ error: 'Only the owner can see who a study is shared with' });
+        res.json(await shareView(req.params.id));
+    } catch (e) {
+        console.error('[shares/list]', e);
+        res.status(500).json({ error: 'Failed to load shares' });
+    }
+});
+
+app.post('/api/studies/:id/shares', async (req, res) => {
+    const studyId = req.params.id;
+    const email = String(req.body?.email ?? '').trim().toLowerCase();
+    const permission = req.body?.permission === 'edit' ? 'edit' : 'view';
+    try {
+        if (await studyAccess(req.user!.id, studyId) !== 'owner') return res.status(403).json({ error: 'Only the owner can share this study' });
+        if (!email) return res.status(400).json({ error: 'Enter the username (login email) of the person' });
+        const [target] = await db.select().from(schema.users).where(sql`lower(${schema.users.email}) = ${email}`).limit(1);
+        if (!target || !target.isActive) return res.status(404).json({ error: `No SpineSurge user "${email}"` });
+        if (target.id === req.user!.id) return res.status(400).json({ error: 'This is your own study' });
+        await db.insert(schema.studyShares).values({ studyId, sharedBy: req.user!.id, sharedWith: target.id, permission })
+            .onConflictDoUpdate({ target: [schema.studyShares.studyId, schema.studyShares.sharedWith], set: { permission } });
+        res.json(await shareView(studyId));
+    } catch (e) {
+        console.error('[shares/add]', e);
+        res.status(500).json({ error: 'Failed to share study' });
+    }
+});
+
+app.delete('/api/studies/:id/shares/:shareId', async (req, res) => {
+    try {
+        if (await studyAccess(req.user!.id, req.params.id) !== 'owner') return res.status(403).json({ error: 'Only the owner can stop sharing' });
+        await db.delete(schema.studyShares).where(and(eq(schema.studyShares.id, req.params.shareId), eq(schema.studyShares.studyId, req.params.id)));
+        res.json(await shareView(req.params.id));
+    } catch (e) {
+        console.error('[shares/remove]', e);
+        res.status(500).json({ error: 'Failed to stop sharing' });
+    }
+});
+
+// Recipient removes a shared study from their own list
+app.delete('/api/shared/:studyId', async (req, res) => {
+    try {
+        await db.delete(schema.studyShares).where(and(eq(schema.studyShares.studyId, req.params.studyId), eq(schema.studyShares.sharedWith, req.user!.id)));
+        res.json({ success: true });
+    } catch (e) {
+        console.error('[shared/remove]', e);
+        res.status(500).json({ error: 'Failed to remove' });
+    }
+});
+
+// People to suggest in the share dialog: members of the caller's organizations
+app.get('/api/share-candidates', async (req, res) => {
+    try {
+        const myOrgs = await db.select({ orgId: schema.organizationMemberships.orgId }).from(schema.organizationMemberships)
+            .where(and(eq(schema.organizationMemberships.userId, req.user!.id), eq(schema.organizationMemberships.status, 'active')));
+        const orgIds = myOrgs.map((o) => o.orgId);
+        if (!orgIds.length) return res.json([]);
+        const rows = await db.selectDistinct({ id: schema.users.id, email: schema.users.email, fullName: schema.users.fullName })
+            .from(schema.organizationMemberships)
+            .innerJoin(schema.users, eq(schema.organizationMemberships.userId, schema.users.id))
+            .where(and(inArray(schema.organizationMemberships.orgId, orgIds), eq(schema.organizationMemberships.status, 'active')));
+        res.json(rows.filter((u) => u.id !== req.user!.id));
+    } catch (e) {
+        console.error('[share-candidates]', e);
+        res.status(500).json({ error: 'Failed to load members' });
     }
 });
 

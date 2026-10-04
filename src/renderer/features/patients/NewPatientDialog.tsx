@@ -13,6 +13,7 @@ import { Plus, Edit2 } from "lucide-react";
 import { useAppStore, Patient } from "@/lib/store/index";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
+import { dobForAge } from "@/lib/studies";
 
 interface NewPatientDialogProps {
     patient?: Patient;
@@ -55,7 +56,7 @@ export function NewPatientDialog({ patient }: NewPatientDialogProps) {
     // Age and DOB stay consistent: either one fills the other.
     const handleAgeChange = (age: string) => {
         const n = parseInt(age);
-        setFormData((prev) => ({ ...prev, age, dob: Number.isFinite(n) ? `${new Date().getFullYear() - n}-01-01` : prev.dob }));
+        setFormData((prev) => ({ ...prev, age, dob: Number.isFinite(n) ? dobForAge(n, prev.dob) : prev.dob }));
     };
     const handleDOBChange = (dob: string) => {
         const d = dob ? new Date(dob) : null;
@@ -73,7 +74,12 @@ export function NewPatientDialog({ patient }: NewPatientDialogProps) {
         };
 
         if (patient) {
-            await updatePatient({ ...patient, ...common });
+            try {
+                await updatePatient({ ...patient, ...common });
+            } catch (err) {
+                alert(`Could not save patient: ${err instanceof Error ? err.message : 'server error'}`);
+                return;
+            }
         } else {
             const newPatient: Patient = {
                 id: formData.id.trim() || `PAT-${crypto.randomUUID().slice(0, 8).toUpperCase()}`,

@@ -82,6 +82,55 @@ export function strokeLine(ctx: CanvasRenderingContext2D, a: Point, b: Point, k:
     ctx.restore();
 }
 
+// ── Reference lines (UI12-03) ───────────────────────────────────────────
+// Plumb lines, horizontals, CSVL, perpendiculars: always pink so they never
+// read as a measurement line, with their name written ON the line (rotated
+// along it) — a floating label could drift away and be confused when moved.
+
+export const REFERENCE_COLOR = '#FF5FA2';
+
+export function drawReferenceLine(
+    ctx: CanvasRenderingContext2D,
+    a: Point,
+    b: Point,
+    k: number,
+    name?: string,
+    opts: { dashed?: boolean; at?: number } = {},
+) {
+    strokeLine(ctx, a, b, k, REFERENCE_COLOR, opts.dashed ?? true);
+    if (!name) return;
+    const len = Math.hypot(b.x - a.x, b.y - a.y);
+    if (len * k < 40) return; // too short on screen to carry a name
+    const t = opts.at ?? 0.5;
+    const cx = a.x + (b.x - a.x) * t;
+    const cy = a.y + (b.y - a.y) * t;
+    let angle = Math.atan2(b.y - a.y, b.x - a.x);
+    // keep the text upright
+    if (angle > Math.PI / 2) angle -= Math.PI;
+    if (angle <= -Math.PI / 2) angle += Math.PI;
+
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.rotate(angle);
+    ctx.font = `700 ${(STYLE.font - 1) / k}px Inter, "Segoe UI", system-ui, sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    const w = ctx.measureText(name).width + 10 / k;
+    const h = (STYLE.font + 5) / k;
+    ctx.setLineDash([]);
+    ctx.fillStyle = 'rgba(12, 12, 14, 0.82)';
+    ctx.beginPath();
+    if (typeof ctx.roundRect === 'function') ctx.roundRect(-w / 2, -h / 2, w, h, 4 / k);
+    else ctx.rect(-w / 2, -h / 2, w, h);
+    ctx.fill();
+    ctx.lineWidth = 1 / k;
+    ctx.strokeStyle = REFERENCE_COLOR;
+    ctx.stroke();
+    ctx.fillStyle = REFERENCE_COLOR;
+    ctx.fillText(name, 0, 0.5 / k);
+    ctx.restore();
+}
+
 export function strokePolyline(
     ctx: CanvasRenderingContext2D,
     pts: Point[],

@@ -1,3 +1,7 @@
+import { useAppStore } from '@/lib/store';
+import { api } from '@/lib/api';
+import { isReadOnlyCase } from '@/lib/access';
+
 /**
  * Screenshots of the 3D planning viewer for the report (UI10-07): the 4-up
  * layout (axial · sagittal · coronal · 3D, with the implant overlays) and the
@@ -55,4 +59,29 @@ export async function drawCell(ctx: CanvasRenderingContext2D, cell: HTMLElement,
     ctx.fillStyle = 'rgba(255,255,255,0.75)';
     ctx.font = `600 ${Math.round(h * 0.035) + 8}px sans-serif`;
     ctx.fillText(label.toUpperCase(), x + 10, y + Math.round(h * 0.035) + 16);
+}
+
+/**
+ * Store the current 3D view as the study's thumbnail (scan type 'Thumbnail',
+ * fixed id per study so it is replaced, not duplicated) — UI11-02.
+ */
+export async function saveStudyThumbnail(): Promise<boolean> {
+    const st = useAppStore.getState();
+    const ctx = st.contexts.find((c) => c.id === st.activeContextId);
+    const studyId = ctx?.studyIds?.[0];
+    if (!studyId || !st.isDicomMode || isReadOnlyCase(st)) return false; // view-only can't upload (UI12-10)
+    const cap = await captureViewer();
+    if (!cap?.threeD) return false;
+    const img = new Image();
+    img.src = cap.threeD;
+    await img.decode();
+    const c = document.createElement('canvas');
+    c.width = 480; c.height = 360;
+    c.getContext('2d')!.drawImage(img, 0, 0, c.width, c.height);
+    const blob = await new Promise<Blob | null>((r) => c.toBlob(r, 'image/jpeg', 0.85));
+    if (!blob) return false;
+    await api.uploadScan(studyId, { id: `thumb-${studyId}`, type: 'Thumbnail', date: new Date().toISOString().slice(0, 10) },
+        new File([blob], 'thumbnail.jpg', { type: 'image/jpeg' }), st.token);
+    await st.refreshPatients();
+    return true;
 }

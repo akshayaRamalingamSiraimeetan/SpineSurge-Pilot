@@ -11,7 +11,7 @@ export interface DICOMResource {
 export interface Scan {
     id: string;
     imageUrl: string;
-    type: 'Pre-op' | 'Post-op' | 'Imported';
+    type: 'Pre-op' | 'Post-op' | 'Imported' | 'Thumbnail';
     date: string;
 }
 
@@ -32,7 +32,17 @@ export interface Study {
     scans: Scan[];
     /** Workspace ownership: null = personal, set = org id */
     organizationId?: string | null;
+    ownerUserId?: string | null;
+    /** What the signed-in user may do (server-computed, UI12-10) */
+    access?: Access;
+    /** own = their study · share = shared with them · team = org admin view of a member's study */
+    via?: 'own' | 'share' | 'team';
+    /** Owner's name when it isn't the signed-in user */
+    ownerName?: string | null;
 }
+
+/** owner = full control · edit = shared with edit rights · view = read-only */
+export type Access = 'owner' | 'edit' | 'view';
 
 /**
  * Human name for a study: its own name, else "Study · <date>". Modality is
@@ -62,6 +72,8 @@ export interface Context {
     mode: 'view' | 'plan' | 'compare';
     name: string;
     lastModified: string;
+    /** Server-computed access to this session (UI12-10); absent = local/untitled = owner */
+    access?: Access;
 }
 
 export interface ReportSectionConfig {
@@ -141,6 +153,10 @@ export interface Patient {
     contact?: string;
     visits: Visit[];
     studies: Study[];
+    /** owner = theirs · shared = only studies shared with them · team = admin view of a member (UI12-10) */
+    access?: 'owner' | 'shared' | 'team';
+    ownerUserId?: string | null;
+    ownerName?: string | null;
 }
 
 export interface UserProfile {

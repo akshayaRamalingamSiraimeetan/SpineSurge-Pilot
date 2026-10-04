@@ -152,8 +152,7 @@ export class CanvasManager {
             baselineHistoryLength: this.history.length,
             baselineState: this.current
         };
-        this.redoStack = [];
-        this.lastState = null;
+        // Redo survives a click that doesn't change anything (cleared on commit if it did) — UI11-36
     }
 
     commitHistoryTransaction() {
@@ -161,6 +160,7 @@ export class CanvasManager {
             return;
         }
 
+        const changed = this.current !== this.activeHistoryTransaction.baselineState;
         if (this.current) {
             const lastHistory = this.history[this.history.length - 1];
             if (lastHistory !== this.current) {
@@ -170,8 +170,10 @@ export class CanvasManager {
 
         this.head = this.history[0] ?? null;
         this.activeHistoryTransaction = null;
-        this.redoStack = [];
-        this.lastState = null;
+        if (changed) {
+            this.redoStack = [];
+            this.lastState = null;
+        }
     }
 
     rollbackHistoryTransaction() {
@@ -759,6 +761,9 @@ export class CanvasManager {
         if (idx !== -1) this.history[idx] = node;
         if (this.activeHistoryTransaction?.baselineState === this.current) this.activeHistoryTransaction.baselineState = node;
         this.current = node;
+        // Redo nodes predate this change (e.g. eye toggle after undo) — redoing would revert it (UI11-36)
+        this.redoStack = [];
+        this.lastState = null;
     }
 
     undo() {

@@ -31,7 +31,8 @@ import {
 import { useNavigate } from "react-router-dom";
 import { cn } from "@/lib/utils";
 import { destroyCornerstone } from "@/lib/cornerstone/initCornerstone";
-import { isQuickAnalysisPatient } from "@/lib/studies";
+import { isQuickAnalysisPatient, visibleStudies } from "@/lib/studies";
+import { getStudyDisplayName } from "@/lib/store/index";
 
 
 function patientInitials(name?: string) {
@@ -58,7 +59,6 @@ const PatientCasesPage = () => {
         setActivePatient,
         archivePatient,
         addContext,
-        generateShareLink,
         addVisit,
         addStudy,
     } = useAppStore(useShallow(s => ({
@@ -67,7 +67,6 @@ const PatientCasesPage = () => {
         setActivePatient: s.setActivePatient,
         archivePatient: s.archivePatient,
         addContext: s.addContext,
-        generateShareLink: s.generateShareLink,
         addVisit: s.addVisit,
         addStudy: s.addStudy,
     })));
@@ -101,7 +100,10 @@ const PatientCasesPage = () => {
     const processedPatients = useMemo(() => {
         return [...patients]
             .filter(p => !isQuickAnalysisPatient(p.id))
-            .filter(p => (p.studies && p.studies.length > 0) || p.id === activePatientId)
+            // Only the user's own patients; shared studies have their own section, a team
+            // member's studies are reached through Members → View workspace (UI12-10)
+            .filter(p => (p.access ?? 'owner') === 'owner')
+            // Patients without studies stay listed (new patient, last study deleted — UI11-16)
             .filter(p => (showArchived ? p.isArchived : !p.isArchived))
             .filter(p =>
                 (p.name || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -111,10 +113,20 @@ const PatientCasesPage = () => {
             .sort((a, b) => (a.name || '').localeCompare(b.name || ''));
     }, [patients, showArchived, searchQuery]);
 
+    // Studies other people shared with me (UI12-10)
+    const sharedStudies = useMemo(() => {
+        const q = searchQuery.toLowerCase();
+        return visibleStudies(patients, 'share').filter(({ patient, study }) =>
+            !q || (patient.name || '').toLowerCase().includes(q) || (study.ownerName || '').toLowerCase().includes(q)
+            || getStudyDisplayName(study).toLowerCase().includes(q));
+    }, [patients, searchQuery]);
+    const ownsActive = (activePatient?.access ?? 'owner') === 'owner';
+
     const groupedTimeline = useMemo(() => {
         if (!activePatient) return [];
         
         const groups: Record<string, { date: string, visits: any[], studies: Study[] }> = {};
+        const shown = (st: Study) => st.via !== 'team';
         
         // 1. Group visits
         if (activePatient.visits) {
@@ -125,7 +137,7 @@ const PatientCasesPage = () => {
                 if (!groups[groupKey]) groups[groupKey] = { date: groupKey, visits: [], studies: [] };
                 groups[groupKey].visits.push(v);
                 if (v.studies) {
-                    v.studies.forEach(s => {
+                    v.studies.filter(shown).forEach(s => {
                         if (!groups[groupKey].studies.find(ext => ext.id === s.id)) {
                             groups[groupKey].studies.push(s);
                         }
@@ -136,7 +148,7 @@ const PatientCasesPage = () => {
         
         // 2. Group top-level studies
         if (activePatient.studies) {
-            activePatient.studies.forEach(study => {
+            activePatient.studies.filter(shown).forEach(study => {
                 let dateStr = study.acquisitionDate;
                 if (!dateStr && study.visitId) {
                     const v = activePatient.visits?.find(v => v.id === study.visitId);
@@ -165,15 +177,14 @@ const PatientCasesPage = () => {
         return sortedKeys.map(date => groups[date]);
     }, [activePatient]);
 
-    useEffect(() => {
-        if (groupedTimeline.length > 0) {
-            setExpandedGroups(new Set([groupedTimeline[0].date]));
-        } else {
-            setExpandedGroups(new Set());
-        }
-        // Only when the patient changes — not on every patient-list refresh (NAV-25).
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [activePatientId]);
+    // Expand the newest group once per patient — also when the patient's
+    // visits arrive after it was selected (refresh), not on every list refresh (NAV-25, UI11-44).
+    const [expandedFor, setExpandedFor] = useState<string | null>(null);
+    const firstGroup = groupedTimeline[0]?.date;
+    if (firstGroup && activePatientId && expandedFor !== activePatientId) {
+        setExpandedFor(activePatientId);
+        setExpandedGroups(new Set([firstGroup]));
+    }
 
     const firstSeenDate = useMemo(() => {
         if (!activePatient?.visits?.length) return activePatient?.lastVisit || null;
@@ -266,7 +277,12 @@ const PatientCasesPage = () => {
 
     const handleArchiveToggle = async (patientId: string, currentArchived: boolean) => {
         if (confirm(`Are you sure you want to ${currentArchived ? 'restore' : 'archive'} this patient?`)) {
-            await archivePatient(patientId, !currentArchived);
+            try {
+                await archivePatient(patientId, !currentArchived);
+            } catch (err) {
+                alert(`Could not ${currentArchived ? 'restore' : 'archive'} the patient: ${err instanceof Error ? err.message : 'server error'}`);
+                return;
+            }
             if (!currentArchived && activePatientId === patientId) {
                 useAppStore.getState().resetWorkspace();
             }
@@ -357,9 +373,6 @@ const PatientCasesPage = () => {
                                         </Button>
                                     </DropdownMenuTrigger>
                                     <DropdownMenuContent align="end" className="w-44" onClick={(e) => e.stopPropagation()}>
-                                        <DropdownMenuItem onClick={() => generateShareLink({ patientId: patient.id })}>
-                                            <Share2 className="mr-2 h-3.5 w-3.5 text-[var(--text-3)]" /> Share
-                                        </DropdownMenuItem>
                                         <DropdownMenuItem onClick={() => handleArchiveToggle(patient.id, !!patient.isArchived)}>
                                             {patient.isArchived ? (
                                                 <><ArchiveRestore className="mr-2 h-3.5 w-3.5 text-[var(--text-3)]" /> Restore</>
@@ -376,6 +389,36 @@ const PatientCasesPage = () => {
                             </div>
                         );
                     })}
+
+                    {sharedStudies.length > 0 && (
+                        <div className="mt-4">
+                            <div className="flex items-center gap-2 px-2 pb-2 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-3)]">
+                                <Share2 className="h-3 w-3" /> Shared with me
+                            </div>
+                            {sharedStudies.map(({ patient, study }) => (
+                                <div
+                                    key={study.id}
+                                    onClick={() => selectPatient(patient.id)}
+                                    className={cn(
+                                        'mb-1 flex cursor-pointer items-center gap-3 rounded-xl border p-3 transition-colors',
+                                        patient.id === activePatientId ? 'border-[#FF453A]/40 bg-[#FF453A]/10' : 'border-transparent hover:bg-[var(--surface)]',
+                                    )}
+                                >
+                                    <Avatar className="h-10 w-10 border border-[var(--border)]">
+                                        <AvatarFallback className="text-xs font-bold bg-[var(--accent-soft)] text-[var(--accent)]">
+                                            {patientInitials(patient.name)}
+                                        </AvatarFallback>
+                                    </Avatar>
+                                    <div className="min-w-0 flex-1">
+                                        <div className="truncate text-sm font-semibold text-[var(--text)]">{patient.name}</div>
+                                        <div className="truncate text-xs text-[var(--text-3)]">
+                                            {getStudyDisplayName(study)} · {study.ownerName ?? 'Shared'} · {study.access === 'edit' ? 'Can edit' : 'View only'}
+                                        </div>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    )}
                 </div>
 
                 <div className="border-t border-[var(--border)] p-4">
@@ -417,7 +460,11 @@ const PatientCasesPage = () => {
                                 </div>
                             </div>
                             <div className="flex items-center gap-2">
-                                <NewPatientDialog patient={activePatient} />
+                                {ownsActive ? <NewPatientDialog patient={activePatient} /> : (
+                                    <span className="rounded-full bg-[var(--accent-soft)] px-3 py-1 text-xs font-semibold text-[var(--accent)]">
+                                        Shared by {activePatient.ownerName ?? 'another user'}
+                                    </span>
+                                )}
                             </div>
                         </div>
 
@@ -425,7 +472,7 @@ const PatientCasesPage = () => {
                             <div className="relative ml-4 border-l-2 border-[#FF453A]/30 pl-8 pb-4">
                                 {groupedTimeline.length === 0 ? (
                                     <div className="rounded-xl border border-dashed border-[var(--border)] bg-[var(--surface)]/50 py-12 text-center text-sm text-[var(--text-3)]">
-                                        No studies recorded. Add a new study to build the timeline.
+                                        {ownsActive ? 'No studies recorded. Add a new study to build the timeline.' : 'No shared studies left for this patient.'}
                                     </div>
                                 ) : (
                                     groupedTimeline.map((group) => {
@@ -478,7 +525,7 @@ const PatientCasesPage = () => {
                                     })
                                 )}
 
-                                {activePatient && (
+                                {activePatient && ownsActive && (
                                     <div className="relative mt-6">
                                         <span className="absolute -left-[41px] top-4 h-3 w-3 rounded-full border-2 border-[var(--border)] bg-[var(--bg)]" />
                                         <div className="rounded-xl border border-dashed border-[#FF453A]/30 bg-[#FF453A]/5 p-4">

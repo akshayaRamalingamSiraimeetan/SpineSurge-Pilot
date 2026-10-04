@@ -11,6 +11,7 @@
  * without running it; every later file is idempotent and is replayed.
  */
 import 'dotenv/config';
+import { pgSsl } from './config';
 import fs from 'fs';
 import path from 'path';
 import { Client } from 'pg';
@@ -36,7 +37,8 @@ async function main() {
         throw new Error('DATABASE_URL is not set');
     }
 
-    const client = new Client({ connectionString });
+    // Same TLS rule as the app (config.ts) — a TLS-only host used to fail here and block startup
+    const client = new Client({ connectionString, ssl: pgSsl(connectionString) });
     await client.connect();
 
     try {

@@ -1,6 +1,6 @@
 import { Point, getMidpoint } from "@/lib/canvas/GeometryUtils";
 import { Measurement } from "@/lib/canvas/CanvasManager";
-import { drawArc, drawLabel, drawPoints, strokeLine, toolColor } from "@/lib/canvas/annotationStyle";
+import { drawArc, drawLabel, drawPoints, drawReferenceLine, strokeLine, toolColor } from "@/lib/canvas/annotationStyle";
 import { getHipAxisCenter, drawFemoralHeads } from "./BaseTools";
 
 export function calculateSSA(points: Point[]) {
@@ -49,7 +49,7 @@ export function drawSPi(ctx: CanvasRenderingContext2D, m: Measurement, k: number
     if (!data) return;
     const { angle, hipAxis, centroid, a1, aVert } = data;
     const top = Math.max(bounds?.minY ?? -Infinity, Math.min(centroid.y, hipAxis.y - 150 / k));
-    strokeLine(ctx, hipAxis, { x: hipAxis.x, y: top }, k, color, true);
+    drawReferenceLine(ctx, hipAxis, { x: hipAxis.x, y: top }, k, 'Vertical', { at: 0.7 });
     strokeLine(ctx, hipAxis, centroid, k, color);
     drawArc(ctx, hipAxis, 40 / k, aVert, a1, k, color);
     drawPoints(ctx, m.points, k, color);

@@ -139,6 +139,7 @@ const LoginPage = () => {
                             variant="outline"
                             className="w-full h-11 rounded-md border-[var(--border)] bg-[var(--surface-2)] text-[var(--text)] hover:bg-[var(--surface-3)] hover:text-[var(--text)]"
                             type="button"
+                            onClick={() => alert('Hospital SSO is coming soon.')}
                         >
                             Hospital SSO
                         </Button>
@@ -146,9 +147,10 @@ const LoginPage = () => {
                 </form>
             </Card>
             <div className="flex flex-col items-center gap-2 text-sm text-[var(--text-2)]">
-                <a href="#" className="underline hover:text-[#FF453A] transition-colors">
+                <button type="button" onClick={() => alert('Password reset is coming soon — please contact your administrator.')}
+                    className="underline hover:text-[#FF453A] transition-colors">
                     Forgot your password?
-                </a>
+                </button>
                 <span>
                     Don't have an account?{" "}
                     <Link to="/register" className="text-[var(--text)] underline hover:text-[#FF453A] transition-colors">

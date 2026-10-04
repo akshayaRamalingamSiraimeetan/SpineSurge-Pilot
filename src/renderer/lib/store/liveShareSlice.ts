@@ -43,7 +43,10 @@ export const createLiveShareSlice: StateCreator<AppState, [], [], LiveShareSlice
             // Remote edits go to BOTH the live fields and the active context's
             // state (the canvas reads contextStates). Not saved here — the
             // peer that made the edit saves it (BUGS WS-15).
+            // Remote edits apply only while this room's case is the open one (UI11-06)
+            const inRoom = () => (get().activeContextId ?? get().activePatientId) === roomId;
             const applyRemote = (field: 'measurements' | 'implants' | 'threeDImplants' | 'pedicleSimulations', data: any[]) => {
+                if (!inRoom()) return;
                 set((state) => ({
                     [field]: data,
                     contextStates: state.contextStates.map((c) =>
@@ -80,7 +83,7 @@ export const createLiveShareSlice: StateCreator<AppState, [], [], LiveShareSlice
             });
 
             sharedCanvas.observe((event) => {
-                if (event.transaction.local) return;
+                if (event.transaction.local || !inRoom()) return;
                 const canvasState = sharedCanvas.toJSON();
                 set((state) => ({
                     canvas: { ...state.canvas, ...canvasState }
@@ -88,7 +91,7 @@ export const createLiveShareSlice: StateCreator<AppState, [], [], LiveShareSlice
             });
 
             sharedAppState.observe((event) => {
-                if (event.transaction.local) return;
+                if (event.transaction.local || !inRoom()) return;
                 const appState = sharedAppState.toJSON();
                 if (appState.currentImage) {
                     set({ currentImage: appState.currentImage });
@@ -98,6 +101,14 @@ export const createLiveShareSlice: StateCreator<AppState, [], [], LiveShareSlice
             // Sync local changes to Yjs using the store api
             if (unsubscribeLive) unsubscribeLive();
             unsubscribeLive = api.subscribe((state: AppState, prevState: AppState) => {
+                // Only the room's own case may be pushed. Switching/closing a case
+                // replaces every field in one set() BEFORE MainPage moves the room —
+                // pushing that would wipe/overwrite the old case for every peer,
+                // who then autosave it (UI11-06).
+                const caseKey = state.activeContextId ?? state.activePatientId;
+                if (caseKey !== roomId
+                    || state.activeContextId !== prevState.activeContextId
+                    || state.activePatientId !== prevState.activePatientId) return;
                 if (state.measurements !== prevState.measurements) {
                     get().syncToYjs('measurements', state.measurements);
                 }

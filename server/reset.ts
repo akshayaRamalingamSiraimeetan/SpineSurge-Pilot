@@ -3,12 +3,18 @@ import * as schema from './schema';
 import fs from 'fs-extra';
 import path from 'path';
 import { sql } from 'drizzle-orm';
+import { UPLOADS_DIR } from './config';
 
 const reset = async () => {
+    // Wipes every patient, study and upload — never by accident in production (UI11-14)
+    if (process.env.NODE_ENV === 'production' && process.env.ALLOW_RESET !== 'yes') {
+        console.error('Refusing to reset a production database. Set ALLOW_RESET=yes to override.');
+        process.exit(1);
+    }
     console.log('Starting full data reset...');
 
     // 1. Clear Uploads
-    const uploadsDir = path.resolve(__dirname, 'uploads');
+    const uploadsDir = UPLOADS_DIR;
     if (fs.existsSync(uploadsDir)) {
         console.log(`Clearing uploads directory: ${uploadsDir}`);
         const files = fs.readdirSync(uploadsDir);

@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Image as ImageIcon, ExternalLink, MoreVertical, Pencil, Share2, Check, Trash2 } from "lucide-react";
+import { Image as ImageIcon, ExternalLink, MoreVertical, Pencil, Share2, Check, Trash2, Eye, Users, LogOut } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -14,6 +14,8 @@ import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { ReportsListDialog } from "@/features/patients/ReportsListDialog";
 import { useAppStore, getStudyDisplayName, STUDY_STATUSES, type Study, type StudyStatus } from "@/lib/store/index";
 import { cn } from "@/lib/utils";
+import { imageScans, studyThumbnail } from "@/lib/studies";
+import { api } from "@/lib/api";
 
 /**
  * One study card, used by the Patients page timeline and the Home page's
@@ -48,6 +50,17 @@ export function StudyCard({
     const generateShareLink = useAppStore(s => s.generateShareLink);
     const deleteStudy = useAppStore(s => s.deleteStudy);
     const [confirmDelete, setConfirmDelete] = useState(false);
+    const [confirmRemove, setConfirmRemove] = useState(false);
+    // owner: everything · edit (shared): rename/status · view: look only (UI12-10)
+    const access = study.access ?? 'owner';
+    const isOwner = access === 'owner';
+    const canWrite = access !== 'view';
+    const removeShared = async () => {
+        const st = useAppStore.getState();
+        await api.removeSharedStudy(study.id, st.token);
+        if (st.activePatientId === patientId) st.resetWorkspace();
+        await st.refreshPatients();
+    };
     const [renaming, setRenaming] = useState(false);
     // Card reads: patient name → "Study #N · <custom name>" · date (once) → modality / status / images.
     const patient = useAppStore(s => s.patients.find(p => p.id === patientId));
@@ -68,9 +81,11 @@ export function StudyCard({
     const [nameDraft, setNameDraft] = useState(customName);
     // Studies have three states now; old 'Archived' studies read as Completed (UI9-04).
     const status: StudyStatus = study.status === 'Archived' ? 'Completed' : ((study.status as StudyStatus) || 'Draft');
-    const thumb = study.scans?.[0]?.imageUrl;
-    const scanLabel = study.scans?.length
-        ? `${study.scans.length} image${study.scans.length === 1 ? '' : 's'}`
+    // CT/MR: the saved 3D screenshot (UI11-02)
+    const thumb = studyThumbnail(study);
+    const imageCount = imageScans(study).length;
+    const scanLabel = imageCount
+        ? `${imageCount} image${imageCount === 1 ? '' : 's'}`
         : study.source || '—';
 
     const saveName = async () => {
@@ -109,8 +124,9 @@ export function StudyCard({
                     />
                 ) : (
                     <button
-                        className="mt-0.5 block max-w-full truncate text-left text-xs text-[var(--text-2)] hover:underline decoration-dotted underline-offset-4"
-                        title="Click to name this study"
+                        className={cn('mt-0.5 block max-w-full truncate text-left text-xs text-[var(--text-2)]', canWrite && 'hover:underline decoration-dotted underline-offset-4')}
+                        title={canWrite ? 'Click to name this study' : undefined}
+                        disabled={!canWrite}
                         onClick={() => { setNameDraft(customName); setRenaming(true); }}
                     >
                         <span className="font-semibold text-[var(--text)]">Study #{studyNumber}</span>
@@ -127,6 +143,13 @@ export function StudyCard({
                         {status}
                     </span>
                     <span className="text-[10px] text-[var(--text-3)]">{scanLabel}</span>
+                    {!isOwner && (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-[var(--accent-soft)] px-2 py-0.5 text-[10px] font-semibold text-[var(--accent)]"
+                            title={study.via === 'team' ? 'Team member\'s study — view only' : `Shared by ${study.ownerName ?? 'another user'}`}>
+                            {access === 'view' ? <Eye className="h-3 w-3" /> : <Users className="h-3 w-3" />}
+                            {study.ownerName ?? 'Shared'} · {access === 'view' ? 'View only' : 'Can edit'}
+                        </span>
+                    )}
                 </div>
             </div>
 
@@ -147,26 +170,48 @@ export function StudyCard({
                             <MoreVertical className="h-4 w-4" />
                         </Button>
                     </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end" className="w-48">
-                        <DropdownMenuItem onClick={() => { setNameDraft(getStudyDisplayName(study)); setRenaming(true); }}>
-                            <Pencil className="mr-2 h-3.5 w-3.5 text-[var(--text-3)]" /> Rename
-                        </DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => generateShareLink({ patientId })}>
-                            <Share2 className="mr-2 h-3.5 w-3.5 text-[var(--text-3)]" /> Share
-                        </DropdownMenuItem>
-                        <DropdownMenuSeparator />
-                        <DropdownMenuLabel className="px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-3)]">Status</DropdownMenuLabel>
-                        {STUDY_STATUSES.map(st => (
-                            <DropdownMenuItem key={st} onClick={() => setStatus(st)}>
-                                <span className={cn('mr-2.5 h-2 w-2 rounded-full', statusDotClass(st))} />
-                                <span className="flex-1">{st}</span>
-                                {status === st && <Check className="h-3.5 w-3.5 text-[var(--accent)]" />}
+                    {/* Don't refocus the trigger on close: it blurred (and saved) the rename field (UI11-17) */}
+                    <DropdownMenuContent align="end" className="w-48" onCloseAutoFocus={(e) => e.preventDefault()}>
+                        {canWrite && (
+                            <DropdownMenuItem onClick={() => { setNameDraft(customName); setRenaming(true); }}>
+                                <Pencil className="mr-2 h-3.5 w-3.5 text-[var(--text-3)]" /> Rename
                             </DropdownMenuItem>
-                        ))}
-                        <DropdownMenuSeparator />
-                        <DropdownMenuItem onClick={() => setConfirmDelete(true)} className="text-[var(--val-bad)] focus:text-[var(--val-bad)]">
-                            <Trash2 className="mr-2 h-3.5 w-3.5" /> Delete study
-                        </DropdownMenuItem>
+                        )}
+                        {isOwner && (
+                            <DropdownMenuItem onClick={() => generateShareLink({ patientId, studyId: study.id })}>
+                                <Share2 className="mr-2 h-3.5 w-3.5 text-[var(--text-3)]" /> Share
+                            </DropdownMenuItem>
+                        )}
+                        {canWrite && (
+                            <>
+                                <DropdownMenuSeparator />
+                                <DropdownMenuLabel className="px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-3)]">Status</DropdownMenuLabel>
+                                {STUDY_STATUSES.map(st => (
+                                    <DropdownMenuItem key={st} onClick={() => setStatus(st)}>
+                                        <span className={cn('mr-2.5 h-2 w-2 rounded-full', statusDotClass(st))} />
+                                        <span className="flex-1">{st}</span>
+                                        {status === st && <Check className="h-3.5 w-3.5 text-[var(--accent)]" />}
+                                    </DropdownMenuItem>
+                                ))}
+                            </>
+                        )}
+                        {isOwner ? (
+                            <>
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem onClick={() => setConfirmDelete(true)} className="text-[var(--val-bad)] focus:text-[var(--val-bad)]">
+                                    <Trash2 className="mr-2 h-3.5 w-3.5" /> Delete study
+                                </DropdownMenuItem>
+                            </>
+                        ) : study.via === 'share' ? (
+                            <>
+                                {canWrite && <DropdownMenuSeparator />}
+                                <DropdownMenuItem onClick={() => setConfirmRemove(true)}>
+                                    <LogOut className="mr-2 h-3.5 w-3.5 text-[var(--text-3)]" /> Remove from my list
+                                </DropdownMenuItem>
+                            </>
+                        ) : (
+                            <DropdownMenuLabel className="px-2.5 py-1.5 text-[11px] font-normal text-[var(--text-3)]">Team member's study — view only</DropdownMenuLabel>
+                        )}
                     </DropdownMenuContent>
                 </DropdownMenu>
             </div>
@@ -176,6 +221,14 @@ export function StudyCard({
                 title="Delete this study?"
                 description={`"${title}" and its images, sessions and reports will be permanently deleted.`}
                 onConfirm={() => deleteStudy(patientId, study.id)}
+            />
+            <ConfirmDialog
+                open={confirmRemove}
+                onOpenChange={setConfirmRemove}
+                title="Remove from your list?"
+                description={`"${title}" disappears from your Shared studies. ${study.ownerName ?? 'The owner'}'s study is not changed — they can share it again.`}
+                confirmLabel="Remove"
+                onConfirm={removeShared}
             />
         </div>
     );

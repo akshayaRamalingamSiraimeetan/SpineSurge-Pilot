@@ -88,28 +88,44 @@ export async function autofillPatientFromDicom(patientId: string, info: DicomInf
  * Upload a series to a study (4 at a time), set the study's modality, then
  * reload the patient list once. Returns the uploaded URLs in file order.
  */
+/** True when the file starts with the DICOM preamble + "DICM" (CD folders also hold README/AUTORUN files). */
+async function isDicomFile(f: File): Promise<boolean> {
+    if (f.size < 132) return false;
+    const b = new Uint8Array(await f.slice(128, 132).arrayBuffer());
+    return b[0] === 0x44 && b[1] === 0x49 && b[2] === 0x43 && b[3] === 0x4d;
+}
+
 export async function uploadDicomSeries(
     patientId: string, studyId: string, files: File[], onProgress?: (done: number, total: number) => void,
-): Promise<string[]> {
+): Promise<{ uploaded: number; failed: number }> {
     const st = useAppStore.getState();
-    const info = files.length ? await readDicomInfo(files[0]) : null;
+    // Only real DICOM files, sent as "<n>.dcm" — UID-style names ("1.2.840…123")
+    // and CD extras were rejected by the server's extension check (UI11-24).
+    const flags = await Promise.all(files.map(isDicomFile));
+    const series = files.filter((_, i) => flags[i]);
+    if (series.length === 0) throw new Error('No DICOM files found in the selection');
+    const info = await readDicomInfo(series[0]);
     const modality = modalityLabel(info?.modality);
     const date = info?.studyDate ?? new Date().toISOString().slice(0, 10);
-    const urls: string[] = new Array(files.length);
-    let next = 0, done = 0;
+    // Modality first: a study reopened mid-upload is already recognised as CT/MR
+    await st.updateStudy(patientId, studyId, { modality, acquisitionDate: date });
+
+    let next = 0, done = 0, failed = 0;
+    const send = (i: number) => api.uploadScan(studyId, { id: `scan-${studyId}-${i}`, type: 'Imported', date },
+        new File([series[i]], `${String(i).padStart(5, '0')}.dcm`, { type: 'application/dicom' }), st.token);
     const worker = async () => {
-        while (next < files.length) {
+        while (next < series.length) {
             const i = next++;
-            const { imageUrl } = await api.uploadScan(studyId, { id: `scan-${crypto.randomUUID()}`, type: 'Imported', date }, files[i], st.token);
-            urls[i] = imageUrl;
-            onProgress?.(++done, files.length);
+            try { await send(i); } catch {
+                try { await send(i); } catch { failed++; } // one retry
+            }
+            onProgress?.(++done, series.length);
         }
     };
-    await Promise.all(Array.from({ length: Math.min(4, files.length) }, worker));
-    await st.updateStudy(patientId, studyId, { modality, acquisitionDate: date });
-    if (info) await autofillPatientFromDicom(patientId, info);
+    await Promise.all(Array.from({ length: Math.min(4, series.length) }, worker));
+    if (info) await autofillPatientFromDicom(patientId, info).catch(() => {});
     await st.refreshPatients();
-    return urls;
+    return { uploaded: series.length - failed, failed };
 }
 
 // ── Upload progress (shown in the header) ──────────────────────────────────
@@ -119,6 +135,17 @@ export const useDicomUpload = create<{ done: number; total: number; error: strin
 export function persistSeriesInBackground(patientId: string, studyId: string, files: File[]) {
     useDicomUpload.setState({ done: 0, total: files.length, error: null });
     uploadDicomSeries(patientId, studyId, files, (done, total) => useDicomUpload.setState({ done, total }))
-        .then(() => useDicomUpload.setState({ done: 0, total: 0 }))
+        .then((r) => useDicomUpload.setState({ done: 0, total: 0, error: r.failed ? `${r.failed} of ${r.uploaded + r.failed} slices could not be saved — re-import the folder` : null }))
         .catch((e) => useDicomUpload.setState({ error: e instanceof Error ? e.message : 'Series upload failed' }));
+}
+
+// A finished upload's error belongs to that case — clear it on case change; and
+// the local files are the only copy until the upload is done (UI11-27).
+useAppStore.subscribe((s, prev) => {
+    if (s.activeContextId !== prev.activeContextId && useDicomUpload.getState().total === 0) useDicomUpload.setState({ error: null });
+});
+if (typeof window !== 'undefined') {
+    window.addEventListener('beforeunload', (e) => {
+        if (useDicomUpload.getState().total > 0) { e.preventDefault(); e.returnValue = ''; }
+    });
 }

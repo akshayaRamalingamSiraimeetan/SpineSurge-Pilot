@@ -1,6 +1,6 @@
 import { Point, getMidpoint, getLineLinesIntersection } from "@/lib/canvas/GeometryUtils";
 import { Measurement } from "@/lib/canvas/CanvasManager";
-import { drawArc, drawLabel, drawPoints, strokeLine, toolColor } from "@/lib/canvas/annotationStyle";
+import { drawArc, drawLabel, drawPoints, drawReferenceLine, strokeLine, toolColor } from "@/lib/canvas/annotationStyle";
 import { calculatePO, drawTiltLine } from "./CoronalTools";
 
 export function calculateSlope(points: Point[]) {
@@ -73,7 +73,7 @@ export function drawCBVA(ctx: CanvasRenderingContext2D, m: Measurement, k: numbe
     const color = toolColor(m.toolKey);
     const { angle, chin, brow, a1, aVert } = calculateCBVA(points)!;
     const top = Math.max(bounds?.minY ?? -Infinity, Math.min(brow.y, chin.y - 120 / k));
-    strokeLine(ctx, chin, { x: chin.x, y: top }, k, color, true);
+    drawReferenceLine(ctx, chin, { x: chin.x, y: top }, k, 'Vertical', { at: 0.75 });
     strokeLine(ctx, chin, brow, k, color);
     drawArc(ctx, chin, 40 / k, aVert, a1, k, color);
     drawPoints(ctx, points, k, color);
@@ -124,9 +124,9 @@ export function drawRVAD(ctx: CanvasRenderingContext2D, m: Measurement, k: numbe
         intL ? Math.hypot(intL.x - avMid.x, intL.y - avMid.y) : 0,
         120 / k,
     ) + 30 / k;
-    strokeLine(ctx,
+    drawReferenceLine(ctx,
         { x: avMid.x + Math.cos(aRef) * reach, y: avMid.y + Math.sin(aRef) * reach },
-        { x: avMid.x - Math.cos(aRef) * reach, y: avMid.y - Math.sin(aRef) * reach }, k, color, true);
+        { x: avMid.x - Math.cos(aRef) * reach, y: avMid.y - Math.sin(aRef) * reach }, k, 'Apical ⊥', { at: 0.82 });
     strokeLine(ctx, r1, r2, k, color);
     strokeLine(ctx, l1, l2, k, color);
     if (intR) { strokeLine(ctx, r1, intR, k, color, true); drawArc(ctx, intR, 40 / k, aRef, aRight, k, color); }

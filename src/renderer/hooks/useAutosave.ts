@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { useAppStore } from '@/lib/store';
+import { isReadOnlyCase } from '@/lib/access';
 
 const DEBOUNCE_MS = 3000;
 const RETRY_DELAYS_MS = [5000, 15000, 45000];
@@ -64,6 +65,7 @@ export function useAutosave() {
         if (!activeContextId) return;
 
         const s = useAppStore.getState();
+        if (isReadOnlyCase(s)) return; // view-only: nothing to save (UI12-10)
         s.setHasUnsyncedChanges(true);
         s.setSyncStatus('unsynced');
 

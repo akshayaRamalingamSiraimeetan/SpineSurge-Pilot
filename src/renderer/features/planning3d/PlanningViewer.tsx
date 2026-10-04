@@ -27,10 +27,12 @@ import { loadSeriesImageIds } from './loadSeries';
 import { ImplantActorSync } from './actors3D';
 import { Overlay2D, type PlaceMode } from './Overlay2D';
 import { attach3DInteraction } from './interaction3D';
-import { applyBoneDisplay, applyCrop, BoneSegmentation } from './volumeDisplay';
+import { applyBoneDisplay, applyCrop, BoneSegmentation, volumeBounds } from './volumeDisplay';
 import { CropBox3D } from './CropBox3D';
 import { SliceSlider } from './SliceSlider';
-import { drawCell, registerViewerCapture } from './capture';
+import { drawCell, registerViewerCapture, saveStudyThumbnail } from './capture';
+import { isReadOnlyCase } from '@/lib/access';
+import { shortcutsBlocked } from '@/lib/keyboard';
 import { makeCage, makeRod, makeScrew, PA_DIRECTION } from './implantModel';
 import { add, dot, len, norm, scale, sub, type Vec3 } from './vec3';
 
@@ -61,9 +63,12 @@ export function PlanningViewer({ fileList }: { fileList: (File | string)[] }) {
     const [status, setStatus] = useState<{ phase: 'loading' | 'ready' | 'error'; message?: string }>({ phase: 'loading', message: 'Preparing viewer…' });
     const [volumeLoaded, setVolumeLoaded] = useState(false);
     const [maximized, setMaximized] = useState<ViewKey | null>(null);
+    const actorSyncRef = useRef<ImplantActorSync | null>(null);
 
     const { implants, dicom3D } = useAppStore(useShallow((s) => ({ implants: s.threeDImplants, dicom3D: s.dicom3D })));
-    const mode = dicom3D.interactionMode as PlaceMode;
+    // View-only case: look, rotate, scroll — no placing or editing implants (UI12-10)
+    const readOnly = useAppStore((s) => isReadOnlyCase(s) || !!s.inspectionMode?.active);
+    const mode = (readOnly ? 'view' : dicom3D.interactionMode) as PlaceMode;
     const selectedId = dicom3D.selectedImplantId;
 
     // ── Load + build viewports (single owner, cancellable) ──────────────────
@@ -86,7 +91,7 @@ export function PlanningViewer({ fileList }: { fileList: (File | string)[] }) {
 
                 const series = await loadSeriesImageIds(fileList, (d, t) => {
                     if (!cancelled && (d === t || d % 10 === 0)) setStatus({ phase: 'loading', message: `Reading images ${d}/${t}` });
-                });
+                }, () => cancelled);
                 if (cancelled) return;
                 if (series.imageIds.length < 2) throw new Error('No usable CT/MR series was found in the selection.');
 
@@ -146,6 +151,10 @@ export function PlanningViewer({ fileList }: { fileList: (File | string)[] }) {
 
         return () => {
             cancelled = true;
+            // Implant actors must go BEFORE the engine: removing them afterwards
+            // throws "Rendering engine has been destroyed" (UI11-19).
+            try { actorSyncRef.current?.clear(); } catch { /* engine already gone */ }
+            actorSyncRef.current = null;
             setSession(null);
             for (const id of [tg2d, tg3d]) { try { ToolGroupManager.destroyToolGroup(id); } catch { /* ignore */ } }
             try { engine?.destroy(); } catch { /* ignore */ }
@@ -174,8 +183,8 @@ export function PlanningViewer({ fileList }: { fileList: (File | string)[] }) {
         const vp = getVp('threeD');
         return vp ? new ImplantActorSync(vp as any) : null;
     }, [getVp]);
-    useEffect(() => { actorSync?.sync(implants, selectedId); }, [actorSync, implants, selectedId]);
-    useEffect(() => () => actorSync?.clear(), [actorSync]);
+    useEffect(() => { actorSyncRef.current = actorSync; }, [actorSync]);
+    useEffect(() => { try { actorSync?.sync(implants, selectedId); } catch (e) { console.warn('[PlanningViewer] actor sync', e); } }, [actorSync, implants, selectedId]);
 
     // ── 3D appearance: volume vs bone surface, threshold, crop ──────────────
     const boneMode = dicom3D.renderMode === 'segmentation';
@@ -202,6 +211,8 @@ export function PlanningViewer({ fileList }: { fileList: (File | string)[] }) {
             try { session.engine.render(); } catch { return null; }
             await new Promise((r) => requestAnimationFrame(() => r(null)));
             const cells = (['axial', 'sagittal', 'coronal', 'threeD'] as ViewKey[]).map((k) => cellRefs.current[k]?.parentElement ?? null);
+            // A maximised view hides the others (0 px): never save black panels (UI11-23)
+            if (cells.some((c) => !c || c.clientWidth === 0 || c.clientHeight === 0)) return null;
             const W = 1600, H = 1200, cw = W / 2, ch = H / 2;
             const out = document.createElement('canvas');
             out.width = W; out.height = H;
@@ -222,6 +233,27 @@ export function PlanningViewer({ fileList }: { fileList: (File | string)[] }) {
         });
         return () => registerViewerCapture(null);
     }, [session]);
+
+    // Card thumbnail: the 3D view, once loaded (if the study has none) and a
+    // few seconds after the plan changes (UI11-02).
+    const thumbDone = useRef(false);
+    useEffect(() => {
+        if (!session || !volumeLoaded || thumbDone.current) return;
+        const st = useAppStore.getState();
+        const ctx = st.contexts.find((c) => c.id === st.activeContextId);
+        const study = st.patients.flatMap((p) => p.studies ?? []).find((x) => x.id === ctx?.studyIds?.[0]);
+        thumbDone.current = true;
+        if (study?.scans?.some((sc) => sc.type === 'Thumbnail')) return;
+        const t = setTimeout(() => { void saveStudyThumbnail().catch(() => {}); }, 2000);
+        return () => clearTimeout(t);
+    }, [session, volumeLoaded]);
+    const firstImplants = useRef(true);
+    useEffect(() => {
+        if (!session || !volumeLoaded) return;
+        if (firstImplants.current) { firstImplants.current = false; return; }
+        const t = setTimeout(() => { void saveStudyThumbnail().catch(() => {}); }, 6000);
+        return () => clearTimeout(t);
+    }, [implants, session, volumeLoaded]);
 
     // Bone labelmap on the MPRs in "segmentation" mode (debounced, after load).
     const segRef = useRef<BoneSegmentation | null>(null);
@@ -244,10 +276,12 @@ export function PlanningViewer({ fileList }: { fileList: (File | string)[] }) {
     const store = useAppStore.getState;
     const select = useCallback((id: string | null) => store().setSelectedDicomImplant(id), [store]);
     const change = useCallback((imp: PlanImplant, final: boolean) => {
+        if ((isReadOnlyCase(useAppStore.getState()) || !!useAppStore.getState().inspectionMode?.active)) return; // view-only
         store().updateThreeDImplant(imp.id, imp, { persist: false });
         if (final) store().commitThreeDImplants();
     }, [store]);
     const finishPlacement = useCallback((imp: PlanImplant) => {
+        if ((isReadOnlyCase(useAppStore.getState()) || !!useAppStore.getState().inspectionMode?.active)) return; // view-only
         store().addThreeDImplant(imp);
         store().setSelectedDicomImplant(imp.id);
         store().setDicom3DMode('view');
@@ -281,6 +315,15 @@ export function PlanningViewer({ fileList }: { fileList: (File | string)[] }) {
             },
             onSelect: select,
             onChange: change,
+            getClipBox: () => {
+                const d = useAppStore.getState().dicom3D;
+                const vp = getVp('threeD');
+                const b = d.isCroppingActive && vp ? volumeBounds(vp) : null;
+                if (!b) return null;
+                const r = d.roiCrop;
+                const at = (lo: number, hi: number, t: number) => lo + (hi - lo) * t;
+                return [at(b[0], b[1], r.x0), at(b[0], b[1], r.x1), at(b[2], b[3], r.y0), at(b[2], b[3], r.y1), at(b[4], b[5], r.z0), at(b[4], b[5], r.z1)];
+            },
             onPlaceOnBone: (entry, dir) => {
                 const d = useAppStore.getState().dicom3D;
                 finishPlacement(makeScrew(entry, dir, { length: d.screwLength, diameter: d.screwDiameter, level: d.screwLevel, side: d.screwSide }));
@@ -311,8 +354,7 @@ export function PlanningViewer({ fileList }: { fileList: (File | string)[] }) {
     // Delete key removes the selected implant.
     useEffect(() => {
         const onKey = (e: KeyboardEvent) => {
-            const t = e.target as HTMLElement;
-            if (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable) return;
+            if (shortcutsBlocked(e)) return;
             const sel = useAppStore.getState().dicom3D.selectedImplantId;
             if ((e.key === 'Delete' || e.key === 'Backspace') && sel) {
                 useAppStore.getState().removeThreeDImplant(sel);
@@ -359,6 +401,7 @@ export function PlanningViewer({ fileList }: { fileList: (File | string)[] }) {
                                     implants={implants}
                                     selectedId={selectedId}
                                     mode={mode}
+                                    readOnly={readOnly}
                                     onSelect={select}
                                     onChange={change}
                                     onPlacePoint={placePoint}

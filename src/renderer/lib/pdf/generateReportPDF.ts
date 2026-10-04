@@ -187,7 +187,7 @@ export function renderReportPDF(model: ReportModel): jsPDF {
                     }
                     if (plan.targetRows.length) {
                         autoTable(doc, { ...tableStyles, startY: y,
-                            head: [['Target', 'Measured', 'Target', 'Difference', 'Plan']],
+                            head: [['Parameter', 'Measured', 'Target', 'Difference', 'Plan']],
                             body: plan.targetRows.map((r) => [r.parameter, r.measured, r.target, r.diff, r.plan]),
                             columnStyles: { 0: { fontStyle: 'bold' } } });
                         afterTable();

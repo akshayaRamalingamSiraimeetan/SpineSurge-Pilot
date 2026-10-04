@@ -21,6 +21,8 @@ interface SettingsState {
     targetKeys: string[];
     /** Bumped to send the floating image toolbar back to its default dock. */
     toolbarResetAt: number;
+    /** User these settings belong to — report defaults never carry over to another user (UI11-11). */
+    ownerId: string | null;
     set: (patch: Partial<Omit<SettingsState, 'set' | 'resetToolbar'>>) => void;
     resetToolbar: () => void;
 }
@@ -34,6 +36,7 @@ export const useSettings = create<SettingsState>()(
             reuseLandmarks: true,
             targetKeys: ['tk', 'll', 'sva'],
             toolbarResetAt: 0,
+            ownerId: null,
             set: (patch) => set(patch),
             resetToolbar: () => set({ toolbarResetAt: Date.now() }),
         }),
@@ -46,10 +49,19 @@ export const useSettings = create<SettingsState>()(
                 snapToPoints: s.snapToPoints,
                 reuseLandmarks: s.reuseLandmarks,
                 targetKeys: s.targetKeys,
+                ownerId: s.ownerId,
             }),
         },
     ),
 );
+
+/** Call when a user signs in: another user's logo/institution are dropped (shared workstations). */
+export function claimSettings(userId: string | null | undefined) {
+    if (!userId) return;
+    const s = useSettings.getState();
+    if (s.ownerId && s.ownerId !== userId) s.set({ defaultLogo: null, defaultInstitution: '', ownerId: userId });
+    else if (s.ownerId !== userId) s.set({ ownerId: userId });
+}
 
 /** Read an image file into a PNG data URL no larger than `max` px on its long side. */
 export function readLogoFile(file: File, max = 320): Promise<ReportLogo> {

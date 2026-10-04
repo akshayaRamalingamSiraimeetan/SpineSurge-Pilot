@@ -34,8 +34,8 @@ const DashboardPage = () => {
 
   return (
     <div className="mx-auto max-w-5xl space-y-8">
-      {/* ── Quick Action Cards ─────────────────────────────────────── */}
-      {isOrgWorkspace && (
+      {/* ── Quick Action Cards — admin only (members don't configure PACS; UI12-10) ── */}
+      {isOrgWorkspace && isAdmin && (
         <section>
           <h2 className="mb-4 text-sm font-semibold text-[var(--text)] uppercase tracking-wide">
             Get Started
@@ -44,10 +44,8 @@ const DashboardPage = () => {
             <QuickActionCard
               icon={<Server className="h-5 w-5" />}
               title="Configure PACS"
-              description="Connect your imaging system"
-              onClick={() => {
-                console.log('[DashboardPage] Configure PACS clicked — stub');
-              }}
+              description="Coming soon — connect your imaging system"
+              onClick={() => alert('PACS configuration is coming soon. Contact support to connect your PACS.')}
             />
             {/* Invite Members — admin only */}
             {isAdmin && (

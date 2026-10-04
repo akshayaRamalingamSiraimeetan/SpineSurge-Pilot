@@ -1,4 +1,4 @@
-import { getDistance, getPolygonArea, getPolygonPerimeter, type Point } from "@/lib/canvas/GeometryUtils";
+import { getDistance, getPolygonArea, getPolygonPerimeter, lineAngleDeg, type Point } from "@/lib/canvas/GeometryUtils";
 import { calculateCobbAngle } from "./quick/CobbAngle";
 import { calculateVBM, type VBMMode } from "./quick/VBM";
 import { calculateSpinalCurvature } from "./quick/SpinalCurvatures";
@@ -10,7 +10,7 @@ import {
     calculatePO, calculateTS, calculateAVT, calculateSlope, calculateCMC,
     calculateTPA, calculateSPA, calculateSSA, calculateSPi, calculateCBVA, calculateRVAD, calculateITilt
 } from "./deformity/DeformityTools";
-import { calculateResectionPrimitives } from "./planning/PlanningTools";
+import { calculateOpenOsteotomyPrimitives, calculateResectionPrimitives } from "./planning/PlanningTools";
 
 const deg = (v: number) => `${v.toFixed(1)}°`;
 const angle3 = (p: Point[]) => {
@@ -40,8 +40,10 @@ export function computeMeasurementResult(
 ): string | undefined {
     const n = pts.length;
     switch (toolKey) {
-        case 'cobb': case 'angle-4pt':
-            return n >= 4 ? `${toolKey === 'cobb' ? 'Cobb' : '4 pt angle'}: ${deg(calculateCobbAngle(pts).angle)}` : undefined;
+        case 'cobb':
+            return n >= 4 ? `Cobb: ${deg(calculateCobbAngle(pts).angle)}` : undefined;
+        case 'angle-4pt':
+            return n >= 4 ? `4 pt angle: ${deg(lineAngleDeg(pts[0], pts[1], pts[2], pts[3]))}` : undefined;
         case 'cl': case 'tk': case 'll': case 'sc':
             return n >= 4 ? `${toolKey === 'sc' ? 'Angle' : toolKey.toUpperCase()}: ${deg(calculateSpinalCurvature(pts).angle)}` : undefined;
         case 'angle-2pt': {
@@ -127,6 +129,11 @@ export function computeMeasurementResult(
             return n >= 3 ? `Area: ${getPolygonArea(pts).toFixed(1)} px²\nPerimeter: ${getPolygonPerimeter(pts).toFixed(1)} px` : undefined;
         case 'ost-pso': case 'ost-spo':
             return n >= 3 ? `Correction: ${deg(Math.abs(closingWedge(pts) * 180 / Math.PI))}` : undefined;
+        case 'ost-open': {
+            // keeps the stored "Opening" in step after point drags (UI11-34)
+            if (n < 6) return undefined;
+            return `Opening: ${deg(Math.abs(calculateOpenOsteotomyPrimitives(pts).phi * 180 / Math.PI))}`;
+        }
         case 'ost-resect': {
             const r = n >= 4 ? calculateResectionPrimitives(pts) : null;
             return r ? `Resection: ${deg(Math.abs(r.rotationAngleRad * 180 / Math.PI))}` : undefined;

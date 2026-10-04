@@ -423,3 +423,95 @@ empty click deselects + pans, Delete key, mm-based default sizes, deep-copied ro
 - UI10-10 [?] 3D implants editable on the views: screw diameter diamond (+ entry/tip for trajectory & length), cage
         width/depth/height diamonds + rotate knob + size label, rod: drag points to bend, drag "+" to add a bend point,
         double-click a point to remove it; rods drawn as smooth curves in 2D and 3D.
+
+## UI batch 11 (2026-10-03)
+- UI11-01 [?] 3D crop vanished on rotate: Cornerstone re-aims the first two mapper clipping planes as its camera slab
+        (Viewport.updateClippingPlanesForActors). applyCrop now adds two Cornerstone-owned planes with slabThickness 1e7
+        before the six crop planes.
+- UI11-02 [?] CT/MR study thumbnails: 3D view saved as scan type 'Thumbnail' (fixed id thumb-<studyId>) after load if
+        missing and ~6 s after plan edits; cards use it (lib/studies.ts studyThumbnail / imageScans exclude it from series).
+- UI11-03 [x] Menus/selects inside dialogs were hidden (z-50 vs dialog z-130) → z-[150].
+- UI11-04 [?] Study-card report for CT/MR: virtual case is marked DICOM (no 2D decode of .dcm files); live viewer captured
+        only if it shows that study, else the saved 3D thumbnail.
+- UI11-05 [x] Home header: New Study and "more" buttons removed (notifications kept).
+
+### UI11 audit (full sweep after the batch) — fixed
+Store / server
+- UI11-06 [x] Live share: remote edits applied (and autosaved) into whatever case was open → only while the room's case is open.
+- UI11-07 [x] openStudy: a slow earlier patient load could win and create a duplicate session → setActivePatient returns loaded/superseded/failed.
+- UI11-08 [x] addContext: saving an untitled case activated it even if the user had opened another patient meanwhile.
+- UI11-09 [x] Compare: clearing Image B wasn't saved (came back on reload).
+- UI11-10 [x] loadPlan could write one session's plan into another if the case changed during the request.
+- UI11-11 [x] Settings (report logo/institution, targets) carried over between users on the same browser → per-user.
+- UI11-12 [x] Patient edit / archive / visit edits / reorder failed silently → errors shown, reorder rolled back.
+- UI11-13 [x] Age → DOB keeps the existing birthday instead of resetting it.
+- UI11-14 [!] Server: one shared uploads folder (UPLOADS_DIR), TLS for DATABASE_URL in migrate, reset refuses production
+        unless ALLOW_RESET=yes, PACS imports owned by the importer. Backend needs one restart.
+UI
+- UI11-15 [x] Admin inspection mode leaked into the admin's own studies after leaving the workspace.
+- UI11-16 [x] Patients without studies disappeared from the Patients list.
+- UI11-17 [x] Study rename: field blurred/saved immediately; prefill uses the custom name.
+- UI11-39 [x] Share links could carry another patient's session → link opens that study's latest session.
+- UI11-40 [x] Compare Image A picker opened the study's latest session instead of the picked image's session.
+- UI11-41 [x] Report notes fall back to the Study Notes from the side panel.
+- UI11-42 [x] Member workspace "Open": skips the 3D thumbnail scan, never stays spinning, shows load errors.
+- UI11-43 [x] Unfinished Studies: releases the CT/MR viewer before opening another study; column renamed "Study Date".
+- UI11-44 [x] Patient timeline: newest group expands also when visits arrive after selection (refresh).
+- UI11-45 [x] Report table header "Target | … | Target" → "Parameter"; Share dialog primary button visible (no-op token classes).
+- UI11-46 [x] Dead buttons: Configure PACS / Hospital SSO / Forgot password say "coming soon".
+3D / DICOM
+- UI11-18 [x] Untitled CT/MR series (+ 3D plan) is now saved when the case is promoted.
+- UI11-19 [x] Crash on leaving the 3D viewer ("Rendering engine has been destroyed").
+- UI11-20 [x] Implant placement hit bone hidden by the crop box.
+- UI11-21 [x] Clicks on cell buttons/crop handles placed implants; a rotate after placement was swallowed.
+- UI11-22 [x] Keyboard shortcuts fired while typing, in dialogs/menus, or on the Report tab.
+- UI11-23 [x] Thumbnail/report capture saved black panels when a view was maximised.
+- UI11-24 [x] DICOM upload: non-DICOM extras (DICOMDIR, CD files) rejected the batch → filtered by DICM magic; retries, 4 parallel.
+- UI11-25 [x] A single .dcm (2D X-ray) switched to the 3D viewer; untitled CT/MR series counts as unsaved work.
+- UI11-26 [x] Series load continued after leaving the viewer; duplicate slices (same SOP UID) removed.
+- UI11-27 [x] Upload failures shown, leaving the page while uploading warns.
+2D canvas
+- UI11-28 [x] Right-click repeated the last tool for every tool (drag stuck to cursor) → only multi-click tools.
+- UI11-29 [x] Generic 4-point angle showed 169° instead of 11° for lines drawn opposite ways.
+- UI11-30 [x] Circle/ellipse click without drag made a zero-size shape (NaN perimeter).
+- UI11-31 [x] Touchpad vs mouse-wheel detection unreliable at non-100% zoom.
+- UI11-32 [x] 2D screw could be shortened below its drawn silhouette.
+- UI11-33 [x] Trunk shift / AVT drawn in px while the panel showed mm.
+- UI11-34 [x] Open osteotomy "Opening" value not updated after point drags.
+- UI11-35 [x] Bent rod hit-test used straight chords (clicks on the curve missed).
+- UI11-36 [x] Redo lost after a no-op click; redo after an eye toggle reverted it.
+- UI11-37 [x] Landmark reuse mixed AP and lateral points; S1 anterior/posterior taken from click order.
+- UI11-38 [x] Zoom slider zoomed around the image corner instead of the view centre.
+Open (owner decision): server-side ownership checks on contexts/patients and WebSocket room auth (SRV-02/04/07);
+global theme-token fix for shadcn classes. Deferred: signed T1SPi/T9SPi/ODHA.
+
+## UI batch 12 (2026-10-03)
+- UI12-01 [?] Settings → Target measurements: round red indicators (filled with a white check when selected, outlined ring
+        when not), whole row clickable; label no longer overlaps the old tiny check.
+- UI12-02 [?] Compare: pick a study image AND a version — No plan, a saved plan (Plan 1, 2 …) or the current working plan.
+        Image A = the case session of that image (quick version dropdown on the pane); Image B = any study/version (a copy
+        of that session's measurements, saved with the case) or a new import. Identical A/B selections are blocked. A pane
+        showing a plan is drawn in planning view and is read-only ("No plan" needed for assessment); saved plans are never
+        modified by viewing. (ComparePage, comparisonSlice setComparisonPlanA/setComparisonB, caseState, CanvasWorkspace.)
+- UI12-03 [?] Extended reference lines (CSVL, C7PL, horizontals of PO/slope/tilt, SPi/CBVA verticals, RVAD apical
+        perpendicular) drawn pink (#FF5FA2) with their name written on the line, not as a floating label.
+- UI12-10 [x] Ownership & sharing (server-enforced). Migration 013: patients.owner_user_id (backfilled from study owners),
+        study_shares (view|edit). server/access.ts computes owner/edit/view per study, session and patient; every patient,
+        visit, study, scan, session, report route and the live-share WebSocket check it (view-only sockets can't write).
+        GET /api/patients returns own studies (workspace-filtered) + shared (via=share, any workspace) + team (org admin in
+        that org's workspace, via=team, view). Verified end-to-end with 20 API checks on a spare server.
+- UI12-11 [?] Share dialog: add people by username (login email) with View/Edit, change/revoke, org-member suggestions.
+        Recipient: Patients → "Shared with me"; "Remove from my list" deletes only the share. Edit = same session, live sync.
+- UI12-12 [?] View-only cases (shared view, admin viewing a member): banner, tools panel replaced, canvas/3D edits blocked,
+        no autosave/thumbnail/status writes; measurements and plan visible. Shared-edit cases show a "Shared with you" banner.
+- UI12-13 [?] Admin tunnel: Members → eye → member's studies in this org (view only, opens in workspace, "Back to member").
+        Members page explains Admin vs Member; stored role 'viewer' shown as "Member"; review-copy button removed.
+- UI12-14 [x] Members don't get Configure PACS (dashboard card + PACS dialog Configure hidden for org members).
+- UI12-15 [x] Data cleanup: orgs SRIHER, Acme Healthcare, Fortis removed (8 studies kept as their owner's personal studies;
+        backup JSON in the session scratchpad). Left for the owner: 38 ownerless patients (no studies; 30+ old Quick
+        Analysis), 25 visits without studies, 18 near-empty studies of accomplices12d7@gmail.com.
+- UI12-20 [?] Compare: Image A's measurement list and the comparison table follow the chosen version — No plan = preop;
+        Plan N / working plan = preop carried through that plan's osteotomies (recomputed) + plan items, same as the report
+        (plan.ts compareVersionMeasurements).
+- UI12-21 [x] Personal and organization workspaces no longer mix: patients.organization_id (migration 014, backfilled from
+        their studies), set at creation from the active workspace (only orgs the user belongs to). Verified via API.

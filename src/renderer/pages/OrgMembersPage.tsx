@@ -28,6 +28,9 @@ interface Invitation {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
+
+/** 'viewer' is the stored role of every non-admin member — shown as Member (UI12-10). */
+const roleLabel = (role: string) => (role === 'admin' ? 'Admin' : 'Member');
 const STATUS_COLORS: Record<string, string> = {
   active:      'bg-emerald-500/10 text-emerald-400',
   removed:     'bg-[#FF453A]/10 text-[#FF453A]',
@@ -301,6 +304,19 @@ const OrgMembersPage = () => {
         </div>
       </div>
 
+      {/* ── Who can do what (UI12-10) ─────────────────────────────── */}
+      <div className="grid gap-3 sm:grid-cols-2">
+        {[
+          { t: 'Admin / owner', d: "Everything a member can do, plus: invite and remove members, and open every member's studies in this organization view-only (eye icon → View workspace). Can't change their plans." },
+          { t: 'Member', d: "Their own patients and studies — fully theirs to edit. Sees other people's studies only when shared with them (Patients → Shared with me), with view or edit rights." },
+        ].map(({ t, d }) => (
+          <div key={t} className="rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3">
+            <div className="text-xs font-semibold text-[var(--text)]">{t}</div>
+            <p className="mt-1 text-xs leading-relaxed text-[var(--text-3)]">{d}</p>
+          </div>
+        ))}
+      </div>
+
       {/* ── Tabs ────────────────────────────────────────────────── */}
       <div className="flex items-center gap-1 rounded-xl border border-[var(--border)] bg-[var(--surface)] p-1 w-fit">
         {availableTabs.map(t => (
@@ -359,7 +375,7 @@ const OrgMembersPage = () => {
                   <span className="truncate text-sm text-[var(--text-2)]">{member.email}</span>
 
                   {/* Role */}
-                  <span className="text-sm text-[var(--text-2)] capitalize">{member.role}</span>
+                  <span className="text-sm text-[var(--text-2)]">{roleLabel(member.role)}</span>
 
                   {/* Status */}
                   <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${STATUS_COLORS[member.status] ?? ''}`}>
@@ -375,7 +391,7 @@ const OrgMembersPage = () => {
                       {/* View Workspace — always visible to admins for any member */}
                       <button
                         onClick={() => navigate(`/members/${member.userId}/workspace`)}
-                        title="View member workspace"
+                        title="View this member's studies (view only)"
                         className="flex h-7 w-7 items-center justify-center rounded-md border border-[var(--border)] bg-[var(--surface-2)] text-[var(--text-2)] hover:border-[var(--border-strong)] hover:text-[var(--text)] transition-colors"
                       >
                         <ExternalLink className="h-3.5 w-3.5" />
@@ -433,7 +449,7 @@ const OrgMembersPage = () => {
                   </div>
                   <span className="truncate text-sm text-[var(--text)]">{inv.invitedEmail}</span>
                 </div>
-                <span className="text-sm text-[var(--text-2)] capitalize">{inv.role}</span>
+                <span className="text-sm text-[var(--text-2)]">{roleLabel(inv.role)}</span>
                 <span className="text-sm text-[var(--text-2)]">{formatDate(inv.createdAt)}</span>
                 <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium w-fit ${STATUS_COLORS[inv.status] ?? 'text-[var(--text-2)]'}`}>
                   {capitalize(inv.status)}

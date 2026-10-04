@@ -5,6 +5,7 @@ import { renderCaseImage, isReportMeasurement, type RenderedImage } from './rend
 import { rodLength, screwLength, trajectoryAngles } from '@/features/planning3d/implantModel';
 import { useSettings } from '@/lib/settings';
 import { captureViewer } from '@/features/planning3d/capture';
+import { useAppStore } from '@/lib/store';
 import { getSavedPlans, imageBoxOf, isPlanMeasurement, preopVsPlanRows, registerMeasurements, type CompareRow } from '@/features/planning2d/plan';
 import { metricByKey, metricValue } from '@/features/planning2d/metrics';
 
@@ -165,7 +166,8 @@ export async function buildReportModel(state: AppState, opts: BuildOptions = { w
         comparisonRows: hasComparison ? buildComparisonRows(measurements, B.measurements) : [],
         implantRows: [],
         plans: [],
-        notes: ctxState?.toolState?.clinicalNotes ?? '',
+        // Report notes, else the Study Notes typed in the side panel (UI11-41)
+        notes: ctxState?.toolState?.clinicalNotes || visit?.comments || '',
         hasComparison,
         preOpDate: null,
         postOpDate: null,
@@ -246,10 +248,17 @@ export async function buildReportModel(state: AppState, opts: BuildOptions = { w
     if (opts.withImages) {
         // CT/MR: screenshot of the 4-view planning layout + the 3D view (UI10-07)
         if (state.isDicomMode) {
-            const cap = await captureViewer();
+            // Live viewer only if it shows THIS case (the study card builds reports of other studies)
+            const live = useAppStore.getState();
+            const cap = live.isDicomMode && live.activeContextId === state.activeContextId ? await captureViewer() : null;
             if (cap) {
                 model.images.push({ dataUrl: cap.fourUp, width: cap.width, height: cap.height, label: 'AXIAL · SAGITTAL · CORONAL · 3D', fullWidth: true });
                 if (cap.threeD) model.images.push({ dataUrl: cap.threeD, width: 1200, height: 900, label: '3D VIEW', fullWidth: true });
+            } else {
+                // Otherwise the study's saved 3D screenshot (UI11-04)
+                const thumb = study?.scans?.find((sc) => sc.type === 'Thumbnail')?.imageUrl;
+                const img = thumb ? await urlToReportImage(thumb).catch(() => null) : null;
+                if (img) model.images.push({ ...img, label: '3D VIEW', fullWidth: true });
             }
         }
         if (imageA && !state.isDicomMode) {
@@ -272,4 +281,16 @@ export async function buildReportModel(state: AppState, opts: BuildOptions = { w
 /** Can a report be produced from this model? (shared by preview + export button) */
 export function reportHasContent(m: ReportModel): boolean {
     return m.images.length > 0 || m.measurementRows.length > 0 || m.implantRows.length > 0 || m.comparisonRows.length > 0 || m.plans.length > 0;
+}
+
+/** Load an image URL into a JPEG data URL for the report (e.g. a stored thumbnail). */
+async function urlToReportImage(url: string): Promise<{ dataUrl: string; width: number; height: number }> {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.src = url;
+    await img.decode();
+    const c = document.createElement('canvas');
+    c.width = img.naturalWidth; c.height = img.naturalHeight;
+    c.getContext('2d')!.drawImage(img, 0, 0);
+    return { dataUrl: c.toDataURL('image/jpeg', 0.9), width: c.width, height: c.height };
 }

@@ -34,7 +34,8 @@ const WS_TABS: { key: WsTab; label: string }[] = [
 /** Work exists that is not attached to any study (untitled Quick Use session). */
 export const hasUntitledWork = () => {
     const s = useAppStore.getState();
-    return !s.activeContextId && (!!s.currentImage || s.measurements.length > 0 || s.implants.length > 0 || s.threeDImplants.length > 0);
+    return !s.activeContextId && (!!s.currentImage || s.measurements.length > 0 || s.implants.length > 0 || s.threeDImplants.length > 0
+        || (s.isDicomMode && s.dicomSeries.length > 0)); // an untitled CT/MR series is work too (UI11-25)
 };
 
 const TopMenuBar = () => {
@@ -104,6 +105,7 @@ const TopMenuBar = () => {
         const st = useAppStore.getState();
         st.setActiveTool(null);
         st.setSelection(null);
+        st.setSelectedDicomImplant(null);
         if (key === 'compare') {
             setComparisonMode(true);
             navigate('/compare', { replace: location.pathname === '/workspace' || location.pathname === '/compare' });
@@ -116,6 +118,9 @@ const TopMenuBar = () => {
     /* ── Leaving the workspace ─────────────────────────────── */
     const leaveWorkspace = (targetRoute: string | -1) => {
         setComparisonMode(false);
+        // Leaving a member's study must end inspection, or the read-only mode
+        // (no saving) follows the admin into their own studies (UI11-15).
+        useAppStore.getState().setInspectionMode(null);
         useAppStore.getState().closeCase();
         if (targetRoute === -1) navigate(-1);
         else navigate(targetRoute);
@@ -156,7 +161,7 @@ const TopMenuBar = () => {
     const routeOf = (r: string) => (r === '__back__' ? -1 : r);
 
     /* ── Save status ───────────────────────────────────────── */
-    const untitled = !activeContextId && (!!currentImage || measurements.length > 0);
+    const untitled = !activeContextId && (!!currentImage || measurements.length > 0 || isDicomMode);
     const status = upload.error
         ? { icon: <CloudOff className="w-3.5 h-3.5 text-red-500" />, text: 'Series upload failed', title: upload.error }
         : upload.total > 0

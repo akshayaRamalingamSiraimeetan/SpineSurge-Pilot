@@ -130,7 +130,7 @@ export class ImplantActorSync {
     }
 
     clear() {
-        for (const e of this.entries.values()) this.viewport.removeActors(e.uids);
+        for (const e of this.entries.values()) { try { this.viewport.removeActors(e.uids); } catch { /* viewport torn down */ } }
         this.entries.clear();
     }
 }

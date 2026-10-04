@@ -1,6 +1,6 @@
 import { Point, getMidpoint } from "@/lib/canvas/GeometryUtils";
 import { Measurement } from "@/lib/canvas/CanvasManager";
-import { drawLabel, drawPoints, strokeLine, toolColor } from "@/lib/canvas/annotationStyle";
+import { drawLabel, drawPoints, drawReferenceLine, REFERENCE_COLOR, strokeLine, toolColor } from "@/lib/canvas/annotationStyle";
 
 export function calculatePO(points: Point[]) {
     if (points.length < 2) return null;
@@ -22,7 +22,7 @@ export function drawTiltLine(ctx: CanvasRenderingContext2D, m: Measurement, k: n
     const color = toolColor(m.toolKey);
     const left = p1.x < p2.x ? p1 : p2;
     const right = p1.x < p2.x ? p2 : p1;
-    strokeLine(ctx, left, { x: right.x, y: left.y }, k, color, true);
+    drawReferenceLine(ctx, left, { x: right.x, y: left.y }, k, 'Horizontal', { at: 0.78 });
     strokeLine(ctx, p1, p2, k, color);
     drawPoints(ctx, [p1, p2], k, color);
 
@@ -36,11 +36,12 @@ export function drawTiltLine(ctx: CanvasRenderingContext2D, m: Measurement, k: n
 export function drawC7PL(ctx: CanvasRenderingContext2D, m: Measurement, k: number, bounds?: { minY: number, maxY: number }) {
     if (m.points.length < 1) return;
     const p1 = m.points[0];
-    const color = toolColor(m.toolKey);
-    strokeLine(ctx, { x: p1.x, y: bounds?.minY ?? p1.y - 2000 }, { x: p1.x, y: bounds?.maxY ?? p1.y + 2000 }, k, color);
-    drawPoints(ctx, [p1], k, color);
+    // The plumb line IS a reference line: pink, named on the line (UI12-03)
+    const top = bounds?.minY ?? p1.y - 2000, bottom = bounds?.maxY ?? p1.y + 2000;
+    const labelY = Math.min(p1.y + 90 / k, bottom - 30 / k);
+    drawReferenceLine(ctx, { x: p1.x, y: top }, { x: p1.x, y: bottom }, k, 'C7PL', { dashed: false, at: (labelY - top) / Math.max(bottom - top, 1) });
+    drawPoints(ctx, [p1], k, REFERENCE_COLOR);
     m.result = "C7PL is displayed";
-    drawLabel(ctx, "C7PL", m.measurement?.labelPos || { x: p1.x + 20 / k, y: p1.y }, k, color);
 }
 
 export function drawCSVL(ctx: CanvasRenderingContext2D, m: Measurement, k: number, bounds?: { minY: number, maxY: number }) {
@@ -48,11 +49,12 @@ export function drawCSVL(ctx: CanvasRenderingContext2D, m: Measurement, k: numbe
     const [p1, p2] = m.points;
     const mid = getMidpoint(p1, p2);
     const color = toolColor(m.toolKey);
-    strokeLine(ctx, { x: mid.x, y: bounds?.minY ?? mid.y - 2000 }, { x: mid.x, y: bounds?.maxY ?? mid.y + 2000 }, k, color, true);
+    const top = bounds?.minY ?? mid.y - 2000, bottom = bounds?.maxY ?? mid.y + 2000;
+    const labelY = Math.max(mid.y - 90 / k, top + 30 / k);
+    drawReferenceLine(ctx, { x: mid.x, y: top }, { x: mid.x, y: bottom }, k, 'CSVL', { at: (labelY - top) / Math.max(bottom - top, 1) });
     strokeLine(ctx, p1, p2, k, color);
     drawPoints(ctx, [p1, p2], k, color);
     m.result = "CSVL is displayed";
-    drawLabel(ctx, "CSVL", m.measurement?.labelPos || { x: mid.x + 20 / k, y: mid.y }, k, color);
 }
 
 export function calculateTS(points: Point[], pixelToMm: number | null) {
@@ -80,7 +82,8 @@ export function drawTS(ctx: CanvasRenderingContext2D, m: Measurement, k: number,
     const maxY = bounds?.maxY ?? Math.max(c7.y, s1Mid.y) + 100 / k;
 
     // CSVL (dashed), S1 endplate, and the horizontal offset from C7 / apex.
-    strokeLine(ctx, { x: s1Mid.x, y: minY }, { x: s1Mid.x, y: maxY }, k, color, true);
+    const csvlLabelY = Math.max(s1Mid.y - 90 / k, minY + 30 / k);
+    drawReferenceLine(ctx, { x: s1Mid.x, y: minY }, { x: s1Mid.x, y: maxY }, k, 'CSVL', { at: (csvlLabelY - minY) / Math.max(maxY - minY, 1) });
     strokeLine(ctx, s1_1, s1_2, k, color);
     strokeLine(ctx, c7, { x: s1Mid.x, y: c7.y }, k, color);
     drawPoints(ctx, points, k, color);

@@ -1,8 +1,7 @@
-import { Bell, ChevronDown, Plus, Users } from 'lucide-react';
+import { Bell, Users } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAppStore } from '@/lib/store/index';
 import { Button } from '@/components/ui/button';
-import { ImportDialog } from '@/features/import-export/ImportDialog';
 
 function getGreeting(): string {
   const hour = new Date().getHours();
@@ -69,24 +68,6 @@ const DashboardHeader = () => {
           <Bell className="h-4 w-4" />
         </button>
 
-        {/* New Study */}
-        <ImportDialog resetOnOpen navigateOnImport>
-          <Button
-            size="sm"
-            className="h-9 gap-2 rounded-lg bg-[#FF453A] text-white font-semibold hover:bg-[#e03d33] text-sm"
-          >
-            <Plus className="h-4 w-4" />
-            New Study
-          </Button>
-        </ImportDialog>
-
-        {/* More actions */}
-        <button
-          className="flex h-9 w-9 items-center justify-center rounded-lg border border-[var(--border)] bg-[var(--surface)] text-[var(--text-2)] hover:bg-[var(--surface-3)] hover:text-[var(--text)] transition-colors"
-          aria-label="More actions"
-        >
-          <ChevronDown className="h-4 w-4" />
-        </button>
       </div>
     </header>
   );

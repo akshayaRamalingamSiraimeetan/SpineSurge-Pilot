@@ -213,4 +213,50 @@ export const api = {
         if (!response.ok) throw new Error('Failed to archive patient');
         return response.json();
     },
+
+    // ── Study sharing (UI12-10) ──────────────────────────────────────────────
+    async getStudyShares(studyId: string, token?: string | null): Promise<StudyShare[]> {
+        return jsonOrThrow(await authedFetch(`${API_BASE}/api/studies/${encodeURIComponent(studyId)}/shares`, { headers: authHeader(token ?? null) }));
+    },
+
+    async shareStudy(studyId: string, email: string, permission: 'view' | 'edit', token?: string | null): Promise<StudyShare[]> {
+        return jsonOrThrow(await authedFetch(`${API_BASE}/api/studies/${encodeURIComponent(studyId)}/shares`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', ...authHeader(token ?? null) },
+            body: JSON.stringify({ email, permission }),
+        }));
+    },
+
+    async unshareStudy(studyId: string, shareId: string, token?: string | null): Promise<StudyShare[]> {
+        return jsonOrThrow(await authedFetch(`${API_BASE}/api/studies/${encodeURIComponent(studyId)}/shares/${encodeURIComponent(shareId)}`, {
+            method: 'DELETE',
+            headers: authHeader(token ?? null),
+        }));
+    },
+
+    /** Recipient removes a shared study from their own list; the owner's study is untouched. */
+    async removeSharedStudy(studyId: string, token?: string | null) {
+        return jsonOrThrow(await authedFetch(`${API_BASE}/api/shared/${encodeURIComponent(studyId)}`, {
+            method: 'DELETE',
+            headers: authHeader(token ?? null),
+        }));
+    },
+
+    async getShareCandidates(token?: string | null): Promise<{ id: string; email: string; fullName: string | null }[]> {
+        return jsonOrThrow(await authedFetch(`${API_BASE}/api/share-candidates`, { headers: authHeader(token ?? null) }));
+    },
 };
+
+export interface StudyShare {
+    id: string;
+    permission: 'view' | 'edit';
+    userId: string;
+    email: string;
+    fullName: string | null;
+}
+
+async function jsonOrThrow(response: Response) {
+    const body = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(body.error ?? `Request failed (${response.status})`);
+    return body;
+}

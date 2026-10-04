@@ -1,5 +1,6 @@
 import { useRef, useEffect, useState, useCallback, useMemo } from "react";
 import { useAppStore } from "@/lib/store/index";
+import { isReadOnlyCase } from '@/lib/access';
 import { CanvasManager, Point, Measurement } from "@/lib/canvas/CanvasManager";
 import { measurementsDiffer, syncManagerMeasurements } from "@/lib/canvas/measurementSync";
 import {
@@ -52,8 +53,11 @@ import { drawLabel, drawPoint, getLabelRegions, STYLE, toolColor } from "@/lib/c
 import { autoFillLandmarks, collectLandmarks, landmarkCount } from "@/features/measurements/landmarks";
 import { computeMeasurementResult } from "@/features/measurements/results";
 import { useSettings } from "@/lib/settings";
+import { shortcutsBlocked } from "@/lib/keyboard";
+import { imageScans } from "@/lib/studies";
 import { useLocation } from "react-router-dom";
-import { isPlanMeasurement } from "@/features/planning2d/plan";
+import { getSavedPlans, isPlanMeasurement } from "@/features/planning2d/plan";
+import { WORKING_PLAN } from "@/lib/store/comparisonSlice";
 
 /** Tools whose clicks snap onto existing measurement points (landmark reuse, UI5-08). */
 const NO_SNAP_TOOLS = new Set(['crop', 'pencil', 'circle', 'ellipse', 'text', 'imp-screw', 'imp-cage', 'imp-plate', 'imp-rod', 'calibration']);
@@ -170,7 +174,7 @@ const CanvasWorkspace = ({ side }: CanvasWorkspaceProps) => {
             const patient = store.patients.find(p => p.id === activeContext.patientId);
             const studyId = activeContext.studyIds[0];
             const study = patient?.studies?.find(s => s.id === studyId);
-            const studyImage = study?.scans[0]?.imageUrl;
+            const studyImage = study ? imageScans(study)[0]?.imageUrl : undefined;
             if (studyImage) return studyImage;
         }
 
@@ -236,6 +240,19 @@ const CanvasWorkspace = ({ side }: CanvasWorkspaceProps) => {
     // Image A (left) IS the case; only Image B (right) is a separate pane.
     const paneSide: 'left' | 'right' = side === 'right' ? 'right' : 'left';
     const isInteractive = !isComparisonMode || activeCanvasSide === paneSide;
+    // Compare (UI12-02): a pane showing a plan version is drawn in planning view
+    // and is read-only — assessment works on "No plan" images only.
+    const comparePlanId = isComparisonMode
+        ? (side === 'right' ? (store.comparison.right.source?.planId ?? null) : (store.comparison.left.planId ?? null))
+        : null;
+    const comparePlan = useMemo(() => {
+        if (!comparePlanId || side === 'right' || comparePlanId === WORKING_PLAN) return null;
+        return getSavedPlans(activeContextState?.toolState).find((p) => p.id === comparePlanId) ?? null;
+    }, [comparePlanId, side, activeContextState]);
+    const paneLocked = !!comparePlanId && (side === 'right' || comparePlanId === WORKING_PLAN || !!comparePlan);
+    // View-only case (shared view / org admin): pan & zoom only (UI12-10)
+    const readOnlyCase = useAppStore((s) => isReadOnlyCase(s) || !!s.inspectionMode?.active);
+    const canEdit = isInteractive && !paneLocked && !readOnlyCase;
 
     const handleCanvasClick = useCallback(() => {
         if (isComparisonMode) setActiveCanvasSide(paneSide);
@@ -264,17 +281,19 @@ const CanvasWorkspace = ({ side }: CanvasWorkspaceProps) => {
     };
 
     useEffect(() => {
-        if (isInteractive && managerReady && undoTrigger > lastUndoRef.current) historyStepRef.current('undo');
+        if (canEdit && managerReady && undoTrigger > lastUndoRef.current) historyStepRef.current('undo');
         lastUndoRef.current = undoTrigger;
-    }, [undoTrigger, managerReady, isInteractive]);
+    }, [undoTrigger, managerReady, canEdit]);
 
     useEffect(() => {
-        if (isInteractive && managerReady && redoTrigger > lastRedoRef.current) historyStepRef.current('redo');
+        if (canEdit && managerReady && redoTrigger > lastRedoRef.current) historyStepRef.current('redo');
         lastRedoRef.current = redoTrigger;
-    }, [redoTrigger, managerReady, isInteractive]);
+    }, [redoTrigger, managerReady, canEdit]);
 
     // View State
     const viewTransformRef = useRef<ViewTransform>({ k: 1, x: 0, y: 0 });
+    /** Zoom value the view transform currently accounts for (see the zoom effect) */
+    const zoomAppliedRef = useRef<number>(storeCanvas.zoom || 1);
     const [isPanning, setIsPanning] = useState(false);
     const lastPanPos = useRef<{ x: number, y: number } | null>(null);
 
@@ -296,6 +315,7 @@ const CanvasWorkspace = ({ side }: CanvasWorkspaceProps) => {
     const canvasView: 'assessment' | 'planning' =
         location.pathname === '/workspace' && new URLSearchParams(location.search).get('tab') === 'planning' && side !== 'right'
             ? 'planning' : 'assessment';
+    const sceneView: 'assessment' | 'planning' = paneLocked ? 'planning' : canvasView;
     /** Measurements that can be edited in this view (preop in Assessment, plan items in Planning). */
     const editableHere = (m: Measurement) => (canvasView === 'planning' ? isPlanMeasurement(m) : !isPlanMeasurement(m));
     const [isDragging, setIsDragging] = useState(false);
@@ -514,7 +534,11 @@ const CanvasWorkspace = ({ side }: CanvasWorkspaceProps) => {
         ctx.translate(x, y);
         ctx.scale(ek, ek);
 
-        renderScene(ctx, state.data, {
+        // Image A showing a saved plan: preop + that plan, never the working plan's edits
+        const sceneData = comparePlan
+            ? { ...state.data, measurements: [...state.data.measurements.filter((m) => !isPlanMeasurement(m)), ...comparePlan.measurements], implants: comparePlan.implants }
+            : state.data;
+        renderScene(ctx, sceneData, {
             ek,
             getImage: getCachedImage,
             brightness: storeCanvas.brightness,
@@ -525,7 +549,7 @@ const CanvasWorkspace = ({ side }: CanvasWorkspaceProps) => {
             selectedImplantId: selection?.type === 'implant' || selection?.type === 'implant-point' ? selection.measurementId : null,
             labelScene: sceneKey,
             hideUnselected: true,
-            view: canvasView,
+            view: sceneView,
         });
 
         const isAnyDialogOpen = isCalibrationDialogOpen || isVBMDialogOpen || isTiltDialogOpen || isTextDialogOpen;
@@ -646,9 +670,7 @@ const CanvasWorkspace = ({ side }: CanvasWorkspaceProps) => {
 
             // 4. Live angle while placing the second line of 4-point tools
             if (['cobb', 'angle-4pt', 'cl', 'tk', 'll', 'sc'].includes(activeTool || '') && pts.length === 4) {
-                const preview = activeTool === 'cobb' || activeTool === 'angle-4pt'
-                    ? `${activeTool === 'cobb' ? 'Cobb' : '4 pt angle'}: ${calculateCobbAngle(pts).angle.toFixed(1)}°`
-                    : `${activeTool === 'sc' ? 'Angle' : activeTool!.toUpperCase()}: ${calculateSpinalCurvature(pts).angle.toFixed(1)}°`;
+                const preview = computeMeasurementResult(activeTool!, pts) ?? '';
                 drawLabel(ctx, preview, { x: wPos.x + 14 / ek, y: wPos.y - 14 / ek }, ek, color);
             }
             ctx.restore();
@@ -682,7 +704,7 @@ const CanvasWorkspace = ({ side }: CanvasWorkspaceProps) => {
         }
 
         ctx.restore(); // Final balance
-    }, [storeCanvas, getCachedImage, activeTool, tempPoints, cropRect, isDragging, mouseWorldPosRef, selection, vbmMode, tiltMode, managerReady, isCalibrationDialogOpen, isVBMDialogOpen, isTiltDialogOpen, isTextDialogOpen, canvasView]);
+    }, [storeCanvas, getCachedImage, activeTool, tempPoints, cropRect, isDragging, mouseWorldPosRef, selection, vbmMode, tiltMode, managerReady, isCalibrationDialogOpen, isVBMDialogOpen, isTiltDialogOpen, isTextDialogOpen, canvasView, sceneView, comparePlan]);
 
     useEffect(() => {
         let rafId: number;
@@ -725,11 +747,9 @@ const CanvasWorkspace = ({ side }: CanvasWorkspaceProps) => {
 
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
-            if (!isInteractive) return;
-            // Never hijack typing in inputs / notes / dialogs.
-            const t = e.target as HTMLElement | null;
-            if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return;
-            if (document.querySelector('[role="dialog"][data-state="open"], [role="alertdialog"][data-state="open"]')) return;
+            if (!canEdit) return;
+            // Never hijack typing, dialogs, or the Report tab (canvas hidden there)
+            if (shortcutsBlocked(e)) return;
 
             const key = e.key.toLowerCase();
             const mod = e.ctrlKey || e.metaKey;
@@ -783,7 +803,7 @@ const CanvasWorkspace = ({ side }: CanvasWorkspaceProps) => {
         };
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [tempPoints, setMeasurements, setActiveTool, isInteractive, activeTool, selection, syncStoreWithCanvas, setSelection]);
+    }, [tempPoints, setMeasurements, setActiveTool, canEdit, activeTool, selection, syncStoreWithCanvas, setSelection]);
 
     // New tool: start from the landmarks earlier measurements already placed
     // (UI5-08). If every landmark is known, the measurement is created at once.
@@ -876,7 +896,10 @@ const CanvasWorkspace = ({ side }: CanvasWorkspaceProps) => {
             return;
         }
 
-        if (!isInteractive || isVBMDialogOpen || isTiltDialogOpen || isTextDialogOpen) return;
+        if (!canEdit || isVBMDialogOpen || isTiltDialogOpen || isTextDialogOpen) return;
+        // A replayed right-click only finishes multi-click tools — never selects or
+        // starts a drag (its mouseup already happened → drag stuck to the cursor; UI11-28)
+        if (opts?.rightClick && !['cmc', 'stenosis', 'polygon', 'imp-rod'].includes(activeTool || '')) return;
 
         if (!containerRef.current) return;
         const rect = containerRef.current.getBoundingClientRect();
@@ -889,6 +912,7 @@ const CanvasWorkspace = ({ side }: CanvasWorkspaceProps) => {
         const worldPos = activeTool && !NO_SNAP_TOOLS.has(activeTool) ? (findSnapPoint(rawPos, ek) ?? rawPos) : rawPos;
 
         if (activeTool === 'crop') {
+            if (e.button !== 0) return;
             setCropRect({ start: worldPos, current: worldPos });
             setIsDragging(true);
             return;
@@ -1260,9 +1284,7 @@ const CanvasWorkspace = ({ side }: CanvasWorkspaceProps) => {
             if (e.button !== 0) return;
             const newTemp = nextTemp(worldPos);
             if (newTemp.length === 4) {
-                const { angle } = calculateCobbAngle(newTemp);
-                const prefix = activeTool === 'cobb' ? 'Cobb' : '4 pt angle';
-                const result = `${prefix}: ${angle.toFixed(1)}°`;
+                const result = computeMeasurementResult(activeTool, newTemp) ?? '';
                 const newState = await managerRef.current?.applyOperation('ADD_MEASUREMENT', { toolKey: activeTool, points: newTemp, result });
                 if (newState) setMeasurements(newState.data.measurements);
                 setTempPoints([]);
@@ -1501,7 +1523,7 @@ const CanvasWorkspace = ({ side }: CanvasWorkspaceProps) => {
     };
 
     const handleMouseMove = useCallback(async (e: React.MouseEvent) => {
-        if (!isInteractive && !isPanning) return;
+        if (!canEdit && !isPanning) return;
 
         if (isCalibrationDialogOpen || isVBMDialogOpen || isTiltDialogOpen || isTextDialogOpen) {
             return;
@@ -1570,7 +1592,8 @@ const CanvasWorkspace = ({ side }: CanvasWorkspaceProps) => {
                 } else if (spec.kind === 'tip' && pos) {
                     update = {
                         angle: Math.atan2(worldPos.y - pos.y, worldPos.x - pos.x) * (180 / Math.PI),
-                        properties: { length: Math.max(getDistance(pos, worldPos), minSize * 5) },
+                        // never shorter than the drawn silhouette (2 × diameter) — UI11-32
+                        properties: { length: Math.max(getDistance(pos, worldPos), minSize * 5, 2 * (imp.properties?.diameter ?? 0)) },
                     };
                 } else if (spec.kind === 'diameter') {
                     update = { properties: { diameter: Math.max(Math.abs(across) * 2, minSize) } };
@@ -1633,7 +1656,7 @@ const CanvasWorkspace = ({ side }: CanvasWorkspaceProps) => {
             viewTransformRef.current.y += dy;
             lastPanPos.current = { x: e.clientX, y: e.clientY };
         }
-    }, [isInteractive, containerRef, managerRef, getWorldPos, activeTool, isDragging, cropRect, selection, setCropRect, setMeasurements, storeCanvas, tempPoints, mouseWorldPosRef, setIsPanning, lastPanPos, viewTransformRef, isCalibrationDialogOpen, isVBMDialogOpen, isTiltDialogOpen, isTextDialogOpen]);
+    }, [canEdit, containerRef, managerRef, getWorldPos, activeTool, isDragging, cropRect, selection, setCropRect, setMeasurements, storeCanvas, tempPoints, mouseWorldPosRef, setIsPanning, lastPanPos, viewTransformRef, isCalibrationDialogOpen, isVBMDialogOpen, isTiltDialogOpen, isTextDialogOpen]);
 
     const handleMouseUp = async (e?: React.MouseEvent) => {
         // End of a right/middle press: a right press that barely moved is a click
@@ -1647,7 +1670,7 @@ const CanvasWorkspace = ({ side }: CanvasWorkspaceProps) => {
             if (e && e.type === 'mouseup' && pan.button === 2 && moved < 5) void handleMouseDown(e, { rightClick: true });
             return;
         }
-        if (!isInteractive && !isPanning) return;
+        if (!canEdit && !isPanning) return;
         if (activeTool === 'crop' && cropRect && isDragging) {
             const x1 = Math.min(cropRect.start.x, cropRect.current.x);
             const y1 = Math.min(cropRect.start.y, cropRect.current.y);
@@ -1666,6 +1689,7 @@ const CanvasWorkspace = ({ side }: CanvasWorkspaceProps) => {
                     const { clientWidth, clientHeight } = containerRef.current!;
                     const scale = Math.min(clientWidth / w, clientHeight / h) * 0.95;
                     viewTransformRef.current = { k: scale, x: (clientWidth - (x1 + x2) * scale) / 2, y: (clientHeight - (y1 + y2) * scale) / 2 };
+                    zoomAppliedRef.current = 1;
                     useAppStore.getState().setZoom(1); // Reset store zoom relative to new k
                 }
             }
@@ -1688,29 +1712,13 @@ const CanvasWorkspace = ({ side }: CanvasWorkspaceProps) => {
         }
 
         if ((activeTool === 'circle' || activeTool === 'ellipse') && isDragging && tempPoints.length === 2) {
-            const p1 = tempPoints[0];
-            const p2 = tempPoints[1];
-            let result = '';
-
-            if (activeTool === 'circle') {
-                const r = getDistance(p1, p2) / 2;
-                const d = r * 2;
-                const area = Math.PI * r * r;
-                const perimeter = 2 * Math.PI * r;
-                result = `Area: ${area.toFixed(1)} px²\nPerimeter: ${perimeter.toFixed(1)} px\nDiameter: ${d.toFixed(1)} px`;
-            } else {
-                const rx = Math.abs(p1.x - p2.x) / 2;
-                const ry = Math.abs(p1.y - p2.y) / 2;
-                const area = Math.PI * rx * ry;
-                // Ramanujan approx for perimeter
-                const h = Math.pow((rx - ry), 2) / Math.pow((rx + ry), 2);
-                const perimeter = Math.PI * (rx + ry) * (1 + (3 * h) / (10 + Math.sqrt(4 - 3 * h)));
-
-                result = `Area: ${area.toFixed(1)} px²\nPerimeter: ${perimeter.toFixed(1)} px`;
+            // A click without dragging made a zero-size shape (and NaN perimeter) — UI11-30
+            const ek = viewTransformRef.current.k * (storeCanvas.zoom || 1);
+            if (getDistance(tempPoints[0], tempPoints[1]) >= 3 / ek) {
+                const result = computeMeasurementResult(activeTool, tempPoints) ?? '';
+                const newState = await managerRef.current?.applyOperation('ADD_MEASUREMENT', { toolKey: activeTool, points: tempPoints, result });
+                if (newState) setMeasurements(newState.data.measurements);
             }
-
-            const newState = await managerRef.current?.applyOperation('ADD_MEASUREMENT', { toolKey: activeTool, points: tempPoints, result });
-            if (newState) setMeasurements(newState.data.measurements);
             setTempPoints([]);
             setIsDragging(false);
             return;
@@ -1746,7 +1754,9 @@ const CanvasWorkspace = ({ side }: CanvasWorkspaceProps) => {
         // Touchpad (UI8-01): two-finger swipe pans, pinch (sent as ctrl+wheel) zooms.
         // A mouse wheel sends whole notches (deltaY ≈ ±100, no deltaX) and zooms.
         const isPinch = e.ctrlKey;
-        const looksLikeTouchpad = e.deltaMode === 0 && (e.deltaX !== 0 || !Number.isInteger(e.deltaY) || Math.abs(e.deltaY) < 40);
+        // Mouse wheels send big vertical notches (≈100, ≈90.9 at 110% browser zoom);
+        // integrality was unreliable at non-100% zoom (UI11-31).
+        const looksLikeTouchpad = e.deltaMode === 0 && (e.deltaX !== 0 || Math.abs(e.deltaY) < 50);
         if (!isPinch && looksLikeTouchpad) {
             viewTransformRef.current.x -= e.deltaX;
             viewTransformRef.current.y -= e.deltaY;
@@ -1763,6 +1773,7 @@ const CanvasWorkspace = ({ side }: CanvasWorkspaceProps) => {
         const factor = isPinch ? Math.exp(-e.deltaY * 0.01) : (e.deltaY < 0 ? 1.1 : 1 / 1.1);
         const newZoom = Math.max(0.1, Math.min(10, currentZoom * factor));
 
+        zoomAppliedRef.current = newZoom; // the wheel anchors at the cursor itself
         useAppStore.getState().setZoom(newZoom);
 
         // After updating zoom, we need to adjust viewTransformRef.current.x/y
@@ -1789,6 +1800,19 @@ const CanvasWorkspace = ({ side }: CanvasWorkspaceProps) => {
         viewTransformRef.current.x = rx - worldPosBefore.x * newEk;
         viewTransformRef.current.y = ry - worldPosBefore.y * newEk;
     }, [isInteractive, getWorldPos, side, storeCanvas.rotation, storeCanvas.flipX]);
+
+    // Zoom changed elsewhere (toolbar slider, reset): keep the view CENTRE fixed,
+    // not the image's top-left corner (UI11-38).
+    useEffect(() => {
+        const z = storeCanvas.zoom || 1;
+        const prev = zoomAppliedRef.current;
+        zoomAppliedRef.current = z;
+        if (prev === z || !containerRef.current) return;
+        const { k, x, y } = viewTransformRef.current;
+        const cx = containerRef.current.clientWidth / 2, cy = containerRef.current.clientHeight / 2;
+        const wx = (cx - x) / (k * prev), wy = (cy - y) / (k * prev);
+        viewTransformRef.current = { k, x: cx - wx * k * z, y: cy - wy * k * z };
+    }, [storeCanvas.zoom]);
 
     // Attach wheel listener with passive: false to allow preventDefault
     useEffect(() => {
@@ -2018,6 +2042,11 @@ const CanvasWorkspace = ({ side }: CanvasWorkspaceProps) => {
             className={`w-full h-full bg-black relative overflow-hidden group transition-all duration-300 ${isComparisonMode && !isInteractive ? 'opacity-70 grayscale-[0.3]' : ''}`}        >
 
 
+            {paneLocked && currentImage && (
+                <div className="absolute bottom-3 left-1/2 -translate-x-1/2 z-20 px-3 py-1.5 rounded-lg bg-black/70 backdrop-blur-sm text-[11px] text-white/85 pointer-events-none whitespace-nowrap">
+                    Plan view · read-only — choose “No plan” to measure
+                </div>
+            )}
             {!currentImage && !isComparisonMode && (
                 <div className="absolute inset-0 flex items-center justify-center z-20 bg-[var(--bg-2)]" onMouseDown={(e) => e.stopPropagation()}>
                     <EmptyImport

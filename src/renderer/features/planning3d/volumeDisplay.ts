@@ -68,6 +68,18 @@ export function applyCrop(vp: Types.IVolumeViewport, roi: RoiCrop | null) {
     const mapper = actor.getMapper();
     mapper.removeAllClippingPlanes();
     if (roi) {
+        // Cornerstone treats the FIRST TWO clipping planes as its camera slab and
+        // re-aims them on every rotation (Viewport.updateClippingPlanesForActors),
+        // which used to replace our left/right planes with a thin slab — the
+        // volume "disappeared" except a few slices when moved (UI11-01).
+        // Give it two planes of its own with an effectively infinite slab.
+        const entry = vp.getActors()?.find((a) => (a.actor as { isA?: (t: string) => boolean })?.isA?.('vtkVolume'));
+        if (entry) entry.slabThickness = 1e7;
+        const cam = vp.getCamera();
+        const n = (cam.viewPlaneNormal ?? [0, 0, 1]) as Types.Point3;
+        const f = (cam.focalPoint ?? [0, 0, 0]) as Types.Point3;
+        mapper.addClippingPlane(vtkPlane.newInstance({ origin: [f[0] - n[0] * 1e7, f[1] - n[1] * 1e7, f[2] - n[2] * 1e7], normal: [n[0], n[1], n[2]] }));
+        mapper.addClippingPlane(vtkPlane.newInstance({ origin: [f[0] + n[0] * 1e7, f[1] + n[1] * 1e7, f[2] + n[2] * 1e7], normal: [-n[0], -n[1], -n[2]] }));
         const b = mapper.getInputData()?.getBounds?.() ?? actor.getBounds();
         const at = (lo: number, hi: number, t: number) => lo + (hi - lo) * t;
         const planes: [number[], number[]][] = [

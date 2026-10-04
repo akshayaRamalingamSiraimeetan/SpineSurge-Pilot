@@ -59,8 +59,10 @@ import {
 } from "@/features/measurements/planning/PlanningTools";
 import { useLocation } from 'react-router-dom';
 import { PlanSummary } from "@/features/planning2d/PlanSummary";
+import { dobForAge } from "@/lib/studies";
 import { modalityLabel, persistSeriesInBackground, readDicomInfo, type DicomInfo } from "@/features/dicom/dicomPersistence";
-import { isPlanMeasurement } from "@/features/planning2d/plan";
+import { compareVersionMeasurements, imageBoxOf, isPlanMeasurement } from "@/features/planning2d/plan";
+import type { Measurement } from "@/lib/canvas/CanvasManager";
 
 /* ── Constants ────────────────────────────────────────────────── */
 /**
@@ -769,9 +771,7 @@ function CaseSummary({ isOpen, onOpenChange }: { isOpen: boolean; onOpenChange: 
                 await updatePatient({ ...patient, contact: editValue });
             } else if (field === 'age') {
                 const ageNum = parseInt(editValue) || 0;
-                const currentYear = new Date().getFullYear();
-                const dob = `${currentYear - ageNum}-01-01`;
-                await updatePatient({ ...patient, age: ageNum, dob });
+                await updatePatient({ ...patient, age: ageNum, dob: dobForAge(ageNum, patient.dob) });
             } else if (field === 'sex') {
                 await updatePatient({ ...patient, gender: editValue as 'M' | 'F' | 'O' });
             } else if (field === 'height') {
@@ -1020,16 +1020,20 @@ const RightSidebar = () => {
         [contextStates, activeContextId]
     );
 
+    const imageAMeasurements = (all: Measurement[]) => {
+        const fragments = (useAppStore.getState().managers.main?.current?.data.fragments ?? []) as { polygon: { x: number; y: number }[] }[];
+        return compareVersionMeasurements(all, comparison.left.planId ?? null, activeContextState?.toolState, imageBoxOf(fragments));
+    };
+
     const measurements = useMemo(() => {
         if (isComparisonMode && activeCanvasSide === 'right') {
             return comparison.right.measurements;
         }
 
-        if (activeContextState) {
-            return activeContextState.measurements ?? [];
-        }
-
-        return storeMeasurements;
+        const all = activeContextState ? (activeContextState.measurements ?? []) : storeMeasurements;
+        // Compare Image A shows the chosen version: No plan / Plan N / working plan (UI12-20)
+        if (isComparisonMode) return imageAMeasurements(all);
+        return all;
     }, [
         isComparisonMode,
         activeCanvasSide,
@@ -1261,7 +1265,7 @@ const RightSidebar = () => {
                             {isComparisonMode && comparison?.left && comparison?.right && (
                                 <CollapseSection title="Measurement Comparison" defaultOpen>
                                     <ComparisonTable
-                                        leftMeasurements={activeContextState?.measurements ?? storeMeasurements ?? []}
+                                        leftMeasurements={imageAMeasurements(activeContextState?.measurements ?? storeMeasurements ?? [])}
                                         rightMeasurements={comparison.right.measurements || []}
                                         category="All"
                                         leftPixelToMm={canvas.pixelToMm}

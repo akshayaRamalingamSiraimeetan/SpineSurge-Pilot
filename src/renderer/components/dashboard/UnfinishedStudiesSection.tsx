@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAppStore, getStudyDisplayName } from '@/lib/store/index';
 import EmptyStateCard from './EmptyStateCard';
 import { visibleStudies } from '@/lib/studies';
+import { destroyCornerstone } from '@/lib/cornerstone/initCornerstone';
 
 interface UnfinishedRow {
   id:          string;
@@ -60,7 +61,7 @@ const UnfinishedStudiesSection = () => {
         <div className="overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--surface)]">
           {/* Table header */}
           <div className="grid grid-cols-[2fr_2fr_1.5fr_1fr_auto] gap-4 border-b border-[var(--border)] px-5 py-3">
-            {['Study Name', 'Diagnosis', 'Last Edited', 'Status', 'Action'].map((col) => (
+            {['Study Name', 'Diagnosis', 'Study Date', 'Status', 'Action'].map((col) => (
               <span key={col} className="text-xs font-medium text-[var(--text-3)] uppercase tracking-wide">
                 {col}
               </span>
@@ -84,7 +85,7 @@ const UnfinishedStudiesSection = () => {
               {/* Diagnosis */}
               <span className="truncate text-sm text-[var(--text-2)]">{row.diagnosis}</span>
 
-              {/* Last Edited */}
+              {/* Study date (UI11-43) */}
               <span className="text-sm text-[var(--text-2)]">{row.lastEdited}</span>
 
               {/* Status badge */}
@@ -96,6 +97,8 @@ const UnfinishedStudiesSection = () => {
               {/* Action */}
               <button
                 onClick={async () => {
+                  // Leaving a CT/MR viewer: release its GPU resources first (UI11-43)
+                  if (useAppStore.getState().isDicomMode) destroyCornerstone();
                   await openStudy(row.patientId, row.studyId);
                   navigate('/workspace');
                 }}

@@ -4,6 +4,7 @@ import { mapContexts } from '@/lib/store/patientSlice';
 import { caseStateFromContext } from '@/lib/store/caseState';
 import { buildReportModel, reportHasContent } from './reportModel';
 import { renderReportPDF } from '@/lib/pdf/generateReportPDF';
+import { isVolumeModality } from '@/features/dicom/dicomPersistence';
 
 /**
  * The current report of a study, built from its latest saved session without
@@ -21,7 +22,9 @@ export async function buildStudyReportBlob(patientId: string, studyId: string): 
 
     // A detached copy of the store describing that case only.
     const base = { ...st, activePatientId: patientId, activeContextId: ctx.id, contexts, contextStates, managers: {} } as AppState;
-    const virtual = { ...base, ...caseStateFromContext(base, ctxState) } as AppState;
+    // CT/MR study: a 3D report (no 2D image decoding of DICOM files — UI11-04)
+    const study = st.patients.find((p) => p.id === patientId)?.studies?.find((s) => s.id === studyId);
+    const virtual = { ...base, ...caseStateFromContext(base, ctxState), isDicomMode: isVolumeModality(study?.modality) } as AppState;
     const model = await buildReportModel(virtual);
     if (!reportHasContent(model)) return null;
     return renderReportPDF(model).output('blob');

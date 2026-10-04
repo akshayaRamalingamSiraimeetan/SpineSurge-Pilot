@@ -105,6 +105,12 @@ const setupWSConnection = (conn: WebSocket, req: any, { docName = req.url.slice(
             const messageType = decoding.readVarUint(decoder);
             switch (messageType) {
                 case messageSync:
+                    // View-only peers may ask for the state (step 1) but never write (UI12-10)
+                    if (req?.ssReadOnly) {
+                        const peek = decoding.createDecoder(new Uint8Array(message));
+                        decoding.readVarUint(peek);
+                        if (decoding.readVarUint(peek) !== 0) break;
+                    }
                     encoding.writeVarUint(encoder, messageSync);
                     syncProtocol.readSyncMessage(decoder, encoder, doc, null);
                     if (encoding.length(encoder) > 1) {

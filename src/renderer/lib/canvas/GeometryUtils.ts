@@ -190,3 +190,13 @@ export function endplateAngleDeg(a1: Point, a2: Point, b1: Point, b2: Point): nu
     const dot = Math.max(-1, Math.min(1, u.x * v.x + u.y * v.y));
     return Math.acos(dot) * (180 / Math.PI);
 }
+
+/**
+ * Angle between two undirected lines, 0–90° (generic 4-point angle). Unlike
+ * endplateAngleDeg it doesn't force left→right, so two steep lines leaning
+ * opposite ways read 11°, not 169° (UI11-29).
+ */
+export function lineAngleDeg(a1: Point, a2: Point, b1: Point, b2: Point): number {
+    const d = Math.abs(Math.atan2(a2.y - a1.y, a2.x - a1.x) - Math.atan2(b2.y - b1.y, b2.x - b1.x)) % Math.PI;
+    return (Math.min(d, Math.PI - d) * 180) / Math.PI;
+}

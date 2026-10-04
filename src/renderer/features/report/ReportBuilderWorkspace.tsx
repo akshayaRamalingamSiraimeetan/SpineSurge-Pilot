@@ -187,7 +187,7 @@ export default function ReportBuilderWorkspace() {
                                                     <img src={plan.image.dataUrl} alt={plan.name} className="mx-auto max-w-full max-h-[420px] object-contain rounded" />
                                                 )}
                                                 {plan.targetRows.length > 0 && (
-                                                    <Table head={['Target', 'Measured', 'Target', 'Difference', 'Plan']}
+                                                    <Table head={['Parameter', 'Measured', 'Target', 'Difference', 'Plan']}
                                                         rows={plan.targetRows.map((r) => [r.parameter, r.measured, r.target, r.diff, r.plan])} />
                                                 )}
                                                 {plan.compareRows.length > 0 && (

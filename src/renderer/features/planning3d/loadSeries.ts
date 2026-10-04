@@ -20,9 +20,12 @@ const absolute = (url: string) =>
 export async function loadSeriesImageIds(
     items: (File | string)[],
     onProgress?: (done: number, total: number) => void,
+    /** Stop adding files to the loader caches once the viewer is gone (UI11-26) */
+    isCancelled?: () => boolean,
 ): Promise<SeriesSelection> {
     let done = 0;
     const ids = await Promise.all(items.map(async (item) => {
+        if (isCancelled?.()) return null;
         const id = typeof item === 'string' ? await addURLToLoader(absolute(item)) : await addFileToLoader(item);
         onProgress?.(++done, items.length);
         return id;
@@ -30,7 +33,11 @@ export async function loadSeriesImageIds(
     const valid = ids.filter((x): x is string => !!x);
 
     const groups = new Map<string, string[]>();
+    const seenSop = new Set<string>();
     for (const id of valid) {
+        // The same slice twice (series imported twice) would stack duplicate positions
+        const sop = metaData.get('sopCommonModule', id)?.sopInstanceUID;
+        if (sop) { if (seenSop.has(sop)) continue; seenSop.add(sop); }
         const series = metaData.get('generalSeriesModule', id)?.seriesInstanceUID ?? 'unknown';
         const plane = metaData.get('imagePlaneModule', id);
         // Skip images without geometry (secondary captures, reports).

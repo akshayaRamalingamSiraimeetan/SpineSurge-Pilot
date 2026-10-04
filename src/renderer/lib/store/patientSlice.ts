@@ -3,6 +3,8 @@ import { Patient, Study, Scan, Visit, Context, ContextState } from './types';
 import { api } from '../api';
 import type { AppState } from './index';
 import { emptyCaseState, caseStateFromContext } from './caseState';
+import { contextAccess } from '../access';
+import { imageScans } from '../studies';
 
 export interface PatientSlice {
     patients: Patient[];
@@ -21,7 +23,8 @@ export interface PatientSlice {
     initializeStore: () => Promise<void>;
     /** Re-fetch the patient list only. Never touches the open workspace. */
     refreshPatients: () => Promise<void>;
-    setActivePatient: (patientId: string, initialContextId?: string | null) => Promise<void>;
+    /** Resolves 'loaded' only when this call's contexts were applied (UI11-07). */
+    setActivePatient: (patientId: string, initialContextId?: string | null) => Promise<'loaded' | 'superseded' | 'failed'>;
     addPatient: (patient: Patient) => Promise<void>;
     updatePatient: (patient: Patient) => Promise<void>;
     archivePatient: (patientId: string, archived: boolean) => Promise<void>;
@@ -98,6 +101,7 @@ export const mapContexts = (fetched: any[]) => {
         mode:         c.mode,
         name:         c.name,
         lastModified: c.lastModified,
+        ...(c.access ? { access: c.access } : {}),
     }));
     const contextStates: ContextState[] = fetched.map((c: any) => ({
         contextId:          c.id,
@@ -159,7 +163,7 @@ export const createPatientSlice: StateCreator<AppState, [], [], PatientSlice> = 
     setActivePatient: async (id, initialContextId = null) => {
         if (!id) {
             console.warn('[setActivePatient] called with falsy id — skipping');
-            return;
+            return 'failed';
         }
         const seq = ++patientLoadSeq;
         const wasDicomMode = get().isDicomMode;
@@ -181,7 +185,7 @@ export const createPatientSlice: StateCreator<AppState, [], [], PatientSlice> = 
             }
 
             const fetched = await api.getContexts(id, token);
-            if (seq !== patientLoadSeq) return; // a newer patient/context was requested
+            if (seq !== patientLoadSeq) return 'superseded'; // a newer patient/context was requested
 
             const { contexts, contextStates } = mapContexts(fetched);
             const activeState = initialContextId
@@ -195,15 +199,19 @@ export const createPatientSlice: StateCreator<AppState, [], [], PatientSlice> = 
                     ? { activeContextId: initialContextId, ...caseStateFromContext(get(), activeState) }
                     : {}),
             });
+            return 'loaded';
         } catch (e) {
             console.error('Failed to fetch contexts', e);
+            return seq === patientLoadSeq ? 'failed' : 'superseded';
         }
     },
 
     addPatient: async (patient) => {
         const token = get().token;
         try {
-            await api.savePatient(patient, token);
+            // Created in the active workspace; personal and org patients never mix (UI12-21)
+            const ws = get().activeWorkspace;
+            await api.savePatient({ ...patient, organizationId: ws.type === 'organization' ? ws.orgId : null } as Patient, token);
             set((state: AppState) => ({
                 patients:        [patient, ...state.patients.filter(p => p.id !== patient.id)],
                 activePatientId: patient.id,
@@ -223,6 +231,7 @@ export const createPatientSlice: StateCreator<AppState, [], [], PatientSlice> = 
             }));
         } catch (e) {
             console.error('Update patient failed', e);
+            throw e; // callers show the error (UI11-12)
         }
     },
 
@@ -237,6 +246,7 @@ export const createPatientSlice: StateCreator<AppState, [], [], PatientSlice> = 
             }));
         } catch (e) {
             console.error('Archive patient failed', e);
+            throw e;
         }
     },
 
@@ -287,6 +297,7 @@ export const createPatientSlice: StateCreator<AppState, [], [], PatientSlice> = 
             });
         } catch (e) {
             console.error('Failed to update visit', e);
+            throw e;
         }
     },
 
@@ -309,6 +320,7 @@ export const createPatientSlice: StateCreator<AppState, [], [], PatientSlice> = 
 
     reorderVisits: async (patientId, visits) => {
         const token = get().token;
+        const previous = get().patients.find((p) => p.id === patientId)?.visits;
         const renumbered = visits.map((v: Visit, index: number) => ({
             ...v,
             visitNumber: `#${String(visits.length - index).padStart(4, '0')}`,
@@ -322,6 +334,9 @@ export const createPatientSlice: StateCreator<AppState, [], [], PatientSlice> = 
             await Promise.all(renumbered.map(v => api.saveVisit(patientId, v, token)));
         } catch (e) {
             console.error('Failed to reorder visits', e);
+            // roll back the optimistic reorder
+            if (previous) set((state: AppState) => ({ patients: state.patients.map((p: Patient) => p.id === patientId ? { ...p, visits: previous } : p) }));
+            throw e;
         }
     },
 
@@ -409,6 +424,7 @@ export const createPatientSlice: StateCreator<AppState, [], [], PatientSlice> = 
     },
 
     addContext: async (context) => {
+        const seqAtStart = patientLoadSeq;
         const token = get().token;
         const state = get();
         // Carry over the canvas only from an untitled session: no context is
@@ -419,10 +435,16 @@ export const createPatientSlice: StateCreator<AppState, [], [], PatientSlice> = 
             state.contextStates.length === 0 &&
             (state.measurements.length > 0 ||
                 (state.implants?.length ?? 0) > 0 ||
-                !!state.currentImage);
+                !!state.currentImage ||
+                // an untitled CT/MR series (+ its 3D plan) is work too (UI11-18)
+                state.isDicomMode ||
+                state.threeDImplants.length > 0 ||
+                state.pedicleSimulations.length > 0);
 
         const measurements = isFirstContextFromUntitled ? state.measurements : [];
         const implants = isFirstContextFromUntitled ? (state.implants || []) : [];
+        const threeDImplants = isFirstContextFromUntitled ? state.threeDImplants : [];
+        const pedicleSimulations = isFirstContextFromUntitled ? state.pedicleSimulations : [];
         const currentImage = isFirstContextFromUntitled ? (state.currentImage ?? undefined) : undefined;
 
         // The untitled session's image only exists in this tab (blob: URL).
@@ -448,7 +470,9 @@ export const createPatientSlice: StateCreator<AppState, [], [], PatientSlice> = 
                 measurements,
                 implants,
                 annotations: [],
-                toolState: {},
+                toolState: { threeDImplants, pedicleSimulations },
+                threeDImplants,
+                pedicleSimulations,
                 currentImage: persistedImage ?? null,
             },
         };
@@ -459,13 +483,15 @@ export const createPatientSlice: StateCreator<AppState, [], [], PatientSlice> = 
                 contextId:          context.id,
                 measurements,
                 implants,
-                threeDImplants:     [],
-                pedicleSimulations: [],
+                threeDImplants,
+                pedicleSimulations,
                 annotations:        [],
-                toolState:          {},
+                toolState:          { threeDImplants, pedicleSimulations },
                 reportConfig:       undefined,
                 currentImage:       persistedImage,
             };
+            // The user may have opened another patient during the upload/save (UI11-08)
+            if (patientLoadSeq !== seqAtStart || get().activePatientId !== context.patientId) return;
             set((s: AppState) => ({
                 contexts:        [...s.contexts.filter(c => c.id !== context.id), context],
                 contextStates:   [...s.contextStates.filter(c => c.contextId !== context.id), newState],
@@ -519,6 +545,8 @@ export const createPatientSlice: StateCreator<AppState, [], [], PatientSlice> = 
             contexts: state.contexts.map((c) => c.id === contextId ? { ...c, lastModified } : c),
             ...mirror,
         });
+        // View-only session: kept on screen, never sent (the server would refuse) — UI12-10
+        if (contextAccess(get(), contextId) === 'view') return true;
 
         const currentImage = updates.currentImage
             ?? (isActive ? get().currentImage : null)
@@ -573,8 +601,12 @@ export const createPatientSlice: StateCreator<AppState, [], [], PatientSlice> = 
     },
 
     openStudy: async (patientId, studyId) => {
-        await get().setActivePatient(patientId);
-        if (get().activePatientId !== patientId) return; // superseded
+        // Only create a session when we KNOW the study has none: a superseded or
+        // failed load used to look like "no sessions" and made an empty one that
+        // then became the latest (UI11-07).
+        const status = await get().setActivePatient(patientId);
+        if (status === 'superseded' || get().activePatientId !== patientId) return;
+        if (status === 'failed') throw new Error("Could not load this patient's sessions. Please try again.");
         const existing = get().contexts
             .filter(c => c.studyIds?.includes(studyId))
             .sort((a, b) => String(b.lastModified).localeCompare(String(a.lastModified)))[0];
@@ -585,6 +617,12 @@ export const createPatientSlice: StateCreator<AppState, [], [], PatientSlice> = 
         const patient = get().patients.find(p => p.id === patientId);
         const study = patient?.studies.find(s => s.id === studyId)
             ?? patient?.visits.flatMap(v => v.studies || []).find(s => s.id === studyId);
+        if (study?.access === 'view') {
+            // Not planned yet and we can only look: show the image, create nothing (UI12-10)
+            const first = imageScans(study)[0]?.imageUrl;
+            if (first) get().loadImage(first);
+            return;
+        }
         await get().addContext({
             id: `ctx-${crypto.randomUUID()}`,
             patientId,

@@ -20,6 +20,8 @@ export interface Interaction3DOptions {
     onChange: (implant: PlanImplant, final: boolean) => void;
     /** Bone surface hit along the view ray (entry) + ray direction. */
     onPlaceOnBone: (entry: Vec3, dir: Vec3) => void;
+    /** Active crop box in world mm [xmin,xmax,ymin,ymax,zmin,zmax]; cropped-away bone is not "hit". */
+    getClipBox?: () => number[] | null;
 }
 
 function ray(vp: Types.IVolumeViewport, el: HTMLElement, e: MouseEvent): { origin: Vec3; dir: Vec3 } {
@@ -54,7 +56,7 @@ function hitImplant(origin: Vec3, dir: Vec3, imp: PlanImplant): { d: number; t: 
     return best;
 }
 
-export function marchToBone(volume: Types.IImageVolume, origin: Vec3, dir: Vec3, threshold: number): Vec3 | null {
+export function marchToBone(volume: Types.IImageVolume, origin: Vec3, dir: Vec3, threshold: number, clip?: number[] | null): Vec3 | null {
     const vm: any = volume.voxelManager;
     const imageData: any = volume.imageData;
     if (!vm || !imageData) return null;
@@ -62,6 +64,8 @@ export function marchToBone(volume: Types.IImageVolume, origin: Vec3, dir: Vec3,
     const step = Math.max(0.4, Math.min(...volume.spacing) * 0.75);
     for (let t = 0; t < 4000; t += step) {
         const p = add(origin, scale(dir, t));
+        // Skip bone that the crop box hides (UI11-20)
+        if (clip && (p[0] < clip[0] || p[0] > clip[1] || p[1] < clip[2] || p[1] > clip[3] || p[2] < clip[4] || p[2] > clip[5])) continue;
         const ijk = csUtils.transformWorldToIndex(imageData, p as Types.Point3);
         const [i, j, k] = ijk;
         if (i < 0 || j < 0 || k < 0 || i >= nx || j >= ny || k >= nz) continue;
@@ -76,7 +80,10 @@ export function attach3DInteraction(element: HTMLElement, o: Interaction3DOption
     let swallowMouse = false;
 
     const onDown = (e: PointerEvent) => {
+        swallowMouse = false;
         if (e.button !== 0) return;
+        // Only clicks on the viewport itself — not the cell's buttons or crop handles (UI11-21)
+        if (!element.contains(e.target as Node)) return;
         const vp = o.getViewport();
         if (!vp) return;
         const { origin, dir } = ray(vp, element, e);
@@ -84,7 +91,7 @@ export function attach3DInteraction(element: HTMLElement, o: Interaction3DOption
 
         if (mode === 'place_screw') {
             const vol = o.getVolume();
-            const hit = vol ? marchToBone(vol, origin, dir, o.getThreshold()) : null;
+            const hit = vol ? marchToBone(vol, origin, dir, o.getThreshold(), o.getClipBox?.()) : null;
             if (hit) o.onPlaceOnBone(hit, dir);
             swallowMouse = true;
             e.stopPropagation();
@@ -122,6 +129,9 @@ export function attach3DInteraction(element: HTMLElement, o: Interaction3DOption
     };
 
     const onUp = (e: PointerEvent) => {
+        // preventDefault on pointerdown suppresses the compatibility mouseup that
+        // used to reset this — leaving the next rotate/pan swallowed (UI11-21)
+        swallowMouse = false;
         if (!drag) return;
         element.releasePointerCapture?.(e.pointerId);
         o.onChange(drag.last, true);

@@ -190,14 +190,18 @@ export async function loadPlan(plan: SavedPlan | null) {
     const st = useAppStore.getState();
     const mgr = st.managers.main;
     if (!mgr?.current) return;
+    // Pin the session now: never write one context's toolState into another (UI11-10)
+    const ctxId = st.activeContextId;
+    const ctxBefore = activeCtx();
     const keep = mgr.current.data.measurements.filter((m: Measurement) => !isPlanMeasurement(m));
     const next = await mgr.applyOperation('REPLACE_PLAN', {
         measurements: [...keep, ...(plan ? JSON.parse(JSON.stringify(plan.measurements)) : [])],
         implants: plan ? JSON.parse(JSON.stringify(plan.implants)) : [],
     });
-    if (st.activeContextId) {
-        const ctx = activeCtx();
-        await st.updateContextState(st.activeContextId, {
+    if (ctxId) {
+        if (useAppStore.getState().activeContextId !== ctxId) return;
+        const ctx = activeCtx() ?? ctxBefore;
+        await st.updateContextState(ctxId, {
             measurements: next.data.measurements,
             implants: next.data.implants,
             toolState: { ...(ctx?.toolState ?? {}), activePlanId: plan?.id ?? null, ...(plan ? { targets: plan.targets } : {}) },
@@ -206,4 +210,18 @@ export async function loadPlan(plan: SavedPlan | null) {
         st.setMeasurements(next.data.measurements);
         st.setImplants(next.data.implants);
     }
+}
+
+/**
+ * Image A in Compare, as the chosen version (UI12-20): "No plan" = the preop
+ * measurements; a plan (saved or the working one) = the preop measurements
+ * carried through that plan's osteotomies with recomputed values, plus the
+ * plan's own items — the same numbers the report shows for that plan.
+ */
+export function compareVersionMeasurements(all: Measurement[], planId: string | null, toolState: PlanToolState, box?: ImageBox): Measurement[] {
+    const preop = all.filter((m) => !isPlanMeasurement(m));
+    if (!planId) return preop;
+    const planItems = planId === 'working' ? all.filter(isPlanMeasurement) : getSavedPlans(toolState).find((p) => p.id === planId)?.measurements;
+    if (!planItems) return preop;
+    return registerMeasurements([...preop, ...planItems], box);
 }

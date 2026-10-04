@@ -1,4 +1,4 @@
-import { Point, getMidpoint, getLineLinesIntersection, endplateAngleDeg } from "@/lib/canvas/GeometryUtils";
+import { Point, getMidpoint, getLineLinesIntersection, endplateAngleDeg, lineAngleDeg } from "@/lib/canvas/GeometryUtils";
 import { Measurement } from "@/lib/canvas/CanvasManager";
 import { drawLabel, drawPoints, strokeLine, toolColor } from "@/lib/canvas/annotationStyle";
 
@@ -49,7 +49,9 @@ export function drawCobbAngle(ctx: CanvasRenderingContext2D, m: Measurement, k: 
     if (points.length >= 4) strokeLine(ctx, points[2], points[3], k, color);
 
     if (points.length >= 4) {
-        const { angle, intersection } = calculateCobbAngle(points);
+        const { angle: cobb, intersection } = calculateCobbAngle(points);
+        // generic 4-point angle = true angle between the lines (UI11-29)
+        const angle = m.toolKey === 'cobb' ? cobb : lineAngleDeg(points[0], points[1], points[2], points[3]);
         const prefix = m.toolKey === 'cobb' ? 'Cobb' : '4 pt angle';
         m.result = `${prefix}: ${angle.toFixed(1)}°`;
 

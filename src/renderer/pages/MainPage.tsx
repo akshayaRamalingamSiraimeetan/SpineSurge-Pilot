@@ -11,6 +11,7 @@ import { useNavigate, useLocation } from "react-router-dom";
 import { API_BASE } from "@/lib/api";
 import { useAutosave } from "@/hooks/useAutosave";
 import { isVolumeModality } from "@/features/dicom/dicomPersistence";
+import { imageScans } from "@/lib/studies";
 
 const MainPage = () => {
     useAutosave();
@@ -48,11 +49,15 @@ const MainPage = () => {
         const params = new URLSearchParams(location.search);
         const pId = params.get('patientId');
         const cId = params.get('contextId');
+        const sId = params.get('studyId');
         const img = params.get('currentImage');
         if (!pId && !cId && !img) return;
 
         const state = useAppStore.getState();
-        if (pId && (pId !== state.activePatientId || (cId && cId !== state.activeContextId))) {
+        if (pId && sId && !cId) {
+            // Shared study link: open that study's latest session (UI11-39)
+            void state.openStudy(pId, sId).catch((e) => console.error('[MainPage] open shared study', e));
+        } else if (pId && (pId !== state.activePatientId || (cId && cId !== state.activeContextId))) {
             void setActivePatient(pId, cId || undefined);
         } else if (!pId && cId && cId !== state.activeContextId) {
             state.setActiveContextId(cId);
@@ -70,6 +75,7 @@ const MainPage = () => {
 
         params.delete('patientId');
         params.delete('contextId');
+        params.delete('studyId');
         params.delete('currentImage');
         const rest = params.toString();
         navigate({ pathname: location.pathname, search: rest ? `?${rest}` : '' }, { replace: true });
@@ -100,12 +106,14 @@ const MainPage = () => {
         if (!study) return;
         detectedForCtxRef.current = activeContextId;
 
-        const firstScan = study.scans[0];
-        const isDICOM = !!firstScan && (isVolumeModality(study.modality) || firstScan.imageUrl.toLowerCase().endsWith('.dcm'));
+        const series = imageScans(study); // not the 3D thumbnail
+        const firstScan = series[0];
+        // A single .dcm is a 2D X-ray, not a volume (UI11-25)
+        const isDICOM = !!firstScan && (isVolumeModality(study.modality) || (series.length > 1 && firstScan.imageUrl.toLowerCase().endsWith('.dcm')));
         const dicomActive = useAppStore.getState().isDicomMode;
         if (isDICOM) {
             if (!dicomActive) {
-                loadDicomURLs(study.scans.map((s: any) => {
+                loadDicomURLs(series.map((s: any) => {
                     const url = s.imageUrl;
                     if (url.startsWith('http') || url.startsWith('blob:')) return url;
                     return `${API_BASE}${url.startsWith('/') ? '' : '/'}${url}`;

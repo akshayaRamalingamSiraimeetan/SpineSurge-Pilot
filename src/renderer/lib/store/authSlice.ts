@@ -1,3 +1,4 @@
+import { claimSettings } from '@/lib/settings';
 import { StateCreator } from 'zustand';
 import axios from 'axios';
 import { UserProfile } from './types';
@@ -118,6 +119,7 @@ export const createAuthSlice: StateCreator<AppState, [], [], AuthSlice> = (set, 
       if (meRes.status === 401) { get().clearAuth(); return; }
       if (meRes.status === 200) {
         const u = meRes.data.user ?? meRes.data;
+        claimSettings(u?.id);
         set({
           isAuthenticated:  true,
           user:             normalizeUser(u),
@@ -195,6 +197,7 @@ export const createAuthSlice: StateCreator<AppState, [], [], AuthSlice> = (set, 
     const loginUser = (loginData as any).user;
     // Start from a clean slate — never show the previous user's data.
     get().resetWorkspace();
+    claimSettings(loginUser?.id);
     set({
       token,
       patients:         [],
