@@ -18,6 +18,7 @@ const normEmail = (e: unknown) => (typeof e === 'string' ? e.trim().toLowerCase(
 const emailEq = (e: string) => sql`lower(${users.email}) = ${e}`;
 import { codeEmail, emailEnabled, sendEmail } from '../services/email';
 import { clearMediaCookie, refreshMediaCookie } from '../media';
+import { persistUpload } from '../storage';
 import { isPlatformAdmin } from './platform';
 
 // Startup guard — fail fast if JWT_SECRET is missing or a placeholder (SRV-34)
@@ -593,13 +594,20 @@ authRouter.post(
       next();
     });
   },
-  (req, res) => {
+  async (req, res) => {
     if (!req.file) {
       res.status(400).json({ error: 'No file uploaded' });
       return;
     }
 
     const filename = path.basename(req.file.path);
+    try {
+      await persistUpload(req.file.path); // → S3 bucket when configured (DEPLOY-07)
+    } catch (e) {
+      console.error('[avatar] store failed', e);
+      res.status(502).json({ error: 'Could not store the picture' });
+      return;
+    }
     res.status(200).json({ url: `/uploads/${filename}` });
   }
 );

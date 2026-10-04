@@ -1,48 +1,45 @@
-# Render blueprint for the hosted demo (see docs/DEPLOYMENT.md).
-# New → Blueprint → pick this repo. Fill the `sync: false` values in the dashboard.
+# Render blueprint — FREE demo setup (docs/FREE_DEPLOY.md). No card needed.
+#   App:            this web service (free instance: sleeps after 15 min idle, ~1 min to wake)
+#   Database+files: Supabase free (Postgres + Storage bucket "uploads")
+#   Email codes:    Brevo free (HTTP API — free hosts block SMTP)
+# New → Blueprint → this repo, branch demo-deploy → fill the values marked sync:false.
+# (Paid always-on variant with a disk + Render Postgres: see docs/DEPLOYMENT.md.)
 services:
   - type: web
     name: spinesurge-demo
     runtime: docker
-    plan: starter            # a persistent disk needs a paid instance
+    plan: free
     region: singapore
     healthCheckPath: /healthz
     autoDeploy: true
-    disk:
-      name: uploads
-      mountPath: /data
-      sizeGB: 10           # CT series are 100+ MB each
     envVars:
+      # Supabase → Connect → "Session pooler" connection string (IPv4), with your DB password filled in
       - key: DATABASE_URL
-        fromDatabase:
-          name: spinesurge-db
-          property: connectionString
+        sync: false
+      - key: DATABASE_POOL_MAX     # Supabase free pooler allows few connections
+        value: "5"
       - key: JWT_SECRET
         generateValue: true
-      - key: DEMO_MODE            # no email code while EMAIL_PROVIDER is unset/mock
+      - key: DEMO_MODE             # no email code only while email is not configured
         value: "true"
-      # Sign-up codes to the user's own inbox (Gmail: app password, port 587).
-      # Once EMAIL_PROVIDER=smtp is set, every sign-up must confirm its email.
+      # Uploaded images/CT/report PDFs → Supabase Storage (S3-compatible)
+      - key: S3_ENDPOINT           # Supabase → Storage → S3 Configuration → Endpoint
+        sync: false
+      - key: S3_REGION             # same page → Region (e.g. ap-south-1)
+        sync: false
+      - key: S3_BUCKET
+        value: uploads
+      - key: S3_ACCESS_KEY_ID      # same page → New access key
+        sync: false
+      - key: S3_SECRET_ACCESS_KEY
+        sync: false
+      # Sign-up codes to the user's own inbox
       - key: EMAIL_PROVIDER
-        value: smtp
-      - key: SMTP_HOST
-        value: smtp.gmail.com
-      - key: SMTP_PORT
-        value: "587"
-      - key: SMTP_USER            # the sending Gmail address
+        value: brevo
+      - key: BREVO_API_KEY         # Brevo → SMTP & API → API keys
         sync: false
-      - key: SMTP_PASS            # its 16-character app password
-        sync: false
-      - key: EMAIL_FROM           # e.g. SpineSurge <you@gmail.com>
+      - key: EMAIL_FROM            # a sender verified in Brevo, e.g. SpineSurge <you@gmail.com>
         sync: false
       # Who sees the Usage dashboard (comma separated login emails)
       - key: PLATFORM_ADMIN_EMAILS
         sync: false
-      - key: UPLOADS_DIR
-        value: /data/uploads
-
-databases:
-  - name: spinesurge-db
-    plan: basic-256mb
-    region: singapore
-    databaseName: spinesurge

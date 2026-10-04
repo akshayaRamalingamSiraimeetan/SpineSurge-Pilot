@@ -2,12 +2,13 @@
 
 **Link:** _to be filled after deployment_  ·  **Login:** create your own account on the sign-in page
 
-SpineSurge is a browser-based spine surgery planning tool. Use a recent Chrome or Edge on a laptop
+SpineSurge is a browser-based spine surgery planning tool. The demo server sleeps when unused —
+the first visit can take about a minute to load. Use a recent Chrome or Edge on a laptop
 or desktop (the 3D module needs WebGL2). Please use **anonymised images only**.
 
 ## 1. Sign in
-Open the link → **Create Account** with your email and a password (in the demo no email code is
-needed — you can sign in right away), then complete your profile. Your patients and studies are
+Open the link → **Create Account** with your email and a password → enter the 6-digit code we email
+you (check Spam/Promotions if it's not in your inbox within a minute) → complete your profile. Your patients and studies are
 private; share a study from its card (⋮ → Share) by entering the other person's login email, with
 View or Edit rights. A team lead can create an organization and invite members.
 

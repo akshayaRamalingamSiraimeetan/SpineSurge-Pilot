@@ -17,6 +17,7 @@ import { orgsRouter } from './routes/orgs';
 import { invitationsRouter } from './routes/invitations';
 import { authenticate } from './middleware/authenticate';
 import { guardUploads } from './media';
+import { persistUpload, removeStored, serveStored } from './storage';
 import { platformRouter } from './routes/platform';
 import { type Access, adminOrgIds, canWrite, contextAccess, contextsAccess, patientAccess, studyAccess } from './access';
 import jwt from 'jsonwebtoken';
@@ -88,19 +89,9 @@ app.use((req, res, next) => {
 // UPLOADS_DIR env = persistent disk mount in hosting (e.g. /data/uploads).
 // (shared with routes / PACS / scripts — config.ts)
 fs.ensureDirSync(UPLOADS_DIR);
-// Only inert media types are ever served inline; anything else downloads.
-// nosniff stops the browser treating an upload as HTML/JS (BUGS SRV-07).
-const INLINE_EXTS = new Set(['.png', '.jpg', '.jpeg', '.webp', '.bmp', '.gif', '.pdf']);
-// Private: only signed-in users with access to the study (DEPLOY-05)
-app.use('/uploads', guardUploads, express.static(UPLOADS_DIR, {
-    setHeaders: (res, filePath) => {
-        res.setHeader('X-Content-Type-Options', 'nosniff');
-        res.setHeader('Content-Security-Policy', "default-src 'none'; sandbox");
-        if (!INLINE_EXTS.has(path.extname(filePath).toLowerCase())) {
-            res.setHeader('Content-Disposition', 'attachment');
-        }
-    },
-}));
+// Private: only signed-in users with access to the study (DEPLOY-05); served from
+// disk or the S3 bucket (DEPLOY-07), inert types inline only (SRV-07, storage.ts).
+app.use('/uploads', guardUploads, serveStored);
 
 // File upload configuration — allow-listed extensions only (DICOM files
 // frequently have no extension, which is allowed).
@@ -495,9 +486,7 @@ app.post('/api/studies', authenticate, async (req, res) => {
 // any signed-in user of this server). Uploaded files are removed as well.
 const removeUploads = async (names: (string | null | undefined)[]) => {
     for (const n of names) {
-        if (!n) continue;
-        const abs = path.resolve(UPLOADS_DIR, path.basename(n));
-        if (abs.startsWith(UPLOADS_DIR + path.sep)) await fs.remove(abs).catch(() => {});
+        if (n) await removeStored(n);
     }
 };
 
@@ -579,6 +568,7 @@ app.post('/api/scans', authenticate, upload.single('file'), async (req, res) => 
     try {
         const relativePath = path.basename(file.path);
         console.log(`Saving scan: ${id} for study: ${studyId}, file: ${relativePath}`);
+        await persistUpload(file.path); // → S3 bucket when configured (DEPLOY-07)
 
         const baseUrl = `${req.protocol}://${req.get('host')}`;
 
@@ -793,6 +783,7 @@ app.post('/api/reports', upload.single('file'), async (req, res) => {
     }
 
     try {
+        await persistUpload(file.path);
         // Version = max+1 computed under a per-study lock so concurrent exports
         // can't produce duplicate versions (BUGS RPT-09 / SRV-21).
         const version = await db.transaction(async (tx) => {
@@ -968,6 +959,7 @@ app.post('/api/import', async (req, res) => {
                             const uniqueName = `${Date.now()}-${Math.round(Math.random() * 1E9)}${ext}`;
                             const destPath = path.join(UPLOADS_DIR, uniqueName);
                             fs.copySync(fullPath, destPath);
+                            await persistUpload(destPath);
 
                             const scanId = `${Date.now()}-${Math.round(Math.random() * 1E9)}`;
                             await tx.insert(schema.scans).values({

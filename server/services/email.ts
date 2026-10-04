@@ -14,6 +14,8 @@ export interface SendEmailOptions {
  *   smtp   — any SMTP account, e.g. Gmail: SMTP_HOST=smtp.gmail.com SMTP_PORT=587
  *            SMTP_USER=<gmail> SMTP_PASS=<16-char app password> EMAIL_FROM="SpineSurge <gmail>"
  *   resend — Resend HTTP API (EMAIL_API_KEY; EMAIL_FROM on a domain verified in Resend)
+ *   brevo  — Brevo HTTP API, free 300/day, no domain needed: BREVO_API_KEY, EMAIL_FROM = a sender
+ *            address verified in Brevo (e.g. your Gmail). Works on free hosts that block SMTP.
  * Exactly one client is created (DEPLOY-04).
  */
 // A provider without credentials counts as mock — sign-up must never wait for a code that can't be sent.
@@ -21,11 +23,12 @@ const configured = process.env.EMAIL_PROVIDER ?? 'mock';
 const provider =
   configured === 'smtp' && process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS ? 'smtp'
   : configured === 'resend' && process.env.EMAIL_API_KEY ? 'resend'
+  : configured === 'brevo' && process.env.BREVO_API_KEY && process.env.EMAIL_FROM ? 'brevo'
   : 'mock';
 if (provider !== configured) console.warn(`[email] EMAIL_PROVIDER=${configured} but its credentials are missing — using mock`);
 
 /** True when codes really reach the user's inbox — sign-up then requires the code. */
-export const emailEnabled = provider === 'smtp' || provider === 'resend';
+export const emailEnabled = provider === 'smtp' || provider === 'resend' || provider === 'brevo';
 
 let resendClient: Resend | null = null;
 let smtpTransport: nodemailer.Transporter | null = null;
@@ -58,6 +61,18 @@ export async function sendEmail(options: SendEmailOptions): Promise<boolean> {
     if (provider === 'resend' && resendClient) {
       const { error } = await resendClient.emails.send({ from: fromAddress(), to: options.to, subject: options.subject, text: options.text, html: options.html });
       if (error) throw new Error(error.message);
+      return true;
+    }
+    if (provider === 'brevo') {
+      // "Name <email>" or a bare address
+      const m = fromAddress().match(/^\s*(.*?)\s*<([^>]+)>\s*$/);
+      const sender = m ? { name: m[1] || 'SpineSurge', email: m[2] } : { name: 'SpineSurge', email: fromAddress().trim() };
+      const r = await fetch('https://api.brevo.com/v3/smtp/email', {
+        method: 'POST',
+        headers: { 'api-key': process.env.BREVO_API_KEY!, 'Content-Type': 'application/json', accept: 'application/json' },
+        body: JSON.stringify({ sender, to: [{ email: options.to }], subject: options.subject, textContent: options.text, htmlContent: options.html ?? `<pre>${options.text}</pre>` }),
+      });
+      if (!r.ok) throw new Error(`Brevo ${r.status}: ${await r.text()}`);
       return true;
     }
     if (provider === 'smtp' && smtpTransport) {

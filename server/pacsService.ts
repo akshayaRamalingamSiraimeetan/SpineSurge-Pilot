@@ -1,11 +1,8 @@
 import axios from 'axios';
-import path from 'path';
-import fs from 'fs-extra';
 import { randomUUID } from 'crypto';
 import { db } from './db';
 import * as schema from './schema';
-
-import { UPLOADS_DIR } from './config';
+import { storeBuffer } from './storage';
 
 export interface PACSServerConfig {
     url: string;
@@ -176,9 +173,7 @@ export async function importPACSStudy(config: PACSServerConfig, studyInstanceUID
                 });
 
                 const filename = `${randomUUID()}.png`;
-                const destPath = path.join(UPLOADS_DIR, filename);
-
-                await fs.writeFile(destPath, Buffer.from(response.data));
+                await storeBuffer(filename, Buffer.from(response.data)); // disk or S3 (DEPLOY-07)
 
                 const scanId = `scan-pacs-${sopInstanceUID.slice(-8)}-${Date.now()}`;
                 await db.insert(schema.scans).values({

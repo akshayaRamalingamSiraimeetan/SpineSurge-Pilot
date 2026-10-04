@@ -1,5 +1,10 @@
 # Hosted Demo Deployment — runbook
 
+> **Free, no-card setup (current): see docs/FREE_DEPLOY.md** (Render free + Supabase + Brevo).
+> `render.yaml` is the free blueprint; this file describes the paid always-on variant and the
+> environment reference. Storage: `S3_*` vars → any S3-compatible bucket (DEPLOY-07); without them
+> uploads go to `UPLOADS_DIR` (needs a persistent disk).
+
 Goal: a public link anyone can open, **sign up with their own details** and start working (no laptop
 running, no tunnel). Status 2026-10-04: **rehearsed, not deployed** — a fresh database migrated cleanly
 and the full journey (sign up without email code → profile → organization → upload → save session →

@@ -531,3 +531,8 @@ global theme-token fix for shadcn classes. Deferred: signed T1SPi/T9SPi/ODHA.
 - DEPLOY-06 [x] Usage dashboard for PLATFORM_ADMIN_EMAILS (sidebar → Usage, /platform): totals, sign-ups chart,
         per-user sign-ins/patients/studies/sessions/measurements/reports/shares/last work, tool usage, activity feed.
         Second production rehearsal on a fresh DB: 12/12 checks (image privacy, sharing, stats access, logout).
+- DEPLOY-07 [x] Free, no-card hosting: uploads to any S3-compatible bucket (Supabase Storage) via server/storage.ts
+        (scans, reports, avatars, PACS, folder import; served through the access guard; deleted with their study);
+        Brevo HTTP email provider (free hosts block SMTP); render.yaml = free blueprint; docs/FREE_DEPLOY.md guide.
+        Verified with a local S3 server: upload → bucket (no local copy) → served byte-identical → blocked
+        without sign-in → removed on study delete.

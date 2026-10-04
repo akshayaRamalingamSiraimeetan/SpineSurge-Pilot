@@ -24,6 +24,7 @@
     "test:watch": "vitest"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1146.0",
     "@cornerstonejs/core": "^4.15.12",
     "@cornerstonejs/dicom-image-loader": "^4.15.12",
     "@cornerstonejs/streaming-image-volume-loader": "^1.86.1",
