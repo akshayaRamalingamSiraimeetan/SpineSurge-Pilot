@@ -1,7 +1,7 @@
 import { Router, type Request, type Response, type NextFunction } from 'express';
 import { sql } from 'drizzle-orm';
 import { db } from '../db';
-import { isPlatformAdmin } from '../access';
+import { forgetUser, isPlatformAdmin, platformAdminEmails } from '../access';
 import * as activity from '../activity';
 import * as auditLogger from '../services/auditLogger';
 
@@ -29,34 +29,49 @@ const imageRef = (ref: string | null | undefined) => {
     return m ? `/uploads/${m[1]}` : ref.startsWith('http') ? ref : null;
 };
 const json = (s: string | null | undefined) => { try { return JSON.parse(s || 'null'); } catch { return null; } };
+const pgArray = (xs: string[]) => `{${xs.map((x) => `"${x.replace(/["\\]/g, '')}"`).join(',')}}`;
+
+/** Platform admins' user ids as a Postgres array literal: excluded everywhere (MON-04). */
+async function adminIds(): Promise<string> {
+    const emails = platformAdminEmails();
+    if (!emails.length) return '{}';
+    const r = await rows<{ id: string }>(sql`select id from users where lower(email) = any (${pgArray(emails)}::text[])`);
+    return pgArray(r.map((x) => x.id));
+}
 
 // ── Overview ────────────────────────────────────────────────────────────────
 platformRouter.get('/stats', async (_req, res) => {
     try {
+        const adm = await adminIds();
+        // Everything below leaves out the platform admins' own accounts and work (MON-04).
         const [totals] = await rows<Record<string, number>>(sql`
+            with st as (select * from studies where owner_user_id is null or not (owner_user_id = any (${adm}::text[]))),
+                 ctx as (select distinct c.id, c.tool_state from contexts c join context_studies cs on cs.context_id = c.id join st on st.id = cs.study_id)
             select
-              (select count(*) from users)::int                                                    as users,
-              (select count(*) from users where created_at > now() - interval '7 days')::int        as "newUsers7d",
+              (select count(*) from users where not (id = any (${adm}::text[])))::int              as users,
+              (select count(*) from users where is_active = false)::int                           as blocked,
+              (select count(*) from users where created_at > now() - interval '7 days' and not (id = any (${adm}::text[])))::int as "newUsers7d",
               (select count(distinct user_id) from (
                   select user_id from audit_log where action = 'LOGIN_SUCCESS' and created_at > now() - interval '7 days'
-                  union all select user_id from usage_events where created_at > now() - interval '7 days') x)::int as "activeUsers7d",
+                  union all select user_id from usage_events where created_at > now() - interval '7 days') x
+                where not (user_id = any (${adm}::text[])))::int                                  as "activeUsers7d",
               (select count(distinct user_id) from usage_events where created_at > date_trunc('day', now()))::int as "activeToday",
               (select count(*) from orgs)::int                                                     as orgs,
-              (select count(*) from patients where id not like 'quick-%')::int                     as patients,
-              (select count(*) from studies)::int                                                  as studies,
-              (select count(*) from scans where type is distinct from 'Thumbnail' and file_path ~* '[.](png|jpe?g|webp|bmp|tiff?)$')::int as images,
-              (select count(*) from studies where upper(modality) in ('CT','MRI','MR'))::int      as series,
-              (select count(*) from contexts)::int                                                 as sessions,
-              (select count(*) from measurements)::int                                             as measurements,
-              (select coalesce(sum(jsonb_array_length(case when jsonb_typeof(tool_state::jsonb->'plans') = 'array' then tool_state::jsonb->'plans' else '[]'::jsonb end)), 0) from contexts)::int as plans,
-              (select count(*) from contexts where coalesce(tool_state::jsonb->'comparisonB'->>'image', '') <> '')::int as comparisons,
-              (select count(*) from reports)::int                                                  as reports,
-              (select count(*) from study_shares)::int                                             as shares,
+              (select count(*) from patients where id not like 'quick-%' and (owner_user_id is null or not (owner_user_id = any (${adm}::text[]))))::int as patients,
+              (select count(*) from st)::int                                                       as studies,
+              (select count(*) from scans sc join st on st.id = sc.study_id where sc.type is distinct from 'Thumbnail' and sc.file_path ~* '[.](png|jpe?g|webp|bmp|tiff?)$')::int as images,
+              (select count(*) from st where upper(modality) in ('CT','MRI','MR'))::int           as series,
+              (select count(*) from ctx)::int                                                      as sessions,
+              (select count(*) from measurements m join ctx on ctx.id = m.context_id)::int         as measurements,
+              (select coalesce(sum(jsonb_array_length(case when jsonb_typeof(tool_state::jsonb->'plans') = 'array' then tool_state::jsonb->'plans' else '[]'::jsonb end)), 0) from ctx)::int as plans,
+              (select count(*) from ctx where coalesce(tool_state::jsonb->'comparisonB'->>'image', '') <> '')::int as comparisons,
+              (select count(*) from reports r join st on st.id = r.study_id)::int                  as reports,
+              (select count(*) from study_shares where shared_by is null or not (shared_by = any (${adm}::text[])))::int as shares,
               (select count(*) from usage_events where created_at > date_trunc('day', now()))::int as "eventsToday"`);
 
         const users = await rows(sql`
             select u.id, u.email, u.full_name as "fullName", u.designation, u.country, u.avatar_url as "avatarUrl",
-                   u.created_at as "signedUp", u.is_email_verified as "verified",
+                   u.created_at as "signedUp", u.is_email_verified as "verified", u.is_active as "active",
                    (select string_agg(o.name, ', ') from organization_memberships m join orgs o on o.id = m.org_id
                      where m.user_id = u.id and m.status = 'active') as orgs,
                    (select max(created_at) from audit_log a where a.user_id = u.id and a.action = 'LOGIN_SUCCESS') as "lastLogin",
@@ -74,13 +89,15 @@ platformRouter.get('/stats', async (_req, res) => {
                    greatest(
                      (select max(created_at) from usage_events e where e.user_id = u.id),
                      (select max(created_at) from audit_log a where a.user_id = u.id)) as "lastActive"
-              from users u order by "lastActive" desc nulls last, u.created_at desc`);
+              from users u where not (u.id = any (${adm}::text[]))
+             order by "lastActive" desc nulls last, u.created_at desc`);
 
         const tools = await rows(sql`
             select m.tool_key as tool, count(*)::int as n, count(distinct s.owner_user_id)::int as users
               from measurements m
-              left join context_studies cs on cs.context_id = m.context_id
-              left join studies s on s.id = cs.study_id
+              join context_studies cs on cs.context_id = m.context_id
+              join studies s on s.id = cs.study_id
+             where s.owner_user_id is null or not (s.owner_user_id = any (${adm}::text[]))
              group by 1 order by 2 desc limit 40`);
         const picked = await rows(sql`
             select detail->>'tool' as tool, count(*)::int as n, count(distinct user_id)::int as users
@@ -92,7 +109,7 @@ platformRouter.get('/stats', async (_req, res) => {
         const daily = await rows(sql`
             with days as (select generate_series(date_trunc('day', now()) - interval '29 days', date_trunc('day', now()), interval '1 day') as d)
             select to_char(d, 'YYYY-MM-DD') as day,
-                   (select count(*) from users where date_trunc('day', created_at) = d)::int as signups,
+                   (select count(*) from users where date_trunc('day', created_at) = d and not (id = any (${adm}::text[])))::int as signups,
                    (select count(distinct user_id) from usage_events where date_trunc('day', created_at) = d)::int as active,
                    (select count(*) from usage_events where date_trunc('day', created_at) = d)::int as events
               from days order by d`);
@@ -114,6 +131,7 @@ platformRouter.get('/feed', async (req, res) => {
     const limit = Math.min(200, Math.max(10, Number(req.query.limit) || 100));
     const kindPatterns = kinds ? `{${kinds.map((k) => `"${k.replace(/["\\%_]/g, '')}%"`).join(',')}}` : null;
     try {
+        const adm = await adminIds();
         const items = await rows(sql`
             select f.*, coalesce(u.full_name, u.email) as who, p.name as "patientName", s.name as "studyName", s.modality
               from (
@@ -132,6 +150,7 @@ platformRouter.get('/feed', async (req, res) => {
               left join patients p on p.id = f."patientId"
               left join studies s on s.id = f."studyId"
              where (${kindPatterns}::text[] is null or f.kind like any (${kindPatterns}::text[]))
+               and (f."userId" is null or not (f."userId" = any (${adm}::text[])))
              order by f.at desc limit ${limit}`);
         res.json(items);
     } catch (e) {
@@ -146,7 +165,7 @@ platformRouter.get('/users/:id', async (req, res) => {
     try {
         const [user] = await rows<Record<string, unknown>>(sql`
             select u.id, u.email, u.full_name as "fullName", u.designation, u.country, u.avatar_url as "avatarUrl",
-                   u.created_at as "signedUp", u.is_email_verified as verified,
+                   u.created_at as "signedUp", u.is_email_verified as verified, u.is_active as active,
                    (select string_agg(o.name, ', ') from organization_memberships m join orgs o on o.id = m.org_id
                      where m.user_id = u.id and m.status = 'active') as orgs,
                    (select count(*) from audit_log a where a.user_id = u.id and a.action = 'LOGIN_SUCCESS')::int as logins,
@@ -224,16 +243,39 @@ platformRouter.get('/users/:id', async (req, res) => {
         }));
 
         await auditLogger.log('PLATFORM_VIEW_USER', 'user', userId, null, req.user!.id, null);
-        res.json({ user, studies: out, shares, tools, online: activity.onlineNow().find((o) => o.userId === userId) ?? null });
+        res.json({ user: { ...user, isPlatformAdmin: isPlatformAdmin(user.email as string) }, studies: out, shares, tools, online: activity.onlineNow().find((o) => o.userId === userId) ?? null });
     } catch (e) {
         console.error('[platform/user]', e);
         res.status(500).json({ error: 'Failed to load user' });
     }
 });
 
+// ── Block / unblock an account (MON-05) ─────────────────────────────────────
+// A blocked user can't sign in, every API call with their old token gets 401
+// (authenticate checks is_active), and /uploads + live share refuse them too.
+// Their data is kept; unblocking restores everything.
+platformRouter.post('/users/:id/block', async (req, res) => {
+    const userId = req.params.id;
+    const blocked = req.body?.blocked !== false;
+    try {
+        const [u] = await rows<{ id: string; email: string }>(sql`select id, email from users where id = ${userId}`);
+        if (!u) { res.status(404).json({ error: 'User not found' }); return; }
+        if (u.id === req.user!.id || isPlatformAdmin(u.email)) { res.status(400).json({ error: 'Platform admins cannot be blocked here' }); return; }
+        await db.execute(sql`update users set is_active = ${!blocked}, updated_at = now() where id = ${userId}`);
+        forgetUser(userId);
+        if (blocked) activity.dropPresence(userId);
+        await auditLogger.log(blocked ? 'PLATFORM_BLOCK_USER' : 'PLATFORM_UNBLOCK_USER', 'user', userId, { email: u.email }, req.user!.id, null);
+        res.json({ ok: true, active: !blocked });
+    } catch (e) {
+        console.error('[platform/block]', e);
+        res.status(500).json({ error: 'Failed to update the account' });
+    }
+});
+
 // ── Uploaded images, newest first (all users) ───────────────────────────────
 platformRouter.get('/uploads', async (_req, res) => {
     try {
+        const adm = await adminIds();
         // One row per study: X-ray pictures individually, a CT/MR series as one tile
         const items = await rows<any>(sql`
             select sc.id, sc.file_path as "filePath", sc.type, sc.date, sc.study_id as "studyId",
@@ -244,6 +286,7 @@ platformRouter.get('/uploads', async (_req, res) => {
               from scans sc join studies s on s.id = sc.study_id join patients p on p.id = s.patient_id
               left join users u on u.id = s.owner_user_id
              where (sc.type = 'Thumbnail' or (sc.type is distinct from 'Thumbnail' and sc.file_path ~* '[.](png|jpe?g|webp|bmp)$'))
+               and (s.owner_user_id is null or not (s.owner_user_id = any (${adm}::text[])))
              order by "uploadedAt" desc nulls last, sc.id desc limit 200`);
         res.json(items.map((i) => ({ ...i, url: upload(i.filePath), filePath: undefined })));
     } catch (e) {
@@ -255,12 +298,14 @@ platformRouter.get('/uploads', async (_req, res) => {
 // ── Exported reports (all users) ────────────────────────────────────────────
 platformRouter.get('/reports', async (_req, res) => {
     try {
+        const adm = await adminIds();
         const items = await rows<any>(sql`
             select r.id, r.title, r.version, r.created_at as "createdAt", r.file_path as "filePath", r.study_id as "studyId",
                    s.name as "studyName", s.modality, p.id as "patientId", p.name as "patientName",
                    s.owner_user_id as "userId", coalesce(u.full_name, u.email) as who
               from reports r join visits v on v.id = r.visit_id join patients p on p.id = v.patient_id
               left join studies s on s.id = r.study_id left join users u on u.id = coalesce(s.owner_user_id, p.owner_user_id)
+             where u.id is null or not (u.id = any (${adm}::text[]))
              order by r.created_at desc nulls last limit 200`);
         res.json(items.map((i) => ({ ...i, url: upload(i.filePath), filePath: undefined })));
     } catch (e) {

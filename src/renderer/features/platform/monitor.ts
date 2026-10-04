@@ -152,6 +152,18 @@ export async function getJson<T>(path: string, token: string | null): Promise<T>
     return r.json();
 }
 
+/** Block or unblock an account (MON-05). Resolves to the new active state. */
+export async function setBlocked(token: string | null, userId: string, blocked: boolean): Promise<boolean> {
+    const r = await fetch(`${API_BASE}/api/platform/users/${userId}/block`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ blocked }),
+    });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(d.error ?? 'Could not update the account');
+    return !!d.active;
+}
+
 export type LiveStatus = 'connecting' | 'live' | 'offline';
 
 /** Live events + presence; reconnects by itself (the free host restarts/sleeps). */

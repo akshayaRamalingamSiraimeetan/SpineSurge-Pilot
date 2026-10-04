@@ -558,3 +558,11 @@ global theme-token fix for shadcn classes. Deferred: signed T1SPi/T9SPi/ODHA.
 - MON-02 [x] docs/USER_MANUAL.md — user-friendly manual for pilot users (incl. a pilot-monitoring disclosure).
 - MON-03 [ ] Owner: tell pilot users that usage is monitored (manual §13) before relying on the monitor; consider an
         events retention rule (Supabase free DB = 500 MB; events are small, heartbeats are not stored).
+- MON-04 [x] The monitor ignores the platform admins themselves: nothing is recorded for PLATFORM_ADMIN_EMAILS accounts
+        (server record/presence/audit push + client tracker), they're left out of users, totals, feed, tools, images,
+        reports; old admin events are deleted at server start (purgeAdminEvents). Audit rows are kept, only hidden.
+- MON-05 [x] Block / Unblock accounts from the monitor (Users table "Access" column and the user page). Sets
+        users.is_active=false: old tokens get 401 on every API call, /uploads cookie and live-share sockets refused
+        (isActiveUser, 30 s cache cleared on change), dropped from "online now", sign-in says "This account has been
+        blocked" (only after a correct password). Data kept; unblock restores it. Admins can't be blocked. Audit:
+        PLATFORM_BLOCK_USER / PLATFORM_UNBLOCK_USER. Verified 17/17 + purge check on a fresh DB (spare port).

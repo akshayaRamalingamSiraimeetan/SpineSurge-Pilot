@@ -212,7 +212,8 @@ authRouter.post('/login', async (req, res) => {
 
     if (!user.isActive) {
       await auditLogger.log('LOGIN_FAILED', 'user', user.id, { reason: 'inactive' }, user.id, user.orgId);
-      res.status(401).json({ error: 'Invalid credentials' });
+      // the password was right: say why (blocked by the platform admin, MON-05)
+      res.status(403).json({ error: 'This account has been blocked. Please contact the SpineSurge team.', code: 'ACCOUNT_BLOCKED' });
       return;
     }
 

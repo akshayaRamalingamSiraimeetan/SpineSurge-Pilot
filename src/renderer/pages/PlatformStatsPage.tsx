@@ -4,8 +4,9 @@ import { RefreshCw, Search, FileText, ImageOff, Radio, ChevronRight } from 'luci
 import { useAppStore } from '@/lib/store/index';
 import { resolveAssetUrl } from '@/lib/api';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
+import { ConfirmDialog } from '@/components/ConfirmDialog';
 import {
-    CATEGORIES, type FeedEvent, getJson, inCategory, pageName, timeAgo, toolName, useLiveMonitor,
+    CATEGORIES, type FeedEvent, getJson, inCategory, pageName, setBlocked, timeAgo, toolName, useLiveMonitor,
 } from '@/features/platform/monitor';
 import { EventRow, LiveBadge } from '@/features/platform/MonitorParts';
 
@@ -18,7 +19,7 @@ import { EventRow, LiveBadge } from '@/features/platform/MonitorParts';
  */
 interface UserRow {
     id: string; email: string; fullName: string | null; designation: string | null; country: string | null;
-    signedUp: string; verified: boolean; orgs: string | null; lastLogin: string | null; logins: number;
+    signedUp: string; verified: boolean; active: boolean; orgs: string | null; lastLogin: string | null; logins: number;
     patients: number; studies: number; studies3d: number; images: number; sessions: number; measurements: number;
     plans: number; comparisons: number; reports: number; sharedOut: number; lastActive: string | null;
 }
@@ -89,6 +90,7 @@ const PlatformStatsPage = () => {
     const [zoom, setZoom] = useState<Upload | null>(null);
     const [, setTick] = useState(0);
     const [moreBusy, setMoreBusy] = useState(false);
+    const [blockTarget, setBlockTarget] = useState<UserRow | null>(null);
 
     const openUser = useCallback((id: string) => navigate(`/platform/users/${id}`), [navigate]);
     const fail = useCallback((e: unknown) => {
@@ -291,7 +293,10 @@ const PlatformStatsPage = () => {
             {tab === 'users' && stats && (
                 <div className={`${card} overflow-hidden`}>
                     <div className="flex items-center justify-between gap-3 border-b border-[var(--border)] px-4 py-3">
-                        <span className={heading}>Users ({users.length}) · click a user for everything they did</span>
+                        <span className={heading}>
+                            Users ({users.length}) · click a user for everything they did
+                            {stats.totals.blocked ? <span className="ml-2 normal-case text-[#FF453A]">· {stats.totals.blocked} blocked</span> : null}
+                        </span>
                         <div className="relative w-64">
                             <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[var(--text-3)]" />
                             <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search name, email, organization"
@@ -302,18 +307,19 @@ const PlatformStatsPage = () => {
                         <table className="w-full text-xs">
                             <thead className="text-left text-[var(--text-3)]">
                                 <tr className="border-b border-[var(--border)]">
-                                    {['User', 'Organization', 'Signed up', 'Last active', 'Sign-ins', 'Patients', 'Studies (CT/MR)', 'Images', 'Measurements', 'Plans', 'Compares', 'Reports', 'Shared', ''].map((h) => (
+                                    {['User', 'Organization', 'Signed up', 'Last active', 'Sign-ins', 'Patients', 'Studies (CT/MR)', 'Images', 'Measurements', 'Plans', 'Compares', 'Reports', 'Shared', 'Access', ''].map((h) => (
                                         <th key={h} className="whitespace-nowrap px-3 py-2 font-medium">{h}</th>
                                     ))}
                                 </tr>
                             </thead>
                             <tbody>
                                 {users.map((u) => (
-                                    <tr key={u.id} onClick={() => openUser(u.id)} className="cursor-pointer border-b border-[var(--border)] last:border-0 hover:bg-[var(--surface-2)]">
+                                    <tr key={u.id} onClick={() => openUser(u.id)} className={`cursor-pointer border-b border-[var(--border)] last:border-0 hover:bg-[var(--surface-2)] ${u.active ? '' : 'opacity-60'}`}>
                                         <td className="px-3 py-2">
                                             <div className="flex items-center gap-1.5 font-medium text-[var(--text)]">
                                                 {onlineIds.has(u.id) && <span className="h-2 w-2 rounded-full bg-[#30D158]" title="Online now" />}
                                                 {u.fullName || '— (profile not completed)'}
+                                                {!u.active && <span className="rounded-full bg-[#FF453A]/15 px-1.5 py-0.5 text-[10px] font-semibold text-[#FF453A]">Blocked</span>}
                                             </div>
                                             <div className="text-[var(--text-3)]">{u.email}{u.designation ? ` · ${u.designation}` : ''}{u.country ? ` · ${u.country}` : ''}</div>
                                         </td>
@@ -323,6 +329,12 @@ const PlatformStatsPage = () => {
                                         {[u.logins, u.patients].map((n, i) => <td key={i} className="px-3 py-2 tabular-nums text-[var(--text)]">{n}</td>)}
                                         <td className="px-3 py-2 tabular-nums text-[var(--text)]">{u.studies}{u.studies3d ? ` (${u.studies3d})` : ''}</td>
                                         {[u.images, u.measurements, u.plans, u.comparisons, u.reports, u.sharedOut].map((n, i) => <td key={i} className="px-3 py-2 tabular-nums text-[var(--text)]">{n}</td>)}
+                                        <td className="px-3 py-2">
+                                            <button onClick={(e) => { e.stopPropagation(); setBlockTarget(u); }}
+                                                className={`whitespace-nowrap rounded-md border px-2 py-1 text-[11px] font-medium ${u.active ? 'border-[#FF453A]/40 text-[#FF453A] hover:bg-[#FF453A]/10' : 'border-[var(--border)] text-[var(--text-2)] hover:bg-[var(--surface-3)]'}`}>
+                                                {u.active ? 'Block' : 'Unblock'}
+                                            </button>
+                                        </td>
                                         <td className="px-2 text-[var(--text-3)]"><ChevronRight className="h-4 w-4" /></td>
                                     </tr>
                                 ))}
@@ -395,6 +407,27 @@ const PlatformStatsPage = () => {
                     ))}
                 </div>
             )}
+
+            <ConfirmDialog
+                open={!!blockTarget}
+                onOpenChange={(o) => { if (!o) setBlockTarget(null); }}
+                title={blockTarget?.active ? `Block ${blockTarget?.fullName || blockTarget?.email}?` : `Unblock ${blockTarget?.fullName || blockTarget?.email}?`}
+                description={blockTarget?.active
+                    ? `${blockTarget?.email} will be signed out and can't sign in or open any files. Their studies are kept, and you can unblock them at any time.`
+                    : `${blockTarget?.email} will be able to sign in again and find all their work as they left it.`}
+                confirmLabel={blockTarget?.active ? 'Block' : 'Unblock'}
+                destructive={!!blockTarget?.active}
+                onConfirm={async () => {
+                    const u = blockTarget!;
+                    const active = await setBlocked(token, u.id, u.active);
+                    setStats((s) => s && ({
+                        ...s,
+                        totals: { ...s.totals, blocked: (s.totals.blocked ?? 0) + (active ? -1 : 1) },
+                        users: s.users.map((x) => (x.id === u.id ? { ...x, active } : x)),
+                    }));
+                    setBlockTarget(null);
+                }}
+            />
 
             <Dialog open={!!zoom} onOpenChange={(o) => { if (!o) setZoom(null); }}>
                 <DialogContent className="max-w-5xl w-[90vw] p-0 overflow-hidden">

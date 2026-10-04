@@ -20,7 +20,7 @@ import { guardUploads } from './media';
 import { persistUpload, removeStored, serveStored } from './storage';
 import { platformRouter } from './routes/platform';
 import * as activity from './activity';
-import { type Access, adminOrgIds, canWrite, contextAccess, contextsAccess, isPlatformAdmin, patientAccess, studyAccess } from './access';
+import { type Access, adminOrgIds, canWrite, contextAccess, contextsAccess, isActiveUser, isPlatformAdmin, patientAccess, studyAccess } from './access';
 import jwt from 'jsonwebtoken';
 
 
@@ -44,6 +44,7 @@ server.on('upgrade', async (request, socket, head) => {
         const token = url.searchParams.get('token');
         if (!token) throw new Error('missing token');
         userId = (jwt.verify(token, process.env.JWT_SECRET!) as { id: string }).id;
+        if (!(await isActiveUser(userId))) throw new Error('blocked'); // MON-05
     } catch {
         reject('401 Unauthorized');
         return;
@@ -1184,6 +1185,8 @@ if (process.env.SERVE_CLIENT === 'true') {
         res.sendFile(path.join(CLIENT_DIR, 'index.html'));
     });
 }
+
+void activity.purgeAdminEvents(); // the monitor never shows its own admins (MON-04)
 
 server.listen(port, () => {
     console.log(`Server running at http://localhost:${port}`);

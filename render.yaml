@@ -40,6 +40,6 @@ services:
         sync: false
       - key: EMAIL_FROM            # a sender verified in Brevo, e.g. SpineSurge <you@gmail.com>
         sync: false
-      # Who sees the Usage dashboard (comma separated login emails)
+      # Who sees the live Monitor and can block accounts (comma separated login emails); not monitored themselves
       - key: PLATFORM_ADMIN_EMAILS
         sync: false

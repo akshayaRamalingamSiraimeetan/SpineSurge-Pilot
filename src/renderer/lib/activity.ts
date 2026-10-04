@@ -20,7 +20,11 @@ let queue: Pending[] = [];
 let flushTimer: ReturnType<typeof setTimeout> | null = null;
 let page = '/';
 
-const inspecting = () => useAppStore.getState().inspectionMode?.orgId === PLATFORM_INSPECT;
+// Platform admins aren't monitored (MON-04), nor anything done while inspecting a user's study.
+const inspecting = () => {
+    const s = useAppStore.getState();
+    return !!s.user?.isPlatformAdmin || s.inspectionMode?.orgId === PLATFORM_INSPECT;
+};
 
 function caseRefs() {
     const s = useAppStore.getState();

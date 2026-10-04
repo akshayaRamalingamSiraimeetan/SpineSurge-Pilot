@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, Eye, FileText, Layers, GitCompare, Ruler, Wrench, Share2, ImageOff } from 'lucide-react';
+import { ArrowLeft, Ban, Eye, FileText, Layers, GitCompare, Ruler, Wrench, Share2, ImageOff } from 'lucide-react';
 import { useAppStore } from '@/lib/store/index';
 import { API_BASE, resolveAssetUrl } from '@/lib/api';
 import { destroyCornerstone } from '@/lib/cornerstone/initCornerstone';
 import { PLATFORM_INSPECT } from '@/lib/activity';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
-import { type FeedEvent, getJson, pageName, resultText, timeAgo, toolName, useLiveMonitor } from '@/features/platform/monitor';
+import { ConfirmDialog } from '@/components/ConfirmDialog';
+import { type FeedEvent, getJson, pageName, resultText, setBlocked, timeAgo, toolName, useLiveMonitor } from '@/features/platform/monitor';
 import { EventRow, LiveBadge } from '@/features/platform/MonitorParts';
 
 /**
@@ -32,7 +33,7 @@ interface StudyDetail {
     reports: { id: string; title: string | null; version: number; createdAt: string; url: string }[];
 }
 interface Detail {
-    user: { id: string; email: string; fullName: string | null; designation: string | null; country: string | null; signedUp: string; orgs: string | null; logins: number; lastLogin: string | null };
+    user: { id: string; email: string; fullName: string | null; designation: string | null; country: string | null; signedUp: string; orgs: string | null; logins: number; lastLogin: string | null; active: boolean; isPlatformAdmin: boolean };
     studies: StudyDetail[];
     shares: { permission: string; at: string; studyName: string | null; modality: string; fromName: string; toName: string; direction: 'in' | 'out' }[];
     tools: { tool: string; n: number }[];
@@ -61,6 +62,7 @@ const PlatformUserPage = () => {
     const [error, setError] = useState<string | null>(null);
     const [zoom, setZoom] = useState<{ url: string; label: string } | null>(null);
     const [opening, setOpening] = useState<string | null>(null);
+    const [confirmBlock, setConfirmBlock] = useState(false);
 
     const load = useCallback(async () => {
         if (!userId) return;
@@ -140,6 +142,7 @@ const PlatformUserPage = () => {
                                 Online — {pageName(me.page)}{me.tool ? ` · ${toolName(me.tool)}` : ''}
                             </span>
                         ) : <LiveBadge status={status} />}
+                        {u && !u.active && <span className="rounded-full bg-[#FF453A]/15 px-2.5 py-1 text-[11px] font-semibold text-[#FF453A]">Blocked</span>}
                     </div>
                     {u && (
                         <p className="mt-0.5 text-sm text-[var(--text-3)]">
@@ -148,6 +151,12 @@ const PlatformUserPage = () => {
                         </p>
                     )}
                 </div>
+                {u && !u.isPlatformAdmin && (
+                    <button onClick={() => setConfirmBlock(true)}
+                        className={`flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium ${u.active ? 'border-[#FF453A]/40 text-[#FF453A] hover:bg-[#FF453A]/10' : 'border-[var(--border)] text-[var(--text-2)] hover:bg-[var(--surface-3)]'}`}>
+                        <Ban className="h-3.5 w-3.5" />{u.active ? 'Block user' : 'Unblock user'}
+                    </button>
+                )}
             </div>
 
             {error && <div className="rounded-xl border border-[#FF453A]/30 bg-[#FF453A]/5 px-4 py-3 text-sm text-[#FF453A]">{error}</div>}
@@ -297,6 +306,22 @@ const PlatformUserPage = () => {
                     </div>
                 </>
             )}
+
+            <ConfirmDialog
+                open={confirmBlock}
+                onOpenChange={setConfirmBlock}
+                title={u?.active ? `Block ${u?.fullName || u?.email}?` : `Unblock ${u?.fullName || u?.email}?`}
+                description={u?.active
+                    ? `${u?.email} will be signed out and can't sign in or open any files. Their studies are kept, and you can unblock them at any time.`
+                    : `${u?.email} will be able to sign in again and find all their work as they left it.`}
+                confirmLabel={u?.active ? 'Block' : 'Unblock'}
+                destructive={!!u?.active}
+                onConfirm={async () => {
+                    const active = await setBlocked(token, u!.id, !!u!.active);
+                    setDetail((d) => d && { ...d, user: { ...d.user, active } });
+                    setConfirmBlock(false);
+                }}
+            />
 
             <Dialog open={!!zoom} onOpenChange={(o) => { if (!o) setZoom(null); }}>
                 <DialogContent className="max-w-5xl w-[90vw] p-0 overflow-hidden">

@@ -35,6 +35,25 @@ export async function isPlatformAdminId(userId: string): Promise<boolean> {
     return yes;
 }
 
+/** Lower-cased PLATFORM_ADMIN_EMAILS — their own activity is never monitored (MON-04). */
+export const platformAdminEmails = () =>
+    (process.env.PLATFORM_ADMIN_EMAILS ?? '').split(',').map((e) => e.trim().toLowerCase()).filter(Boolean);
+
+/**
+ * Is this account still allowed in? A platform admin can block a user (MON-05);
+ * checked by /uploads and live-share sockets, which only verify the token.
+ */
+const activeCache = new Map<string, { yes: boolean; at: number }>();
+export async function isActiveUser(userId: string): Promise<boolean> {
+    const hit = activeCache.get(userId);
+    if (hit && Date.now() - hit.at < 30_000) return hit.yes;
+    const [u] = await db.select({ a: schema.users.isActive }).from(schema.users).where(eq(schema.users.id, userId)).limit(1);
+    const yes = !!u?.a;
+    activeCache.set(userId, { yes, at: Date.now() });
+    return yes;
+}
+export const forgetUser = (userId: string) => { activeCache.delete(userId); adminCache.delete(userId); };
+
 type StudyRow = typeof schema.studies.$inferSelect;
 
 /** Orgs where the user is an active admin or the creator. */

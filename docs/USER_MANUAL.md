@@ -269,6 +269,7 @@ If you have questions about your data, contact the SpineSurge team.
 | "View only" banner — tools are greyed out | The study was shared with you as View, or you're an admin viewing a member's study. Ask the owner for Edit. |
 | Something looks wrong after many edits | Refresh the page — your work is saved automatically. |
 | Signed out unexpectedly | Your session expired (after 7 days). Sign in again; nothing is lost. |
+| "This account has been blocked" | Access to the pilot was paused by the SpineSurge team. Contact them; your work is kept. |
 
 ---
 

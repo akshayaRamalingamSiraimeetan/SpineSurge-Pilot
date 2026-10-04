@@ -1,5 +1,6 @@
 import { sql } from 'drizzle-orm';
 import { db } from './db';
+import { isPlatformAdminId, platformAdminEmails } from './access';
 
 /**
  * Live usage monitor (MON-01). Every notable action is stored in usage_events
@@ -65,6 +66,7 @@ export interface Refs { patientId?: string | null; studyId?: string | null; cont
 /** Store + push one event. Resolves to the event id (or null on failure). */
 export async function record(userId: string | null, kind: string, refs: Refs = {}, detail: Record<string, unknown> | null = null): Promise<string | null> {
     try {
+        if (userId && await isPlatformAdminId(userId)) return null; // the monitor ignores its own admins (MON-04)
         const r = (await db.execute(sql`
             insert into usage_events (user_id, kind, patient_id, study_id, context_id, detail)
             values (${userId}, ${kind}, ${refs.patientId ?? null}, ${refs.studyId ?? null}, ${refs.contextId ?? null}, ${detail ? JSON.stringify(detail) : null}::jsonb)
@@ -91,6 +93,7 @@ async function amend(id: string, userId: string | null, kind: string, refs: Refs
 /** Audit rows (sign-in, sign-up, organization…) are already stored — only push them. */
 export async function pushAudit(id: string, action: string, userId: string | null, metadata: Record<string, unknown> | null) {
     if (!listeners.size) return;
+    if (userId && await isPlatformAdminId(userId).catch(() => false)) return;
     broadcast({ type: 'event', event: { id: `a${id}`, at: new Date().toISOString(), kind: `auth.${action}`, userId, who: (await nameOf(userId)).who, detail: metadata } });
 }
 
@@ -138,6 +141,7 @@ export async function heartbeat(userId: string, info: { page?: unknown; tool?: u
         if (online.delete(userId)) pushPresence();
         return;
     }
+    if (await isPlatformAdminId(userId)) return;
     const str = (v: unknown, n = 200) => (typeof v === 'string' && v ? v.slice(0, n) : null);
     const prev = online.get(userId);
     const { who, email } = await nameOf(userId);
@@ -152,6 +156,21 @@ export async function heartbeat(userId: string, info: { page?: unknown; tool?: u
     };
     online.set(userId, next);
     if (!prev || prev.page !== next.page || prev.tool !== next.tool || prev.contextId !== next.contextId) pushPresence();
+}
+
+/** A blocked user disappears from "online now" at once. */
+export const dropPresence = (userId: string) => { if (online.delete(userId)) pushPresence(); };
+
+/** Remove usage events recorded for platform admins (before MON-04 they were tracked too). */
+export async function purgeAdminEvents() {
+    const emails = platformAdminEmails();
+    if (!emails.length) return;
+    try {
+        const r = await db.execute(sql`delete from usage_events where user_id in (select id from users where lower(email) = any (${`{${emails.map((e) => `"${e.replace(/"/g, '')}"`).join(',')}}`}::text[]))`);
+        if (r.rowCount) console.log(`[activity] removed ${r.rowCount} usage event(s) of platform admins`);
+    } catch (e) {
+        console.error('[activity purge]', e);
+    }
 }
 
 export const onlineNow = () => {

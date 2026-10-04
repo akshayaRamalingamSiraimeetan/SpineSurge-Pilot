@@ -3,7 +3,7 @@ import jwt from 'jsonwebtoken';
 import { eq, like } from 'drizzle-orm';
 import { db } from './db';
 import * as schema from './schema';
-import { contextsAccess, patientAccess, studyAccess } from './access';
+import { contextsAccess, isActiveUser, patientAccess, studyAccess } from './access';
 
 /**
  * Private uploads (DEPLOY-05). Images, DICOM files and report PDFs are served
@@ -57,6 +57,7 @@ export async function guardUploads(req: Request, res: Response, next: NextFuncti
     try {
         userId = token ? (jwt.verify(token, process.env.JWT_SECRET!) as { id: string }).id : null;
     } catch { /* expired / invalid */ }
+    if (userId && !(await isActiveUser(userId).catch(() => false))) userId = null; // blocked account (MON-05)
     if (!userId) { res.status(401).send('Sign in to view this file'); return; }
     const file = decodeURIComponent(req.path.replace(/^\//, ''));
     try {
