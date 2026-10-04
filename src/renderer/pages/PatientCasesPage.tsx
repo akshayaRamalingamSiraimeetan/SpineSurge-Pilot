@@ -17,6 +17,7 @@ import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { format, parse } from "date-fns";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { useShallow } from "zustand/react/shallow";
+import { withBusy } from "@/lib/busy";
 import { useAppStore, Study } from "@/lib/store/index";
 import { useState, useMemo, useEffect } from "react";
 import { NewPatientDialog } from "@/features/patients/NewPatientDialog";
@@ -209,7 +210,7 @@ const PatientCasesPage = () => {
         });
     };
 
-    const handleAddStudy = () => runExclusive(async () => {
+    const handleAddStudy = () => runExclusive(() => withBusy('Creating study…', async () => {
         if (!activePatient) return;
 
         const todayStr = format(new Date(), 'MMM dd, yyyy');
@@ -273,7 +274,7 @@ const PatientCasesPage = () => {
 
         // Straight into the workspace with the import dialog open, like Home (UI10-03)
         navigate('/workspace?import=1');
-    });
+    }));
 
     const handleArchiveToggle = async (patientId: string, currentArchived: boolean) => {
         if (confirm(`Are you sure you want to ${currentArchived ? 'restore' : 'archive'} this patient?`)) {

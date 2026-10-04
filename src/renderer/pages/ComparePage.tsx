@@ -1,4 +1,4 @@
-import { Search, Upload, Image as ImageIcon, ChevronRight, FolderOpen, ImagePlus, ClipboardList } from "lucide-react";
+import { Search, Upload, Image as ImageIcon, ChevronRight, ChevronDown, Check, FolderOpen, ImagePlus, ClipboardList, Layers } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useAppStore } from "@/lib/store/index";
@@ -9,6 +9,7 @@ import { useEffect, useMemo, useState } from "react";
 import { ImportDialog } from "@/features/import-export/ImportDialog";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { getStudyDisplayName, type Context, type ContextState, type Measurement, type Study } from "@/lib/store/types";
 import type { Measurement as CMeasurement } from "@/lib/canvas/CanvasManager";
 import { api } from "@/lib/api";
@@ -59,6 +60,67 @@ function snapshotFor(cs: ContextState | null, planId: string | null) {
     }
     return JSON.parse(JSON.stringify({ measurements, implants })) as { measurements: Measurement[]; implants: unknown[] };
 }
+
+/**
+ * Version switch shown on each Compare pane (No plan / Plan N / working plan).
+ * A themed menu, not a native <select> — native options rendered black on black
+ * in dark mode. Always visible once the pane has an image.
+ */
+const VersionMenu = ({ pane, versions, current, takenKey, keyOf, onPick, emptyHint }: {
+    pane: "A" | "B";
+    versions: VersionOption[];
+    current: string | null;
+    /** The other pane's selection — that version can't be picked here. */
+    takenKey: string | null;
+    keyOf: (planId: string | null) => string | null;
+    onPick: (planId: string | null) => void;
+    /** Shown when there is nothing to switch to. */
+    emptyHint: string;
+}) => {
+    const name = versions.find((v) => v.planId === current)?.name ?? "No plan";
+    const isPlan = current !== null;
+    return (
+        <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+                <button
+                    title={`Version of Image ${pane}`}
+                    onMouseDown={(e) => e.stopPropagation()}
+                    className={`h-8 flex items-center gap-1.5 rounded-lg pl-2 pr-1.5 text-[11px] font-semibold text-white shadow-md transition-colors outline-none focus-visible:ring-2 focus-visible:ring-white/70 ${
+                        isPlan ? "bg-amber-600 hover:bg-amber-500" : "bg-sky-600 hover:bg-sky-500"}`}
+                >
+                    {isPlan ? <ClipboardList className="h-3.5 w-3.5" /> : <ImageIcon className="h-3.5 w-3.5" />}
+                    <span className="max-w-[140px] truncate">{name}</span>
+                    <ChevronDown className="h-3.5 w-3.5 opacity-90" />
+                </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-64">
+                <DropdownMenuLabel className="text-[10px] uppercase tracking-wider text-[var(--text-3)]">Image {pane} version</DropdownMenuLabel>
+                {versions.map((v) => {
+                    const on = v.planId === current;
+                    const taken = !on && keyOf(v.planId) !== null && keyOf(v.planId) === takenKey;
+                    return (
+                        <DropdownMenuItem key={v.planId ?? "none"} disabled={taken} onSelect={() => { if (!on) onPick(v.planId); }} className="gap-2.5 cursor-pointer items-start">
+                            <span className={`mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full border-2 ${on ? "bg-[var(--accent)] border-[var(--accent)]" : "border-[var(--text-3)]"}`}>
+                                {on && <Check className="h-2.5 w-2.5 text-white" strokeWidth={3.5} />}
+                            </span>
+                            <span className="min-w-0">
+                                <span className={`block truncate ${on ? "font-semibold text-[var(--text)]" : "text-[var(--text)]"}`}>{v.name}</span>
+                                <span className="block truncate text-[11px] text-[var(--text-3)]">
+                                    {taken ? `Already shown as Image ${pane === "A" ? "B" : "A"}` : v.hint}
+                                </span>
+                            </span>
+                        </DropdownMenuItem>
+                    );
+                })}
+                {versions.length <= 1 && (
+                    <div className="flex items-start gap-2 px-2.5 py-2 text-[11px] text-[var(--text-3)]">
+                        <Layers className="h-3.5 w-3.5 mt-0.5 shrink-0" />{emptyHint}
+                    </div>
+                )}
+            </DropdownMenuContent>
+        </DropdownMenu>
+    );
+};
 
 /* ─────────────────────────────────────────────────────────────────────────────
    Image picker dialog — choose a study image + version (No plan / Plan …), or
@@ -323,25 +385,36 @@ const ComparePage = () => {
 
     // Image B's session (the study it came from) → its versions: No plan, Plan 1, 2… (CMP-01).
     // In the store when it's this patient; otherwise fetched once.
+    const patients = useAppStore((s) => s.patients);
     const localSourceB = useAppStore((s) => (sourceB?.contextId ? s.contextStates.find((c) => c.contextId === sourceB.contextId) ?? null : null));
+    const fetchKeyB = sourceB ? `${sourceB.patientId}|${sourceB.contextId ?? `${sourceB.studyId}|${imageB}`}` : null;
     const [fetchedSourceB, setFetchedSourceB] = useState<{ id: string; state: ContextState | null } | null>(null);
     useEffect(() => {
-        const id = sourceB?.contextId;
-        if (!id || localSourceB || fetchedSourceB?.id === id) return;
+        if (!sourceB || !fetchKeyB || localSourceB || fetchedSourceB?.id === fetchKeyB) return;
         let alive = true;
         const st = useAppStore.getState();
+        const study = patients.find((p) => p.id === sourceB.patientId)?.studies?.find((x) => x.id === sourceB.studyId);
         api.getContexts(sourceB.patientId, st.token)
-            .then((raw) => mapContexts(raw).contextStates.find((c) => c.contextId === id) ?? null)
+            .then((raw) => {
+                const { contexts, contextStates } = mapContexts(raw);
+                if (sourceB.contextId) return contextStates.find((c) => c.contextId === sourceB.contextId) ?? null;
+                // No session id saved with Image B: find the session of that scan
+                return study && imageB ? sessionForScan(study, imageB, contexts, contextStates) : null;
+            })
             .catch(() => null)
-            .then((state) => { if (alive) setFetchedSourceB({ id, state }); });
+            .then((state) => { if (alive) setFetchedSourceB({ id: fetchKeyB, state }); });
         return () => { alive = false; };
-    }, [sourceB?.contextId, sourceB?.patientId, localSourceB, fetchedSourceB?.id]);
-    const sessionB = localSourceB ?? (fetchedSourceB && fetchedSourceB.id === sourceB?.contextId ? fetchedSourceB.state : null);
-    const versionsB = useMemo(() => (sourceB ? versionsOf(sessionB) : []), [sourceB, sessionB]);
+    }, [sourceB, fetchKeyB, imageB, patients, localSourceB, fetchedSourceB?.id]);
+    /** undefined = still loading */
+    const sessionB: ContextState | null | undefined = localSourceB
+        ?? (fetchedSourceB && fetchedSourceB.id === fetchKeyB ? fetchedSourceB.state : (sourceB ? undefined : null));
+    const versionsB = useMemo(() => (sourceB ? versionsOf(sessionB ?? null) : []), [sourceB, sessionB]);
 
     /** Show another version of Image B's study image (a fresh copy of that version's measurements). */
     const switchVersionB = (planId: string | null) => {
         if (!sourceB || !imageB) return;
+        // Remember the session found for this scan, so its plans stay listed
+        const contextId = sourceB.contextId ?? sessionB?.contextId ?? null;
         const v = versionsB.find((x) => x.planId === planId);
         if (!v) return;
         if (selectionKey(sourceB.studyId, imageB, planId) === keyA) {
@@ -349,14 +422,14 @@ const ComparePage = () => {
             return;
         }
         const st = useAppStore.getState();
-        const current = snapshotFor(sessionB, sourceB.planId ?? null);
+        const current = snapshotFor(sessionB ?? null, sourceB.planId ?? null);
         if (st.comparison.right.measurements.length > current.measurements.length
             && !window.confirm("Measurements you added on Image B will be replaced by this version's measurements. Continue?")) return;
         st.setComparisonB({
             image: imageB,
-            ...snapshotFor(sessionB, planId),
+            ...snapshotFor(sessionB ?? null, planId),
             calibration: sessionB?.toolState?.calibration,
-            source: { ...sourceB, planId, label: sourceB.label.replace(/ · [^·]*$/, "") + ` · ${v.name}` },
+            source: { ...sourceB, contextId, planId, label: sourceB.label.replace(/ · [^·]*$/, "") + ` · ${v.name}` },
         });
     };
 
@@ -419,25 +492,16 @@ const ComparePage = () => {
         <div className="flex h-full bg-background relative p-2">
             <div className="flex-1 min-w-0 flex flex-col relative rounded-xl overflow-hidden border border-[var(--border)]">
                 {paneLabel("Image A", currentImage ? planAName : "case image")}
-                {currentImage && versionsA.length > 1 && (
+                {currentImage && (
                     // Quick version switch for the case image (UI12-02)
-                    <select
-                        value={planA ?? ""}
-                        title="Version of Image A"
-                        onChange={(e) => {
-                            const v = e.target.value || null;
-                            if (selectionKey(activeStudyId, currentImage, v) === keyB) {
-                                alert("Image B already shows this version — choose another one.");
-                                return;
-                            }
-                            useAppStore.getState().setComparisonPlanA(v);
-                        }}
-                        className="absolute top-2 right-2 z-20 h-8 rounded-lg bg-black/60 hover:bg-black/80 text-white/90 text-[11px] font-semibold px-2 backdrop-blur-sm border-0 outline-none cursor-pointer"
-                    >
-                        {versionsA.map((v) => (
-                            <option key={v.planId ?? "none"} value={v.planId ?? ""} className="text-black">{v.name}</option>
-                        ))}
-                    </select>
+                    <div className="absolute top-2 right-2 z-20">
+                        <VersionMenu
+                            pane="A" versions={versionsA} current={planA} takenKey={keyB}
+                            keyOf={(v) => selectionKey(activeStudyId, currentImage, v)}
+                            onPick={(v) => useAppStore.getState().setComparisonPlanA(v)}
+                            emptyHint="No saved plans yet — save a plan in Planning to compare it here."
+                        />
+                    </div>
                 )}
                 {currentImage ? (
                     <CanvasWorkspace side="left" />
@@ -454,18 +518,18 @@ const ComparePage = () => {
             <div className="flex-1 min-w-0 flex flex-col relative rounded-xl overflow-hidden border border-[var(--border)]">
                 {paneLabel("Image B", imageB ? (sourceB?.label ?? "imported image") : "choose an image")}
                 {importButton("right", imageB ? "Replace Image B" : "Load Image B")}
-                {imageB && sourceB && versionsB.length > 1 && (
+                {imageB && (
                     // Version of Image B's study image: No plan, a saved plan or the working plan (CMP-01)
-                    <select
-                        value={sourceB.planId ?? ""}
-                        title="Version of Image B"
-                        onChange={(e) => switchVersionB(e.target.value || null)}
-                        className="absolute top-2 right-12 z-20 h-8 rounded-lg bg-black/60 hover:bg-black/80 text-white/90 text-[11px] font-semibold px-2 backdrop-blur-sm border-0 outline-none cursor-pointer"
-                    >
-                        {versionsB.map((v) => (
-                            <option key={v.planId ?? "none"} value={v.planId ?? ""} className="text-black">{v.name}</option>
-                        ))}
-                    </select>
+                    <div className="absolute top-2 right-12 z-20">
+                        <VersionMenu
+                            pane="B" versions={versionsB.length ? versionsB : versionsOf(null)} current={sourceB?.planId ?? null} takenKey={keyA}
+                            keyOf={(v) => selectionKey(sourceB?.studyId, imageB, v)}
+                            onPick={(v) => switchVersionB(v)}
+                            emptyHint={sourceB
+                                ? (sessionB === undefined ? "Loading this study's plans…" : "This study has no saved plans yet.")
+                                : "Imported image — it has no plans. Choose an existing study to compare its plans."}
+                        />
+                    </div>
                 )}
                 <CanvasWorkspace side="right" />
                 {!imageB && emptyHint("Load an image to compare — use the import button in the top-right corner.")}

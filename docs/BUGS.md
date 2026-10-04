@@ -590,3 +590,20 @@ global theme-token fix for shadcn classes. Deferred: signed T1SPi/T9SPi/ODHA.
 - HELP-03 [x] No notification bell anywhere (it showed twice). Users: unread replies = red count on the "?" (sidebar
         and workspace header). Platform admin: unread feedback = red count on the Monitor icon in the sidebar and on
         the Feedback tab.
+
+## Pilot batch 3 (2026-10-04)
+- CMP-02 [x] Compare: the version switch (No plan / Plan N / working plan) is now always shown on Image A and Image B
+        once the pane has an image — it used to hide when only "No plan" existed or when Image B's session wasn't
+        known (older picks / multi-image studies: now found from the study + image via sessionForScan and remembered).
+        Imported Image B shows the menu with "Imported image — it has no plans".
+- CMP-03 [x] The version switch was a native <select> (options black on black in dark mode). Now a themed menu
+        (VersionMenu in ComparePage): blue pill = No plan, amber pill = a plan; the other pane's version is disabled.
+- GUIDE-01 [x] Step-by-step guide for Resect (4 steps: upper cut 2 points, lower cut 2 points; 4 progress dots) and
+        Open osteotomy (6 steps: A–B upper reference, C–D cut, E–F lower reference). PSO/SPO steps renumbered too.
+- LAG-01 [x] Slow-feeling actions on the hosted demo: a top loading bar + "Opening study… / Creating study… /
+        Loading workspace…" shows at once (lib/busy.ts withBusy, components/BusyOverlay.tsx; also blocks double clicks).
+        Patient, study and visit edits (name, MRN, age, height…) show immediately (optimistic store update, rolled
+        back with a message if the server refuses). New organisation: org list loaded before switching, so its name
+        shows straight away. Remaining delay = server round-trips (Render free tier; first request after ~15 min idle
+        is a cold start of 30–60 s).
+        Verified: tsc (no new errors), 123 unit tests, build. Not checked on screen.

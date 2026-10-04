@@ -90,8 +90,12 @@ export function StudyCard({
 
     const saveName = async () => {
         const trimmed = nameDraft.trim();
-        await updateStudy(patientId, study.id, { name: trimmed || null });
-        setRenaming(false);
+        setRenaming(false); // the new name shows at once (optimistic store update, LAG-01)
+        try {
+            await updateStudy(patientId, study.id, { name: trimmed || null });
+        } catch (e) {
+            alert(`Couldn't rename the study: ${e instanceof Error ? e.message : 'server error'}.`);
+        }
     };
 
     const setStatus = async (next: StudyStatus) => {

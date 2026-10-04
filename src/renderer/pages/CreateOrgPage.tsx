@@ -59,11 +59,11 @@ const CreateOrgPage = () => {
                 if (res.data?.token) {
                     setToken(res.data.token);
                 }
+                // Org lists first, so the new organisation's name shows as soon as we switch (LAG-01)
+                await fetchOrgLists();
                 if (res.data?.org?.id) {
                     setActiveWorkspace({ type: 'organization', orgId: res.data.org.id });
                 }
-                // Refresh org lists so workspace switcher shows the new org
-                await fetchOrgLists();
                 navigate('/dashboard');
             } else {
                 setError(res.data?.error ?? 'Failed to create organization. Please try again.');

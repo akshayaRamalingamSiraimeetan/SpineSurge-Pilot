@@ -1945,17 +1945,25 @@ const CanvasWorkspace = ({ side }: CanvasWorkspaceProps) => {
         }
         if (activeTool === 'ost-pso' || activeTool === 'ost-spo') {
             const type = activeTool === 'ost-pso' ? 'PSO' : 'SPO';
-            if (tempPoints.length === 0) return `Select ${type} Point A(Posterior)`;
-            if (tempPoints.length === 1) return `Select ${type} Point B(Hinge / Anterior)`;
-            if (tempPoints.length === 2) return `Select ${type} Point C(Posterior)`;
+            if (tempPoints.length === 0) return `Step 1 of 3 · ${type}: click point A (posterior, one side of the wedge)`;
+            if (tempPoints.length === 1) return `Step 2 of 3 · ${type}: click point B (hinge, anterior)`;
+            if (tempPoints.length === 2) return `Step 3 of 3 · ${type}: click point C (posterior, other side of the wedge)`;
+        }
+        if (activeTool === 'ost-resect') {
+            // Two cut lines; the bone between them is removed and the upper part closes onto the lower cut
+            if (tempPoints.length === 0) return "Step 1 of 4 · Upper cut: click one end of the upper cut line";
+            if (tempPoints.length === 1) return "Step 2 of 4 · Upper cut: click the other end of the upper cut line";
+            if (tempPoints.length === 2) return "Step 3 of 4 · Lower cut: click one end of the lower cut line";
+            if (tempPoints.length === 3) return "Step 4 of 4 · Lower cut: click the other end — the bone between the cuts is removed and the upper part closes down";
         }
         if (activeTool === 'ost-open') {
-            if (tempPoints.length === 0) return "Select Point A (Upper Ref - Start)";
-            if (tempPoints.length === 1) return "Select Point B (Upper Ref - End)";
-            if (tempPoints.length === 2) return "Select Point C (Cut Line - Start)";
-            if (tempPoints.length === 3) return "Select Point D (Cut Line - End)";
-            if (tempPoints.length === 4) return "Select Point E (Lower Ref - Start)";
-            if (tempPoints.length === 5) return "Select Point F (Lower Ref - End)";
+            // CD is the cut; the part above it turns to lie along AB, the part below along EF (TransformationCalculator).
+            if (tempPoints.length === 0) return "Step 1 of 6 · Upper reference: click point A of the line the upper part should end up parallel to";
+            if (tempPoints.length === 1) return "Step 2 of 6 · Upper reference: click point B";
+            if (tempPoints.length === 2) return "Step 3 of 6 · Cut line: click point C at one end of the osteotomy";
+            if (tempPoints.length === 3) return "Step 4 of 6 · Cut line: click point D at the other end (the cut runs across the image)";
+            if (tempPoints.length === 4) return "Step 5 of 6 · Lower reference: click point E of the line the lower part should end up parallel to";
+            if (tempPoints.length === 5) return "Step 6 of 6 · Lower reference: click point F — the wedge opens by the angle between A–B and E–F";
         }
         if (activeTool === 'cmc') {
             if (tempPoints.length === 0) return "Select Start of Line 1";
@@ -2012,6 +2020,7 @@ const CanvasWorkspace = ({ side }: CanvasWorkspaceProps) => {
         if (activeTool === 'tpa' || activeTool === 'spa') return 7;
         if (['t1spi', 't9spi', 'odha'].includes(activeTool || '')) return 5;
         if (['ost-pso', 'ost-spo'].includes(activeTool || '')) return 3;
+        if (activeTool === 'ost-resect') return 4;
         if (activeTool === 'ost-open') return 6;
         if (activeTool === 'ssa') return 3;
         if (activeTool === 'cbva') return 2;

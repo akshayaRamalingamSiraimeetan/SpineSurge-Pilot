@@ -4,6 +4,7 @@ import axios from 'axios';
 import { UserProfile } from './types';
 import type { AppState } from './index';
 import { API_BASE } from '../api';
+import { withBusy } from '../busy';
 
 const BASE_URL = API_BASE;
 
@@ -164,7 +165,8 @@ export const createAuthSlice: StateCreator<AppState, [], [], AuthSlice> = (set, 
     // nothing from the previous workspace is shown or saved (BUGS NAV-17).
     get().resetWorkspace();
     set({ activeWorkspace: ws, patients: [] });
-    void get().initializeStore();
+    // Overlay at once — the dashboard is empty until the list arrives (LAG-01)
+    void withBusy('Loading workspace…', () => get().initializeStore());
   },
 
   // ── loginWithCredentials ───────────────────────────────────────────────────

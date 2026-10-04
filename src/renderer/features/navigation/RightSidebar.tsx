@@ -722,6 +722,8 @@ function CaseSummary({ isOpen, onOpenChange }: { isOpen: boolean; onOpenChange: 
 
     const handleSave = async (field: string) => {
         if (!patient) return;
+        // Close the editor at once: the store shows the new value before the server answers (LAG-01)
+        setEditingField(null);
         try {
             if (field === 'name') {
                 await updatePatient({ ...patient, name: editValue });
@@ -751,8 +753,8 @@ function CaseSummary({ isOpen, onOpenChange }: { isOpen: boolean; onOpenChange: 
             }
         } catch (err) {
             console.error('Failed to save field', field, err);
+            alert(`Couldn't save the change: ${err instanceof Error ? err.message : 'server error'}. Please try again.`);
         }
-        setEditingField(null);
     };
 
     const handleNotesBlur = async () => {

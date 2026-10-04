@@ -5,6 +5,7 @@ import type { AppState } from './index';
 import { emptyCaseState, caseStateFromContext } from './caseState';
 import { contextAccess } from '../access';
 import { imageScans } from '../studies';
+import { withBusy } from '../busy';
 
 export interface PatientSlice {
     patients: Patient[];
@@ -227,13 +228,16 @@ export const createPatientSlice: StateCreator<AppState, [], [], PatientSlice> = 
 
     updatePatient: async (patient) => {
         const token = get().token;
+        // Shown at once (LAG-01); rolled back if the server refuses
+        const previous = get().patients.find(p => p.id === patient.id);
+        set((state: AppState) => ({
+            patients: state.patients.map(p => p.id === patient.id ? patient : p),
+        }));
         try {
             await api.savePatient(patient, token);
-            set((state: AppState) => ({
-                patients: state.patients.map(p => p.id === patient.id ? patient : p),
-            }));
         } catch (e) {
             console.error('Update patient failed', e);
+            if (previous) set((state: AppState) => ({ patients: state.patients.map(p => p.id === patient.id ? previous : p) }));
             throw e; // callers show the error (UI11-12)
         }
     },
@@ -288,18 +292,17 @@ export const createPatientSlice: StateCreator<AppState, [], [], PatientSlice> = 
 
     updateVisit: async (patientId, visitId, visit) => {
         const token = get().token;
+        const previous = get().patients.find((p: Patient) => p.id === patientId)?.visits.find((v: Visit) => v.id === visitId);
+        const put = (v: Visit) => set((state: AppState) => ({
+            patients: state.patients.map((p: Patient) =>
+                p.id === patientId ? { ...p, visits: p.visits.map((x: Visit) => x.id === visitId ? v : x) } : p),
+        }));
+        put(visit); // shown at once (LAG-01); rolled back if the server refuses
         try {
             await api.saveVisit(patientId, visit, token);
-            set((state: AppState) => {
-                const updatedPatients = state.patients.map((p: Patient) =>
-                    p.id === patientId
-                        ? { ...p, visits: p.visits.map((v: Visit) => v.id === visitId ? visit : v) }
-                        : p
-                );
-                return { patients: updatedPatients };
-            });
         } catch (e) {
             console.error('Failed to update visit', e);
+            if (previous) put(previous);
             throw e;
         }
     },
@@ -369,24 +372,27 @@ export const createPatientSlice: StateCreator<AppState, [], [], PatientSlice> = 
         if (!existing) return;
 
         const updated: Study = { ...existing, ...updates };
+        const put = (study: Study) => set((state: AppState) => ({
+            patients: state.patients.map((p: Patient) =>
+                p.id !== patientId
+                    ? p
+                    : {
+                        ...p,
+                        studies: p.studies.map((s: Study) => s.id === studyId ? study : s),
+                        visits: p.visits.map(v => ({
+                            ...v,
+                            studies: (v.studies || []).map((s: Study) => s.id === studyId ? study : s),
+                        })),
+                    }
+            ),
+        }));
+        // Shown at once (LAG-01); rolled back if the server refuses
+        put(updated);
         try {
             await api.saveStudy(updated, token);
-            set((state: AppState) => ({
-                patients: state.patients.map((p: Patient) =>
-                    p.id !== patientId
-                        ? p
-                        : {
-                            ...p,
-                            studies: p.studies.map((s: Study) => s.id === studyId ? updated : s),
-                            visits: p.visits.map(v => ({
-                                ...v,
-                                studies: (v.studies || []).map((s: Study) => s.id === studyId ? updated : s),
-                            })),
-                        }
-                ),
-            }));
         } catch (e) {
             console.error('Update study failed', e);
+            put(existing);
             throw e;
         }
     },
@@ -611,7 +617,7 @@ export const createPatientSlice: StateCreator<AppState, [], [], PatientSlice> = 
         });
     },
 
-    openStudy: async (patientId, studyId) => {
+    openStudy: (patientId, studyId) => withBusy('Opening study…', async () => {
         // Only create a session when we KNOW the study has none: a superseded or
         // failed load used to look like "no sessions" and made an empty one that
         // then became the latest (UI11-07).
@@ -643,7 +649,7 @@ export const createPatientSlice: StateCreator<AppState, [], [], PatientSlice> = 
             name: study?.name || `${study?.modality ?? 'Study'} session`,
             lastModified: new Date().toISOString(),
         });
-    },
+    }),
 
     closeCase: () => set({
         ...emptyCaseState(get()),
