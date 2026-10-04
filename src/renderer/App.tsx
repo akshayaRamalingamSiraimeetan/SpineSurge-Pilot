@@ -1,5 +1,5 @@
 import { ThemeProvider } from "@/components/theme-provider"
-import { HashRouter as Router, Routes, Route, Navigate } from "react-router-dom"
+import { HashRouter as Router, Routes, Route, Navigate, useLocation } from "react-router-dom"
 import { useEffect } from "react"
 import { useAppStore } from "@/lib/store/index"
 import { UNAUTHORIZED_EVENT } from "@/lib/api"
@@ -19,8 +19,17 @@ import PendingInvitationsPage from "@/pages/PendingInvitationsPage"
 import OrgMembersPage from "@/pages/OrgMembersPage"
 import MemberWorkspacePage from "@/pages/MemberWorkspacePage"
 import PlatformStatsPage from "@/pages/PlatformStatsPage"
+import PlatformUserPage from "@/pages/PlatformUserPage"
+import { startActivityTracking, trackPage } from "@/lib/activity"
 import { RouteErrorBoundary } from "@/components/RouteErrorBoundary"
 import { RequireAuth, RequireVerified, RequireProfile, RedirectIfComplete } from "@/components/guards"
+
+/** Page views for the live usage monitor (MON-01). */
+const ActivityTracker = () => {
+  const { pathname, search } = useLocation();
+  useEffect(() => { trackPage(pathname, search); }, [pathname, search]);
+  return null;
+};
 
 const App = () => {
   const bootstrapSession = useAppStore(state => state.bootstrapSession);
@@ -29,6 +38,8 @@ const App = () => {
   useEffect(() => {
     void bootstrapSession();
   }, [bootstrapSession]);
+
+  useEffect(() => { startActivityTracking(); }, []);
 
   // Expired/invalid token on any API call → sign out; guards redirect to /login (NAV-07).
   useEffect(() => {
@@ -43,6 +54,7 @@ const App = () => {
     <ThemeProvider defaultTheme="dark" storageKey="vite-ui-theme">
       <Router>
         <RouteErrorBoundary routeName="app">
+        <ActivityTracker />
         <Routes>
           {/* ── Public routes — redirect fully-onboarded users away ── */}
           <Route path="/login" element={
@@ -113,6 +125,11 @@ const App = () => {
             <Route path="/platform" element={
               <RouteErrorBoundary routeName="/platform">
                 <PlatformStatsPage />
+              </RouteErrorBoundary>
+            } />
+            <Route path="/platform/users/:userId" element={
+              <RouteErrorBoundary routeName="/platform/users/:userId">
+                <PlatformUserPage />
               </RouteErrorBoundary>
             } />
             <Route path="/members/:userId/workspace" element={

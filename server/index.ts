@@ -19,7 +19,8 @@ import { authenticate } from './middleware/authenticate';
 import { guardUploads } from './media';
 import { persistUpload, removeStored, serveStored } from './storage';
 import { platformRouter } from './routes/platform';
-import { type Access, adminOrgIds, canWrite, contextAccess, contextsAccess, patientAccess, studyAccess } from './access';
+import * as activity from './activity';
+import { type Access, adminOrgIds, canWrite, contextAccess, contextsAccess, isPlatformAdmin, patientAccess, studyAccess } from './access';
 import jwt from 'jsonwebtoken';
 
 
@@ -178,6 +179,9 @@ app.get('/api/patients', authenticate, async (req, res) => {
         const callerId     = req.user!.id;
         const workspaceParam = req.query.workspace as string | undefined;
         const orgIdParam     = req.query.orgId     as string | undefined;
+        // Platform monitor (MON-01): ?inspect=<patientId> returns that one patient
+        // with every study view-only, whoever owns it.
+        const inspectId = typeof req.query.inspect === 'string' && isPlatformAdmin(req.user!.email) ? req.query.inspect : null;
 
         // Verify active membership when accessing an org workspace.
         // Removed/blacklisted members cannot access org data.
@@ -209,6 +213,7 @@ app.get('/api/patients', authenticate, async (req, res) => {
         }
 
         const patientsData = await db.query.patients.findMany({
+            ...(inspectId ? { where: eq(schema.patients.id, inspectId) } : {}),
             with: {
                 visits: {
                     orderBy: (v, { desc }) => [desc(v.date)],
@@ -263,6 +268,7 @@ app.get('/api/patients', authenticate, async (req, res) => {
             const inWorkspace = (orgId: string | null) =>
                 workspaceParam === 'organization' ? orgId === orgIdParam : orgId === null;
             studies = studies.flatMap((s): typeof studies => {
+                if (inspectId) return [{ ...s, access: 'view' as const, via: 'team' as const, ownerName: s.ownerUserId ? nameOf.get(s.ownerUserId) ?? null : null }];
                 const isOwner = s.ownerUserId === callerId || (s.ownerUserId === null && ownsPatient);
                 if (isOwner) return inWorkspace(s.organizationId) ? [{ ...s, access: 'owner' as const, via: 'own' as const, ownerName: null }] : [];
                 const shared = shareOf.get(s.id);
@@ -273,7 +279,7 @@ app.get('/api/patients', authenticate, async (req, res) => {
             });
             // Own patients live in one workspace — personal and organization never mix (UI12-21).
             // (A legacy patient with own studies in this workspace still shows.)
-            const ownHere = ownsPatient && (inWorkspace(p.organizationId ?? null) || studies.some((s) => s.via === 'own'));
+            const ownHere = !inspectId && ownsPatient && (inWorkspace(p.organizationId ?? null) || studies.some((s) => s.via === 'own'));
             if (!ownHere && studies.length === 0) return null;
             const access = ownHere || studies.some((s) => s.via === 'own') ? 'owner'
                 : studies.some((s) => s.via === 'share') ? 'shared' : 'team';
@@ -342,6 +348,7 @@ app.post('/api/patients', async (req, res) => {
             )).limit(1);
             if (m) organizationId = m.orgId;
         }
+        if (!existing) void activity.record(req.user!.id, 'patient.create', { patientId: id }, { workspace: organizationId ? 'organization' : 'personal' });
         await db.insert(schema.patients).values({
             ownerUserId: req.user!.id,
             organizationId,
@@ -450,6 +457,7 @@ app.post('/api/studies', authenticate, async (req, res) => {
         }
         if (await patientAccess(ownerUserId, patientId) !== 'owner') return res.status(403).json({ error: 'Studies can only be added to your own patients' });
         console.log(`Saving study: ${id} for patient: ${patientId}, owner: ${ownerUserId}, org: ${organizationId ?? 'personal'}`);
+        void activity.record(ownerUserId, 'study.create', { patientId, studyId: id }, { modality: modality || 'X-Ray', source: source || 'Import', name: name || null });
         await db.insert(schema.studies).values({
             id,
             patientId,
@@ -514,6 +522,7 @@ app.delete('/api/studies/:id', async (req, res) => {
             await tx.delete(schema.studies).where(eq(schema.studies.id, studyId)); // cascades scans, links, reports
         });
         await removeUploads(files);
+        void activity.record(req.user!.id, 'study.delete', { patientId: study.patientId }, { modality: study.modality, name: study.name });
         res.json({ success: true });
     } catch (e: any) {
         console.error('Delete study error:', e);
@@ -587,6 +596,8 @@ app.post('/api/scans', authenticate, upload.single('file'), async (req, res) => 
                 date: date || ''
             }
         });
+        const [st] = await db.select({ patientId: schema.studies.patientId }).from(schema.studies).where(eq(schema.studies.id, studyId)).limit(1);
+        void activity.recordUpload(req.user!.id, { patientId: st?.patientId, studyId }, relativePath, file.originalname, type || 'Imported');
         res.json({
             success: true,
             imageUrl: toAbsoluteUrl(relativePath, baseUrl)
@@ -672,6 +683,7 @@ app.post('/api/contexts', async (req, res) => {
             return;
         }
 
+        const before = await activity.sessionSnapshot(id); // what's new is recorded after the save (MON-01)
         await db.transaction(async (tx) => {
             // Serialize concurrent saves of the same context (BUGS SRV-14).
             await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${String(id)}))`);
@@ -755,6 +767,7 @@ app.post('/api/contexts', async (req, res) => {
             }
         });
 
+        void activity.recordSessionChanges(callerId, { patientId, studyId: linkIds[0] ?? null, contextId: id }, before, { name, state });
         res.json({ success: true });
     } catch (err: any) {
         console.error("Critical error in saveContext:", err);
@@ -807,6 +820,10 @@ app.post('/api/reports', upload.single('file'), async (req, res) => {
             });
             return next;
         });
+        {
+            const [visit] = await db.select({ patientId: schema.visits.patientId }).from(schema.visits).where(eq(schema.visits.id, visitId)).limit(1);
+            void activity.record(req.user!.id, 'report.export', { patientId: visit?.patientId, studyId: studyId || null }, { title: title || 'Report', version, file: path.basename(file.path) });
+        }
         res.json({ success: true, version });
     } catch (e: any) {
         console.error("Save report error:", e);
@@ -1007,7 +1024,25 @@ app.post('/api/pacs/import', async (req, res) => {
     }
 });
 
-app.use('/api/platform', platformRouter); // usage dashboard (DEPLOY-06)
+app.use('/api/platform', platformRouter); // live usage monitor (DEPLOY-06, MON-01)
+
+// UI actions reported by the client (tool picked, page opened, report preview…)
+// and the presence heartbeat — both feed the live monitor (MON-01).
+app.post('/api/activity', async (req, res) => {
+    const list = (Array.isArray(req.body?.events) ? req.body.events : []).slice(0, 50);
+    const str = (v: unknown, n = 120) => (typeof v === 'string' && v ? v.slice(0, n) : null);
+    for (const e of list) {
+        const kind = str(e?.kind, 40);
+        if (!kind || !activity.CLIENT_KINDS.has(kind)) continue;
+        const detail = e.detail && typeof e.detail === 'object' && JSON.stringify(e.detail).length < 1000 ? e.detail : null;
+        await activity.record(req.user!.id, kind, { patientId: str(e.patientId), studyId: str(e.studyId), contextId: str(e.contextId) }, detail);
+    }
+    res.json({ ok: true });
+});
+app.post('/api/activity/heartbeat', async (req, res) => {
+    await activity.heartbeat(req.user!.id, req.body ?? {});
+    res.json({ ok: true });
+});
 
 // --- Study sharing (UI12-10) ---
 // The owner shares a study with another user by their login email, with view
@@ -1046,6 +1081,7 @@ app.post('/api/studies/:id/shares', async (req, res) => {
         if (target.id === req.user!.id) return res.status(400).json({ error: 'This is your own study' });
         await db.insert(schema.studyShares).values({ studyId, sharedBy: req.user!.id, sharedWith: target.id, permission })
             .onConflictDoUpdate({ target: [schema.studyShares.studyId, schema.studyShares.sharedWith], set: { permission } });
+        void activity.record(req.user!.id, 'share.add', { studyId }, { with: target.email, permission });
         res.json(await shareView(studyId));
     } catch (e) {
         console.error('[shares/add]', e);

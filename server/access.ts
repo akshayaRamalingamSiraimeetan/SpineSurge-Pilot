@@ -16,6 +16,25 @@ export const best = (a: Access | null, b: Access | null): Access | null =>
     !a ? b : !b ? a : RANK[a] >= RANK[b] ? a : b;
 export const canWrite = (a: Access | null) => a === 'owner' || a === 'edit';
 
+/** Platform owner (PLATFORM_ADMIN_EMAILS, comma separated): the live monitor (/platform). */
+export const isPlatformAdmin = (email?: string | null) =>
+    !!email && (process.env.PLATFORM_ADMIN_EMAILS ?? '').split(',').map((e) => e.trim().toLowerCase()).filter(Boolean).includes(email.toLowerCase());
+
+/**
+ * Platform admins may look at every study, view-only (MON-01: the pilot monitor
+ * opens any user's images, plans and reports). Never write access.
+ */
+const adminCache = new Map<string, { yes: boolean; at: number }>();
+export async function isPlatformAdminId(userId: string): Promise<boolean> {
+    if (!process.env.PLATFORM_ADMIN_EMAILS) return false;
+    const hit = adminCache.get(userId);
+    if (hit && Date.now() - hit.at < 60_000) return hit.yes;
+    const [u] = await db.select({ email: schema.users.email }).from(schema.users).where(eq(schema.users.id, userId)).limit(1);
+    const yes = isPlatformAdmin(u?.email);
+    adminCache.set(userId, { yes, at: Date.now() });
+    return yes;
+}
+
 type StudyRow = typeof schema.studies.$inferSelect;
 
 /** Orgs where the user is an active admin or the creator. */
@@ -38,12 +57,13 @@ export async function studiesAccess(userId: string, studies: StudyRow[]): Promis
     if (!studies.length) return out;
     const ids = studies.map((s) => s.id);
     const patientIds = [...new Set(studies.map((s) => s.patientId))];
-    const [shares, patients, adminOrgs] = await Promise.all([
+    const [shares, patients, adminOrgs, platform] = await Promise.all([
         db.select().from(schema.studyShares)
             .where(and(eq(schema.studyShares.sharedWith, userId), inArray(schema.studyShares.studyId, ids))),
         db.select({ id: schema.patients.id, owner: schema.patients.ownerUserId }).from(schema.patients)
             .where(inArray(schema.patients.id, patientIds)),
         adminOrgIds(userId),
+        isPlatformAdminId(userId),
     ]);
     const patientOwner = new Map(patients.map((p) => [p.id, p.owner]));
     const shareOf = new Map(shares.map((s) => [s.studyId, s.permission === 'edit' ? 'edit' as const : 'view' as const]));
@@ -54,6 +74,7 @@ export async function studiesAccess(userId: string, studies: StudyRow[]): Promis
         else if (!s.ownerUserId && patientOwner.get(s.patientId) === userId) a = 'owner';
         a = best(a, shareOf.get(s.id) ?? null);
         if (s.organizationId && adminOrgs.has(s.organizationId)) a = best(a, 'view');
+        if (platform) a = best(a, 'view');
         if (a) out.set(s.id, a);
     }
     return out;
@@ -73,6 +94,7 @@ export async function patientAccess(userId: string, patientId: string): Promise<
     const studies = await db.select().from(schema.studies).where(eq(schema.studies.patientId, patientId));
     let a: Access | null = null;
     for (const v of (await studiesAccess(userId, studies)).values()) a = best(a, v);
+    if (!a && await isPlatformAdminId(userId)) a = 'view';
     return a;
 }
 
@@ -92,6 +114,7 @@ export async function contextsAccess(userId: string, contextIds: string[]): Prom
     const studies = studyIds.length ? await db.select().from(schema.studies).where(inArray(schema.studies.id, studyIds)) : [];
     const sAccess = await studiesAccess(userId, studies);
     const owners = new Map<string, string | null>();
+    const platform = await isPlatformAdminId(userId);
     for (const c of ctxs) {
         const own = links.filter((l) => l.contextId === c.id);
         let a: Access | null = null;
@@ -103,6 +126,7 @@ export async function contextsAccess(userId: string, contextIds: string[]): Prom
                 owners.set(c.patientId, p?.o ?? null);
             }
             if (owners.get(c.patientId) === userId) a = 'owner';
+            else if (platform) a = 'view';
         }
         if (a) out.set(c.id, a);
     }

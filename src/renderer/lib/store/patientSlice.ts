@@ -136,7 +136,10 @@ export const createPatientSlice: StateCreator<AppState, [], [], PatientSlice> = 
         const seq = ++patientListSeq;
         const patients = await api.getPatients(activeWorkspace, token);
         if (seq !== patientListSeq) return;
-        set({ patients });
+        // A platform admin inspecting a user's study (MON-01): keep that patient loaded
+        const insp = get().inspectionMode;
+        const kept = insp?.orgId === 'platform' ? get().patients.find((p) => p.id === insp.patientId) : undefined;
+        set({ patients: kept && !patients.some((p) => p.id === kept.id) ? [...patients, kept] : patients });
     },
 
     /**

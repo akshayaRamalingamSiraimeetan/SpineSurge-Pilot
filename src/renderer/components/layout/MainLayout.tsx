@@ -25,7 +25,7 @@ const useAccessBanner = () => useAppStore(useShallow((s) => {
     const study = findStudy(s, ctx?.patientId ?? s.activePatientId, ctx?.studyIds?.[0] ?? s.inspectionMode?.studyId);
     const viewOnly = access === 'view' || !!s.inspectionMode?.active;
     if (!viewOnly && access !== 'edit') return null;
-    return { viewOnly, owner: s.inspectionMode?.ownerName ?? study?.ownerName ?? 'another user', team: !!s.inspectionMode?.active };
+    return { viewOnly, owner: s.inspectionMode?.ownerName ?? study?.ownerName ?? 'another user', team: !!s.inspectionMode?.active, platform: s.inspectionMode?.orgId === 'platform' };
 }));
 
 const AccessBanner = () => {
@@ -36,8 +36,14 @@ const AccessBanner = () => {
     const handleExit = () => {
         const s = useAppStore.getState();
         const memberId = s.inspectionMode?.ownerUserId;
+        const platform = s.inspectionMode?.orgId === 'platform';
         s.setInspectionMode(null);
         s.resetWorkspace();
+        if (platform) {
+            void s.refreshPatients(); // drop the inspected user's patient from the admin's list
+            navigate(memberId ? `/platform/users/${memberId}` : '/platform');
+            return;
+        }
         navigate(banner.team && memberId ? `/members/${memberId}/workspace` : '/patients');
     };
 
@@ -61,7 +67,7 @@ const AccessBanner = () => {
                 className="flex items-center gap-1.5 rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-1.5 text-xs font-medium text-[var(--text-2)] hover:bg-[var(--surface-3)] hover:text-[var(--text)] transition-colors flex-shrink-0"
             >
                 <X className="h-3.5 w-3.5" />
-                {banner.team ? 'Back to member' : 'Close'}
+                {banner.platform ? 'Back to monitor' : banner.team ? 'Back to member' : 'Close'}
             </button>
         </div>
     );

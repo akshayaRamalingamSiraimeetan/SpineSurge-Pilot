@@ -541,3 +541,20 @@ global theme-token fix for shadcn classes. Deferred: signed T1SPi/T9SPi/ODHA.
         IPv6-only → Session pooler URL (FREE_DEPLOY.md A3). External smoke test: app/assets served, /api,
         /uploads, /api/platform refuse anonymous requests, auth validation OK. Email + storage confirmed by the
         owner's first sign-up/upload.
+
+## Pilot monitoring (2026-10-04)
+- MON-01 [x] Live pilot monitor for PLATFORM_ADMIN_EMAILS (sidebar → Monitor, /platform; replaces the counts-only Usage page).
+        Migration 015 usage_events; server/activity.ts records on the server: patient/study create, image upload (DICOM
+        series grouped into one event with a count), session start, each NEW measurement (tool + value) and implant,
+        saved plans, Compare Image B, report export, shares, study delete; client (lib/activity.ts) adds page/tab views,
+        tool picks, 3D viewer, calibration, report preview + a 30 s presence heartbeat. Live over SSE (GET
+        /api/platform/stream via authenticated fetch, auto-reconnect). Tabs: Live overview (feed with filters, online
+        now, active users/day) · Users · Tools · Images (gallery) · Reports. /platform/users/:id = everything one user
+        did (images, sessions with measurements/implants/plans/Image B, PDFs, shares, live timeline) + "Open view-only"
+        in the real workspace (platform admins get view access to every study in access.ts; GET /api/patients?inspect=).
+        Opening a user is written to audit_log (PLATFORM_VIEW_USER). Verified 30/30 API checks on a fresh DB (spare
+        port): autosave doesn't duplicate events, non-admins get 403, admin can't write, other users still can't open files.
+        Not checked on screen (Chrome extension not connected) — owner to look at /platform after deploy.
+- MON-02 [x] docs/USER_MANUAL.md — user-friendly manual for pilot users (incl. a pilot-monitoring disclosure).
+- MON-03 [ ] Owner: tell pilot users that usage is monitored (manual §13) before relying on the monitor; consider an
+        events retention rule (Supabase free DB = 500 MB; events are small, heartbeats are not stored).

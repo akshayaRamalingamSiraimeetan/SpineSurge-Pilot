@@ -16,6 +16,7 @@
  * Reference lines (c7pl, csvl) are shown SEPARATELY under "Reference Lines",
  * NOT mixed into the Current Measurements list.
  */
+import { TOOL_DISPLAY_NAMES } from '@/features/measurements/toolNames';
 import { useState, useMemo, useRef, useEffect, useCallback } from "react";
 import { PlanPanel } from "@/features/planning3d/PlanPanel";
 import { defaultStudyName } from "@/lib/store/types";
@@ -88,49 +89,6 @@ const NORMAL_RANGES: Record<string, string> = {
     'll': '(40°–60°)',
 };
 
-const TOOL_DISPLAY_NAMES: Record<string, string> = {
-    'cobb':     'Cobb Angle',
-    'angle-4pt':'4 pt Angle',
-    'angle-2pt':'2 pt Angle',
-    'angle-3pt':'3 pt Angle',
-    'sva':      'SVA',
-    'vbm':      'Vertebral Body Metrics',
-    'pi_ll':    'PI-LL Mismatch',
-    'cl':       'Cervical Lordosis (CL)',
-    'tk':       'Thoracic Kyphosis (TK)',
-    'll':       'Lumbar Lordosis (LL)',
-    'sc':       'Custom Curve',
-    'stenosis': 'Canal Area',
-    'spondy':   'Spondylolisthesis',
-    'line':     'Distance Line',
-    'pelvis':   'Pelvic Parameters',
-    'ts':       'Trunk Shift',
-    'avt':      'Apical Vert. Translation',
-    'rvad':     'RVAD',
-    'po':       'Pelvic Obliquity',
-    'itilt':    'Instrumented Tilt',
-    'tpa':      'TPA',
-    'spa':      'SPA',
-    'ssa':      'SSA',
-    't1spi':    'T1SPi',
-    't9spi':    'T9SPi',
-    'odha':     'ODHA',
-    'cbva':     'CBVA',
-    'cmc':      'Cobb Multi-Curve',
-    'pencil':   'Pencil Trace',
-    'text':     'Label',
-    'circle':   'Circle',
-    'ellipse':  'Ellipse',
-    'polygon':  'Polygon',
-    'ost-pso':  'PSO',
-    'ost-spo':  'SPO',
-    'ost-resect':'Resection Plan',
-    'ost-open': 'Opening Wedge',
-    'screw':    'Pedicle Screw',
-    'rod':      'Spinal Rod',
-    'cage':     'Interbody Cage',
-    'plate':    'Spinal Plate',
-};
 
 /* ── Calibration-aware formatters (unchanged from original) ──── */
 const formatResultWithCalibration = (

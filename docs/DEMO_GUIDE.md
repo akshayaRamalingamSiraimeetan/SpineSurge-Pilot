@@ -2,7 +2,7 @@
 
 **Link:** https://spinesurge-demo.onrender.com  ·  **Login:** create your own account on the sign-in page
 
-SpineSurge is a browser-based spine surgery planning tool. The demo server sleeps when unused —
+SpineSurge is a browser-based spine surgery planning tool. **Full step-by-step manual: `docs/USER_MANUAL.md`.** The demo server sleeps when unused —
 the first visit can take about a minute to load. Use a recent Chrome or Edge on a laptop
 or desktop (the 3D module needs WebGL2). Please use **anonymised images only**.
 
@@ -34,6 +34,10 @@ panel shows the differences. "Replace image" swaps Image B.
 ## 6. Report
 Live report of everything above. Left: choose/reorder sections. Right: title, hospital, page size,
 colours → **Preview PDF** / **Export PDF**.
+
+## Pilot monitoring
+During the pilot the SpineSurge team can see how the app is used (tools, uploaded images, plans, comparisons,
+reports) and can open studies read-only, to improve the product. See USER_MANUAL.md §13.
 
 ## Feedback
 Please note what you tried, what you expected and what happened (screenshots help) and send it to the

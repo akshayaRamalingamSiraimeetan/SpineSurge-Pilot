@@ -1,7 +1,7 @@
 # Architecture Notes (quick map — read this before touching state/navigation)
 
 Docs index: `docs/BUGS.md` (tracker) · `docs/ROADMAP.md` (what's next) · `docs/DEPLOYMENT.md` · `docs/DEMO_GUIDE.md` ·
-`docs/3D_PLANNING_REDESIGN.md` · `docs/2D_INSTRUMENTATION.md`.
+`docs/3D_PLANNING_REDESIGN.md` · `docs/2D_INSTRUMENTATION.md` · `docs/USER_MANUAL.md` (for users).
 Active app = `src/renderer` (Vite/React 19) + `server/` (Express 5 + Postgres). `SpineSurge-Rebuild/` is a separate, unused project.
 
 ## Routing
@@ -75,3 +75,13 @@ Contexts: `POST /api/contexts` deletes+reinserts measurement/implant rows; conte
   `CanvasManager.replaceCurrentMeasurements` (no history step, no in-place mutation); deletes are history steps.
 - Tailwind v4: tailwind.config.js is NOT loaded — use `var(--…)` classes, not shadcn token classes.
 - User settings: `lib/settings.ts` (zustand persist, key `spinesurge-settings`), dialog `components/SettingsDialog.tsx`.
+
+## Pilot monitor (MON-01)
+- Server: `server/activity.ts` (record → usage_events + push to SSE listeners; presence in memory; session-save diff
+  `sessionSnapshot`/`recordSessionChanges` in POST /api/contexts), `routes/platform.ts` (stats, feed, users/:id, uploads,
+  reports, stream). auditLogger pushes sign-ins live. Platform admins = `isPlatformAdmin`/`isPlatformAdminId` in access.ts
+  (view-only on every study). POST /api/activity accepts only `CLIENT_KINDS`.
+- Client: `lib/activity.ts` (track(), heartbeat, store watchers; started in App, `<ActivityTracker/>` for routes),
+  `features/platform/*`, pages `PlatformStatsPage` (/platform) and `PlatformUserPage` (/platform/users/:id).
+  "Open view-only" injects the patient from `/api/patients?inspect=` and sets inspectionMode with orgId `'platform'`
+  (refreshPatients keeps it; banner "Back to monitor"). Nothing is tracked while inspecting.

@@ -1,5 +1,6 @@
 import { db } from '../db';
 import { auditLog } from '../schema';
+import { pushAudit } from '../activity';
 
 export async function log(
   action: string,
@@ -21,6 +22,7 @@ export async function log(
       entityId,
       metadata,
     });
+    void pushAudit(id, action, userId ?? null, metadata ?? null); // live monitor (MON-01)
   } catch (err) {
     console.error('[auditLogger]', err);
   }

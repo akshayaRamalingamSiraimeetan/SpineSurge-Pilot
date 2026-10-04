@@ -9,6 +9,7 @@ import { useReportConfig } from '@/lib/report/useReportConfig';
 import { DEFAULT_REPORT_DOCUMENT } from './defaultConfig';
 import { buildReportPDF, exportReportPDF } from '@/lib/pdf/generateReportPDF';
 import { cn } from '@/lib/utils';
+import { track } from '@/lib/activity';
 
 /**
  * Report tab, right panel: document formatting (like a word processor's
@@ -61,6 +62,7 @@ export default function ReportDocumentPanel() {
         setBusy('preview'); setMessage(null);
         try {
             const { blob } = await buildReportPDF();
+            track('report.preview');
             setPreviewUrl(URL.createObjectURL(blob));
         } catch (e) {
             setMessage(e instanceof Error ? e.message : 'Could not build the PDF');

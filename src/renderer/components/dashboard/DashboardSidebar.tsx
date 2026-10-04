@@ -13,7 +13,7 @@ const NAV_ITEMS = [
   { icon: Users,      label: 'Patients',  to: '/patients'  },
 ];
 // Platform owner only (PLATFORM_ADMIN_EMAILS) — DEPLOY-06
-const ADMIN_NAV = { icon: BarChart3, label: 'Usage', to: '/platform' };
+const ADMIN_NAV = { icon: BarChart3, label: 'Monitor', to: '/platform' };
 
 /**
  * DashboardSidebar
