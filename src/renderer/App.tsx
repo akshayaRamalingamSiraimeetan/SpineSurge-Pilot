@@ -18,6 +18,7 @@ import CreateOrgPage from "@/pages/CreateOrgPage"
 import PendingInvitationsPage from "@/pages/PendingInvitationsPage"
 import OrgMembersPage from "@/pages/OrgMembersPage"
 import MemberWorkspacePage from "@/pages/MemberWorkspacePage"
+import PlatformStatsPage from "@/pages/PlatformStatsPage"
 import { RouteErrorBoundary } from "@/components/RouteErrorBoundary"
 import { RequireAuth, RequireVerified, RequireProfile, RedirectIfComplete } from "@/components/guards"
 
@@ -107,6 +108,11 @@ const App = () => {
             <Route path="/members" element={
               <RouteErrorBoundary routeName="/members">
                 <OrgMembersPage />
+              </RouteErrorBoundary>
+            } />
+            <Route path="/platform" element={
+              <RouteErrorBoundary routeName="/platform">
+                <PlatformStatsPage />
               </RouteErrorBoundary>
             } />
             <Route path="/members/:userId/workspace" element={

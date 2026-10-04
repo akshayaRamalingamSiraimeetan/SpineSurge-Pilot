@@ -16,7 +16,9 @@ import { generateOtp, hashOtp, verifyOtp } from '../services/otpService';
 /** Emails are case-insensitive: stored lower-case, matched with lower() (BUGS SRV-16). */
 const normEmail = (e: unknown) => (typeof e === 'string' ? e.trim().toLowerCase() : e);
 const emailEq = (e: string) => sql`lower(${users.email}) = ${e}`;
-import { sendEmail } from '../services/email';
+import { codeEmail, emailEnabled, sendEmail } from '../services/email';
+import { clearMediaCookie, refreshMediaCookie } from '../media';
+import { isPlatformAdmin } from './platform';
 
 // Startup guard — fail fast if JWT_SECRET is missing or a placeholder (SRV-34)
 if (!process.env.JWT_SECRET) {
@@ -27,7 +29,9 @@ if (process.env.NODE_ENV === 'production' && (process.env.JWT_SECRET.length < 32
 }
 
 /** Hosted demo: skip email verification on sign-up. */
-const DEMO_MODE = process.env.DEMO_MODE === 'true';
+// DEMO_MODE skips the email code only while no real email provider is configured;
+// with SMTP/Resend set up, every sign-up confirms its address (DEPLOY-04).
+const DEMO_MODE = process.env.DEMO_MODE === 'true' && !emailEnabled;
 
 // ── Avatar upload (multer) ────────────────────────────────────────────────────
 
@@ -149,19 +153,17 @@ authRouter.post('/register', async (req, res) => {
       expiresAt,
     });
 
-    // Send verification email — failures are swallowed inside sendEmail
-    await sendEmail({
-      to: email,
-      subject: 'Verify your SpineSurge account',
-      text: `Your verification code is: ${otp}. It expires in 10 minutes.`,
-    });
+    const sent = await sendEmail({ to: email, ...codeEmail(otp) });
 
     // Audit log — written after insert commits
     await auditLogger.log('USER_REGISTERED', 'user', userId, null, userId, null);
 
     res.status(201).json({
-      message: 'Registration successful. Please check your email for a verification code.',
+      message: sent
+        ? 'Registration successful. Please check your email for a verification code.'
+        : 'Account created, but the code email could not be sent. Use "Resend code" in a minute.',
       email,
+      emailSent: sent,
     });
   } catch (err: unknown) {
     // Duplicate email (unique constraint violation)
@@ -227,6 +229,7 @@ authRouter.post('/login', async (req, res) => {
       process.env.JWT_SECRET!,
       { expiresIn: (process.env.JWT_EXPIRES_IN ?? '7d') as jwt.SignOptions['expiresIn'] }
     );
+    refreshMediaCookie(req, res, token);
 
     res.status(200).json({
       token,
@@ -259,6 +262,7 @@ authRouter.get('/me', authenticate, async (req, res) => {
         avatarUrl:   row?.avatarUrl ?? null,
         designation: (row as any)?.designation ?? null,
         country:     (row as any)?.country ?? null,
+        isPlatformAdmin: isPlatformAdmin(req.user!.email),
       },
       org: req.org,
     });
@@ -271,6 +275,7 @@ authRouter.get('/me', authenticate, async (req, res) => {
 // ── POST /auth/logout ─────────────────────────────────────────────────────────
 
 authRouter.post('/logout', (_req, res) => {
+  clearMediaCookie(res);
   res.status(200).json({ success: true });
 });
 
@@ -449,11 +454,7 @@ authRouter.post('/resend-verification', async (req, res) => {
       });
 
       // Dispatch verification email
-      await sendEmail({
-        to: email,
-        subject: 'Your new SpineSurge verification code',
-        text: `Your new verification code is: ${otp}. It expires in 10 minutes.`,
-      });
+      await sendEmail({ to: email, ...codeEmail(otp) });
     }
 
     res.status(200).json(GENERIC_SUCCESS);

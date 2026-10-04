@@ -3,6 +3,7 @@ import jwt from 'jsonwebtoken';
 import { eq } from 'drizzle-orm';
 import { db } from '../db';
 import { users, orgs } from '../schema';
+import { refreshMediaCookie } from '../media';
 
 // Extend Express Request with pilot fields
 declare module 'express-serve-static-core' {
@@ -86,6 +87,7 @@ export async function authenticate(
     profileCompleted: user.profileCompleted ?? false,
   };
   req.org = org;
+  refreshMediaCookie(req, res, token); // lets <img>/viewer requests open private uploads
 
   next();
 }

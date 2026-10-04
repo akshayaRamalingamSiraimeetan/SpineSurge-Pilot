@@ -11,7 +11,7 @@ services:
     disk:
       name: uploads
       mountPath: /data
-      sizeGB: 2
+      sizeGB: 10           # CT series are 100+ MB each
     envVars:
       - key: DATABASE_URL
         fromDatabase:
@@ -19,17 +19,24 @@ services:
           property: connectionString
       - key: JWT_SECRET
         generateValue: true
-      - key: DEMO_MODE
+      - key: DEMO_MODE            # no email code while EMAIL_PROVIDER is unset/mock
         value: "true"
-      - key: DEMO_USER_EMAIL
+      # Sign-up codes to the user's own inbox (Gmail: app password, port 587).
+      # Once EMAIL_PROVIDER=smtp is set, every sign-up must confirm its email.
+      - key: EMAIL_PROVIDER
+        value: smtp
+      - key: SMTP_HOST
+        value: smtp.gmail.com
+      - key: SMTP_PORT
+        value: "587"
+      - key: SMTP_USER            # the sending Gmail address
         sync: false
-      - key: DEMO_USER_PASSWORD
+      - key: SMTP_PASS            # its 16-character app password
         sync: false
-      - key: DEMO_USER_NAME
-        value: Demo Surgeon
-      - key: VITE_DEMO_EMAIL      # build arg: pre-fills the login form
+      - key: EMAIL_FROM           # e.g. SpineSurge <you@gmail.com>
         sync: false
-      - key: VITE_DEMO_PASSWORD
+      # Who sees the Usage dashboard (comma separated login emails)
+      - key: PLATFORM_ADMIN_EMAILS
         sync: false
       - key: UPLOADS_DIR
         value: /data/uploads

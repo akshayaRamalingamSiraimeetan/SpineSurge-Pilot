@@ -515,3 +515,19 @@ global theme-token fix for shadcn classes. Deferred: signed T1SPi/T9SPi/ODHA.
         (plan.ts compareVersionMeasurements).
 - UI12-21 [x] Personal and organization workspaces no longer mix: patients.organization_id (migration 014, backfilled from
         their studies), set at creation from the active workspace (only orgs the user belongs to). Verified via API.
+
+## Deployment (2026-10-04)
+- DEPLOY-02 [x] Rehearsal on a fresh database in production mode: migrations 0000–014 apply cleanly; sign up (no email
+        code, DEMO_MODE) → login → profile → create org → patient/study → image upload + serving → session save →
+        privacy between users → share by username: all pass. Auth rate limit added (20 / IP / 15 min). Container no
+        longer needs a shared demo login (seeded only if DEMO_USER_EMAIL is set); render.yaml disk 10 GB.
+- DEPLOY-03 [ ] Owner: hosting account (Render blueprint recommended) + push to branch demo-deploy → deploy → smoke test
+        → put the link in docs/DEMO_GUIDE.md.
+- DEPLOY-04 [x] Sign-up codes by email: SMTP (Gmail app password, port 587) or Resend; startup verifies SMTP login;
+        send failures reported to the user; DEMO_MODE skips the code only while no email provider is configured.
+        Verified sending through a real SMTP test server (Ethereal). Port 465 was blocked from the dev machine → 587.
+- DEPLOY-05 [x] Private uploads: /uploads requires sign-in + access to the study (scan/report/session lookup);
+        HttpOnly ss_media cookie set at login and on every authenticated API call, cleared at sign-out.
+- DEPLOY-06 [x] Usage dashboard for PLATFORM_ADMIN_EMAILS (sidebar → Usage, /platform): totals, sign-ups chart,
+        per-user sign-ins/patients/studies/sessions/measurements/reports/shares/last work, tool usage, activity feed.
+        Second production rehearsal on a fresh DB: 12/12 checks (image privacy, sharing, stats access, logout).

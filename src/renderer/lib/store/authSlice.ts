@@ -215,6 +215,8 @@ export const createAuthSlice: StateCreator<AppState, [], [], AuthSlice> = (set, 
 
   // ── clearAuth ──────────────────────────────────────────────────────────────
   clearAuth: () => {
+    // Drop the private-uploads cookie on this browser (DEPLOY-05)
+    void fetch(`${API_BASE}/auth/logout`, { method: 'POST', credentials: 'include' }).catch(() => {});
     get().disconnectLiveRoom?.();
     get().resetWorkspace();
     set({

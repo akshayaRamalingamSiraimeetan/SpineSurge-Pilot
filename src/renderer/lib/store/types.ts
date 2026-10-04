@@ -173,6 +173,8 @@ export interface UserProfile {
     designation?: string;
     country?: string;
     avatarUrl?: string;
+    /** Can open the Usage dashboard (server: PLATFORM_ADMIN_EMAILS) */
+    isPlatformAdmin?: boolean;
 }
 
 /** LPS world coordinates in millimetres. */

@@ -30,5 +30,6 @@ COPY server ./server
 COPY --from=build /app/dist ./dist
 RUN mkdir -p /data/uploads
 EXPOSE 3001
-# Migrate → (demo) seed the shared login → start.
-CMD ["sh", "-c", "npx tsx server/migrate.ts && if [ \"$DEMO_MODE\" = \"true\" ]; then npx tsx server/seed-dev-user.ts; fi && npx tsx server/index.ts"]
+# Migrate → (only if a shared demo login is configured) seed it → start.
+# Testers normally create their own accounts (DEMO_MODE=true skips the email code).
+CMD ["sh", "-c", "npx tsx server/migrate.ts && if [ \"$DEMO_MODE\" = \"true\" ] && [ -n \"$DEMO_USER_EMAIL\" ]; then npx tsx server/seed-dev-user.ts; fi && npx tsx server/index.ts"]

@@ -1,18 +1,19 @@
 # SpineSurge — Demo Guide (for testers)
 
-**Link:** _to be filled after deployment_  ·  **Login:** _shared demo login, or create your own account_
+**Link:** _to be filled after deployment_  ·  **Login:** create your own account on the sign-in page
 
 SpineSurge is a browser-based spine surgery planning tool. Use a recent Chrome or Edge on a laptop
 or desktop (the 3D module needs WebGL2). Please use **anonymised images only**.
 
 ## 1. Sign in
-Open the link. Use the shared demo login, or **Create account** (in the demo no email code is needed —
-you can sign in right after creating it), then complete your profile.
+Open the link → **Create Account** with your email and a password (in the demo no email code is
+needed — you can sign in right away), then complete your profile. Your patients and studies are
+private; share a study from its card (⋮ → Share) by entering the other person's login email, with
+View or Edit rights. A team lead can create an organization and invite members.
 
 ## 2. Start a study
-Home → **New Study** → choose *Quick use* (just an image) or create a patient → upload an X-ray
-(JPG/PNG/DICOM) or a CT/MR folder. Patients page → select a patient → **Add New Study** does the same
-for an existing patient.
+Patients → **New Patient** → select the patient → **Add New Study** → import an X-ray (JPG/PNG/DICOM)
+or a CT/MR folder in the workspace. Home → *Add study* below Recent Studies does the same.
 
 ## 3. Assessment (measurements)
 - First, follow the **Calibrate** prompt: click the two ends of a known length, type its length in mm.

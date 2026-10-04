@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { NavLink } from 'react-router-dom';
-import { Home, Users, Settings } from 'lucide-react';
+import { Home, Users, Settings, BarChart3 } from 'lucide-react';
 import { useAppStore } from '@/lib/store/index';
 import WorkspaceSwitcher from './WorkspaceSwitcher';
 import { ThemeToggle } from '@/components/ThemeToggle';
@@ -11,7 +11,9 @@ import { SettingsDialog } from '@/components/SettingsDialog';
 const NAV_ITEMS = [
   { icon: Home,       label: 'Home',      to: '/dashboard' },
   { icon: Users,      label: 'Patients',  to: '/patients'  },
-] as const;
+];
+// Platform owner only (PLATFORM_ADMIN_EMAILS) — DEPLOY-06
+const ADMIN_NAV = { icon: BarChart3, label: 'Usage', to: '/platform' };
 
 /**
  * DashboardSidebar
@@ -56,7 +58,7 @@ const DashboardSidebar = ({ collapsible = false }: DashboardSidebarProps) => {
 
           {/* Nav icons */}
           <nav className="flex flex-col items-center gap-1 flex-1">
-            {NAV_ITEMS.map(({ icon: Icon, label, to }) => (
+            {(user?.isPlatformAdmin ? [...NAV_ITEMS, ADMIN_NAV] : NAV_ITEMS).map(({ icon: Icon, label, to }) => (
               <NavLink
                 key={to}
                 to={to}

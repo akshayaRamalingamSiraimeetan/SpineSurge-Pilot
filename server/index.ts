@@ -16,6 +16,8 @@ import { authRouter } from './routes/auth';
 import { orgsRouter } from './routes/orgs';
 import { invitationsRouter } from './routes/invitations';
 import { authenticate } from './middleware/authenticate';
+import { guardUploads } from './media';
+import { platformRouter } from './routes/platform';
 import { type Access, adminOrgIds, canWrite, contextAccess, contextsAccess, patientAccess, studyAccess } from './access';
 import jwt from 'jsonwebtoken';
 
@@ -89,7 +91,8 @@ fs.ensureDirSync(UPLOADS_DIR);
 // Only inert media types are ever served inline; anything else downloads.
 // nosniff stops the browser treating an upload as HTML/JS (BUGS SRV-07).
 const INLINE_EXTS = new Set(['.png', '.jpg', '.jpeg', '.webp', '.bmp', '.gif', '.pdf']);
-app.use('/uploads', express.static(UPLOADS_DIR, {
+// Private: only signed-in users with access to the study (DEPLOY-05)
+app.use('/uploads', guardUploads, express.static(UPLOADS_DIR, {
     setHeaders: (res, filePath) => {
         res.setHeader('X-Content-Type-Options', 'nosniff');
         res.setHeader('Content-Security-Policy', "default-src 'none'; sandbox");
@@ -1012,6 +1015,8 @@ app.post('/api/pacs/import', async (req, res) => {
     }
 });
 
+app.use('/api/platform', platformRouter); // usage dashboard (DEPLOY-06)
+
 // --- Study sharing (UI12-10) ---
 // The owner shares a study with another user by their login email, with view
 // or edit rights. The recipient sees it under "Shared studies"; removing it
@@ -1096,6 +1101,22 @@ app.get('/api/share-candidates', async (req, res) => {
     }
 });
 
+// Public sign-in/sign-up: at most 20 attempts per IP per 15 minutes (SRV-18 / DEPLOY-02)
+const authHits = new Map<string, { n: number; reset: number }>();
+app.use('/auth', (req, res, next) => {
+    if (req.method !== 'POST' || !/^\/(login|register|verify-email|resend-verification)$/.test(req.path)) return next();
+    const now = Date.now();
+    const key = `${req.ip}:${req.path}`;
+    const hit = authHits.get(key);
+    if (!hit || hit.reset < now) authHits.set(key, { n: 1, reset: now + 15 * 60_000 });
+    else if (++hit.n > 20) {
+        res.setHeader('Retry-After', String(Math.ceil((hit.reset - now) / 1000)));
+        res.status(429).json({ error: 'Too many attempts — please wait a few minutes and try again.' });
+        return;
+    }
+    if (authHits.size > 10_000) for (const [k, v] of authHits) if (v.reset < now) authHits.delete(k);
+    next();
+});
 app.use('/auth', authRouter);
 app.use('/orgs', orgsRouter);
 app.use('/invitations', invitationsRouter);
